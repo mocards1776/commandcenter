@@ -581,3 +581,29 @@ async def startup():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+# ─── GET Endpoints ────────────────────────────────────────────
+
+@app.get("/api/dashboard/")
+def get_dashboard(session: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return {"tasks": 0, "projects": 0}
+
+@app.get("/api/projects/")
+def get_projects(session: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return session.query(Project).filter(Project.user_id == current_user.id).all()
+
+@app.get("/api/tags/")
+def get_tags(session: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return session.query(Tag).filter(Tag.user_id == current_user.id).all()
+
+@app.get("/api/categories/")
+def get_categories(session: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return session.query(Category).filter(Category.user_id == current_user.id).all()
+
+@app.get("/api/time-entries/active")
+def get_active_time_entry(session: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return None
+
+@app.get("/api/tasks/")
+def get_tasks(session: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return session.query(Task).filter(Task.user_id == current_user.id).all()
