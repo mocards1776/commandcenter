@@ -66,7 +66,7 @@ async def list_tasks(
     session: Session = Depends(db.get_session),
     # user: User = Depends(get_current_user),
 ):
-    query = select(Task).where(True)
+    query = select(Task)
     if status:
         query = query.where(Task.status == status)
     if search:
@@ -81,11 +81,10 @@ async def today_tasks(
 ):
     today = datetime.utcnow().date()
     query = select(Task).where(
-        (True) &
-        (Task.status.in_(["today", "in_progress"])) |
+        Task.status.in_(["today", "in_progress"]) |
         ((Task.due_date == today) & (Task.status != "done"))
     )
-    return session.execute(query.order_by(Task.priority_order)).scalars().all()
+    return session.execute(query.order_by(Task.order)).scalars().all()
 
 @app.post("/tasks/", response_model=TaskResponse)
 async def create_task(
@@ -173,9 +172,7 @@ async def list_projects(
     session: Session = Depends(db.get_session),
     # user: User = Depends(get_current_user),
 ):
-    projects = session.execute(
-        select(Project).where(True)
-    ).scalars().all()
+    projects = session.execute(select(Project)).scalars().all()
     return projects
 
 @app.post("/projects/", response_model=ProjectResponse)
@@ -237,7 +234,7 @@ async def list_time_blocks(
     session: Session = Depends(db.get_session),
     # user: User = Depends(get_current_user),
 ):
-    query = select(TimeBlock).where(True)
+    query = select(TimeBlock)
     if date:
         target_date = datetime.fromisoformat(date).date()
         query = query.where(
@@ -278,9 +275,7 @@ async def list_habits(
     session: Session = Depends(db.get_session),
     # user: User = Depends(get_current_user),
 ):
-    habits = session.execute(
-        select(Habit).where(True)
-    ).scalars().all()
+    habits = session.execute(select(Habit)).scalars().all()
     return habits
 
 @app.post("/habits/", response_model=HabitResponse)
@@ -351,7 +346,6 @@ async def get_active_timer(
 ):
     entry = session.execute(
         select(TimeEntry)
-        .where(True)
         .order_by(TimeEntry.started_at.desc())
     ).scalar()
     return entry
@@ -398,14 +392,12 @@ async def get_dashboard(
 
     today_tasks = session.execute(
         select(Task).where(
-            (True) &
-            (Task.status.in_(["today", "in_progress"]))
+            Task.status.in_(["today", "in_progress"])
         )
     ).scalars().all()
 
     completed_today = session.execute(
         select(Task).where(
-            (True) &
             (Task.status == "done") &
             (Task.completed_at >= datetime(today.year, today.month, today.day))
         )
@@ -413,8 +405,7 @@ async def get_dashboard(
 
     time_entries = session.execute(
         select(TimeEntry).where(
-            (True) &
-            (TimeEntry.started_at >= datetime(today.year, today.month, today.day))
+            TimeEntry.started_at >= datetime(today.year, today.month, today.day)
         )
     ).scalars().all()
 
@@ -439,9 +430,7 @@ async def list_tags(
     session: Session = Depends(db.get_session),
     # user: User = Depends(get_current_user),
 ):
-    tags = session.execute(
-        select(Tag).where(True)
-    ).scalars().all()
+    tags = session.execute(select(Tag)).scalars().all()
     return tags
 
 @app.post("/tags/", response_model=TagResponse)
@@ -461,9 +450,7 @@ async def list_categories(
     session: Session = Depends(db.get_session),
     # user: User = Depends(get_current_user),
 ):
-    categories = session.execute(
-        select(Category).where(True)
-    ).scalars().all()
+    categories = session.execute(select(Category)).scalars().all()
     return categories
 
 @app.post("/categories/", response_model=CategoryResponse)
@@ -484,9 +471,7 @@ async def list_notes(
     session: Session = Depends(db.get_session),
     # user: User = Depends(get_current_user),
 ):
-    notes = session.execute(
-        select(Note).where(True)
-    ).scalars().all()
+    notes = session.execute(select(Note)).scalars().all()
     return notes
 
 @app.post("/notes/", response_model=NoteResponse)
@@ -507,9 +492,7 @@ async def list_crm(
     session: Session = Depends(db.get_session),
     # user: User = Depends(get_current_user),
 ):
-    people = session.execute(
-        select(CRMPerson).where(True)
-    ).scalars().all()
+    people = session.execute(select(CRMPerson)).scalars().all()
     return people
 
 @app.post("/crm/", response_model=CRMPersonResponse)
@@ -530,9 +513,7 @@ async def list_braindump(
     session: Session = Depends(db.get_session),
     # user: User = Depends(get_current_user),
 ):
-    entries = session.execute(
-        select(BraindumpEntry).where(True)
-    ).scalars().all()
+    entries = session.execute(select(BraindumpEntry)).scalars().all()
     return entries
 
 @app.post("/braindump/", response_model=BraindumpEntryResponse)

@@ -37,7 +37,7 @@ class User(Base):
 class Task(Base):
     __tablename__ = "tasks"
     id = Column(String(36), primary_key=True, default=gen_id)
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)  # nullable while auth is disabled
     project_id = Column(String(36), ForeignKey("projects.id"), nullable=True)
     parent_id = Column(String(36), ForeignKey("tasks.id"), nullable=True)
     
@@ -77,7 +77,7 @@ class Task(Base):
 class Project(Base):
     __tablename__ = "projects"
     id = Column(String(36), primary_key=True, default=gen_id)
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)  # nullable while auth is disabled
     
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
@@ -93,7 +93,7 @@ class Project(Base):
 class Habit(Base):
     __tablename__ = "habits"
     id = Column(String(36), primary_key=True, default=gen_id)
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)  # nullable while auth is disabled
     
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
@@ -117,7 +117,7 @@ class HabitCompletion(Base):
 class TimeEntry(Base):
     __tablename__ = "time_entries"
     id = Column(String(36), primary_key=True, default=gen_id)
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)  # nullable while auth is disabled
     task_id = Column(String(36), ForeignKey("tasks.id"), nullable=True)
     habit_id = Column(String(36), ForeignKey("habits.id"), nullable=True)
     
@@ -137,7 +137,7 @@ class TimeEntry(Base):
 class TimeBlock(Base):
     __tablename__ = "time_blocks"
     id = Column(String(36), primary_key=True, default=gen_id)
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)  # nullable while auth is disabled
     
     title = Column(String(255), nullable=False)
     start_time = Column(DateTime, nullable=False)
@@ -152,7 +152,7 @@ class TimeBlock(Base):
 class Note(Base):
     __tablename__ = "notes"
     id = Column(String(36), primary_key=True, default=gen_id)
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)  # nullable while auth is disabled
     
     title = Column(String(255), nullable=True)
     content = Column(Text, nullable=False)
@@ -166,7 +166,7 @@ class Note(Base):
 class Tag(Base):
     __tablename__ = "tags"
     id = Column(String(36), primary_key=True, default=gen_id)
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)  # nullable while auth is disabled
     
     name = Column(String(100), nullable=False)
     color = Column(String(50), nullable=True)
@@ -178,7 +178,7 @@ class Tag(Base):
 class Category(Base):
     __tablename__ = "categories"
     id = Column(String(36), primary_key=True, default=gen_id)
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)  # nullable while auth is disabled
     
     name = Column(String(100), nullable=False)
     color = Column(String(50), nullable=True)
@@ -191,7 +191,7 @@ class Category(Base):
 class CRMPerson(Base):
     __tablename__ = "crm_people"
     id = Column(String(36), primary_key=True, default=gen_id)
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)  # nullable while auth is disabled
     
     name = Column(String(255), nullable=False)
     email = Column(String(255), nullable=True)
@@ -208,7 +208,7 @@ class CRMPerson(Base):
 class BraindumpEntry(Base):
     __tablename__ = "braindump_entries"
     id = Column(String(36), primary_key=True, default=gen_id)
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)  # nullable while auth is disabled
     
     raw_text = Column(Text, nullable=False)
     processed = Column(Boolean, default=False)
