@@ -5,7 +5,6 @@ const api = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
-// Auth interceptor
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("access_token") || localStorage.getItem("auth_token");
   if (token) {
@@ -16,12 +15,12 @@ api.interceptors.request.use((config) => {
 
 export default api;
 
-// ─── Dashboard ────────────────────────────────────────────────
+// Dashboard
 export const dashboardApi = {
   get: () => api.get("/dashboard/").then(r => r.data),
 };
 
-// ─── Tasks ────────────────────────────────────────────────────
+// Tasks
 export const tasksApi = {
   list: (params?: any) => api.get("/tasks/", { params }).then(r => r.data),
   create: (data: any) => api.post("/tasks/", data).then(r => r.data),
@@ -29,22 +28,22 @@ export const tasksApi = {
   delete: (id: string) => api.delete(`/tasks/${id}`),
 };
 
-// ─── Projects ─────────────────────────────────────────────────
+// Projects
 export const projectsApi = {
   list: () => api.get("/projects/").then(r => r.data),
 };
 
-// ─── Categories ───────────────────────────────────────────────
+// Categories
 export const categoriesApi = {
   list: () => api.get("/categories/").then(r => r.data),
 };
 
-// ─── Tags ─────────────────────────────────────────────────────
+// Tags
 export const tagsApi = {
   list: () => api.get("/tags/").then(r => r.data),
 };
 
-// ─── Time Entries ─────────────────────────────────────────────
+// Time Entries
 export const timeEntriesApi = {
   active: () => api.get("/time-entries/active").then(r => r.data),
 };
