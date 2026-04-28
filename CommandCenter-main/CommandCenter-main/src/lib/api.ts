@@ -7,7 +7,7 @@ const api = axios.create({
 
 // Auth interceptor
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("auth_token") || localStorage.getItem("access_token");
+  const token = localStorage.getItem("access_token") || localStorage.getItem("auth_token");
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -16,5 +16,5 @@ api.interceptors.request.use((config) => {
 
 export default api;
 
-// You can add the individual api objects (tasksApi, projectsApi, etc.) later if needed.
-// For now this gets the connection working.
+// TODO: Add the rest of your api objects (tasksApi, projectsApi, etc.) later
+// For now this should at least stop the CORS errors and let us test the connection.
