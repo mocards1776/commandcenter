@@ -64,7 +64,7 @@ async def list_tasks(
     status: Optional[str] = None,
     search: Optional[str] = None,
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     query = select(Task).where(Task.user_id == user.id)
     if status:
@@ -77,7 +77,7 @@ async def list_tasks(
 @app.get("/api/tasks/today", response_model=List[TaskResponse])
 async def today_tasks(
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     today = datetime.utcnow().date()
     query = select(Task).where(
@@ -91,7 +91,7 @@ async def today_tasks(
 async def create_task(
     data: TaskCreate,
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     task = Task(**data.dict(), user_id=user.id)
     session.add(task)
@@ -103,7 +103,7 @@ async def create_task(
 async def get_task(
     task_id: str,
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     task = session.execute(select(Task).where(Task.id == task_id)).scalar()
     if not task or task.user_id != user.id:
@@ -115,7 +115,7 @@ async def update_task(
     task_id: str,
     data: TaskUpdate,
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     task = session.execute(select(Task).where(Task.id == task_id)).scalar()
     if not task or task.user_id != user.id:
@@ -130,7 +130,7 @@ async def update_task(
 async def delete_task(
     task_id: str,
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     task = session.execute(select(Task).where(Task.id == task_id)).scalar()
     if not task or task.user_id != user.id:
@@ -143,7 +143,7 @@ async def delete_task(
 async def complete_task(
     task_id: str,
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     task = session.execute(select(Task).where(Task.id == task_id)).scalar()
     if not task or task.user_id != user.id:
@@ -158,7 +158,7 @@ async def complete_task(
 async def reorder_tasks(
     ids: List[str],
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     for idx, task_id in enumerate(ids):
         task = session.execute(select(Task).where(Task.id == task_id)).scalar()
@@ -171,7 +171,7 @@ async def reorder_tasks(
 @app.get("/api/projects/", response_model=List[ProjectResponse])
 async def list_projects(
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     projects = session.execute(
         select(Project).where(Project.user_id == user.id).order_by(Project.created_at.desc())
@@ -182,7 +182,7 @@ async def list_projects(
 async def create_project(
     data: ProjectCreate,
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     project = Project(**data.dict(), user_id=user.id)
     session.add(project)
@@ -194,7 +194,7 @@ async def create_project(
 async def get_project(
     project_id: str,
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     project = session.execute(select(Project).where(Project.id == project_id)).scalar()
     if not project or project.user_id != user.id:
@@ -206,7 +206,7 @@ async def update_project(
     project_id: str,
     data: ProjectUpdate,
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     project = session.execute(select(Project).where(Project.id == project_id)).scalar()
     if not project or project.user_id != user.id:
@@ -221,7 +221,7 @@ async def update_project(
 async def delete_project(
     project_id: str,
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     project = session.execute(select(Project).where(Project.id == project_id)).scalar()
     if not project or project.user_id != user.id:
@@ -235,7 +235,7 @@ async def delete_project(
 async def list_time_blocks(
     date: Optional[str] = None,
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     query = select(TimeBlock).where(TimeBlock.user_id == user.id)
     if date:
@@ -251,7 +251,7 @@ async def list_time_blocks(
 async def create_time_block(
     data: TimeBlockCreate,
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     block = TimeBlock(**data.dict(), user_id=user.id)
     session.add(block)
@@ -263,7 +263,7 @@ async def create_time_block(
 async def delete_time_block(
     block_id: str,
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     block = session.execute(select(TimeBlock).where(TimeBlock.id == block_id)).scalar()
     if not block or block.user_id != user.id:
@@ -276,7 +276,7 @@ async def delete_time_block(
 @app.get("/api/habits/", response_model=List[HabitResponse])
 async def list_habits(
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     habits = session.execute(
         select(Habit).where(Habit.user_id == user.id).order_by(Habit.created_at.desc())
@@ -287,7 +287,7 @@ async def list_habits(
 async def create_habit(
     data: HabitCreate,
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     habit = Habit(**data.dict(), user_id=user.id)
     session.add(habit)
@@ -300,7 +300,7 @@ async def complete_habit(
     habit_id: str,
     data: dict,
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     habit = session.execute(select(Habit).where(Habit.id == habit_id)).scalar()
     if not habit or habit.user_id != user.id:
@@ -318,7 +318,7 @@ async def complete_habit(
 async def get_habit_streak(
     habit_id: str,
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     habit = session.execute(select(Habit).where(Habit.id == habit_id)).scalar()
     if not habit or habit.user_id != user.id:
@@ -347,7 +347,7 @@ async def get_habit_streak(
 @app.get("/api/time-entries/active", response_model=Optional[TimeEntryResponse])
 async def get_active_timer(
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     entry = session.execute(
         select(TimeEntry)
@@ -360,7 +360,7 @@ async def get_active_timer(
 async def start_timer(
     data: TimeEntryCreate,
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     # Stop any active timer
     session.execute(
@@ -386,7 +386,7 @@ async def stop_timer(
     entry_id: str,
     data: dict,
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     entry = session.execute(select(TimeEntry).where(TimeEntry.id == entry_id)).scalar()
     if not entry or entry.user_id != user.id:
@@ -400,7 +400,7 @@ async def stop_timer(
 @app.get("/api/dashboard/", response_model=DashboardSummary)
 async def get_dashboard(
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     today = datetime.utcnow().date()
     
@@ -448,7 +448,7 @@ async def get_dashboard(
 @app.get("/api/tags/", response_model=List[TagResponse])
 async def list_tags(
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     tags = session.execute(
         select(Tag).where(Tag.user_id == user.id)
@@ -459,7 +459,7 @@ async def list_tags(
 async def create_tag(
     data: TagCreate,
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     tag = Tag(**data.dict(), user_id=user.id)
     session.add(tag)
@@ -470,7 +470,7 @@ async def create_tag(
 @app.get("/api/categories/", response_model=List[CategoryResponse])
 async def list_categories(
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     categories = session.execute(
         select(Category).where(Category.user_id == user.id)
@@ -481,7 +481,7 @@ async def list_categories(
 async def create_category(
     data: CategoryCreate,
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     category = Category(**data.dict(), user_id=user.id)
     session.add(category)
@@ -493,7 +493,7 @@ async def create_category(
 @app.get("/api/notes/", response_model=List[NoteResponse])
 async def list_notes(
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     notes = session.execute(
         select(Note).where(Note.user_id == user.id).order_by(Note.created_at.desc())
@@ -504,7 +504,7 @@ async def list_notes(
 async def create_note(
     data: NoteCreate,
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     note = Note(**data.dict(), user_id=user.id)
     session.add(note)
@@ -516,7 +516,7 @@ async def create_note(
 @app.get("/api/crm/", response_model=List[CRMPersonResponse])
 async def list_crm(
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     people = session.execute(
         select(CRMPerson).where(CRMPerson.user_id == user.id).order_by(CRMPerson.created_at.desc())
@@ -527,7 +527,7 @@ async def list_crm(
 async def create_crm(
     data: CRMPersonCreate,
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     person = CRMPerson(**data.dict(), user_id=user.id)
     session.add(person)
@@ -539,7 +539,7 @@ async def create_crm(
 @app.get("/api/braindump/", response_model=List[BraindumpEntryResponse])
 async def list_braindump(
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     entries = session.execute(
         select(BraindumpEntry).where(BraindumpEntry.user_id == user.id).order_by(BraindumpEntry.created_at.desc())
@@ -550,7 +550,7 @@ async def list_braindump(
 async def create_braindump(
     data: BraindumpEntryCreate,
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     entry = BraindumpEntry(**data.dict(), user_id=user.id)
     session.add(entry)
@@ -562,7 +562,7 @@ async def create_braindump(
 async def process_braindump(
     entry_id: str,
     session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ):
     entry = session.execute(select(BraindumpEntry).where(BraindumpEntry.id == entry_id)).scalar()
     if not entry or entry.user_id != user.id:
