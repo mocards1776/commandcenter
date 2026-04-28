@@ -1,6 +1,6 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 from datetime import datetime, date
-from typing import Optional, List
+from typing import Optional, List, Any
 
 # ─── Auth ────────────────────────────────────────────────────────────
 class UserCreate(BaseModel):
@@ -56,24 +56,50 @@ class TaskUpdate(BaseModel):
 class TaskResponse(BaseModel):
     id: str
     title: str
-    description: Optional[str]
-    notes: Optional[str]
+    description: Optional[str] = None
+    notes: Optional[str] = None
     status: str
     priority: str
     importance: int
     difficulty: int
-    focus_score: int
-    due_date: Optional[date]
-    time_estimate_minutes: Optional[int]
-    project_id: Optional[str]
-    parent_id: Optional[str]
-    category_id: Optional[str]
-    tag_ids: str
-    show_in_daily: bool
+    focus_score: int = 0
+    due_date: Optional[date] = None
+    time_estimate_minutes: Optional[int] = None
+    project_id: Optional[str] = None
+    parent_id: Optional[str] = None
+    category_id: Optional[str] = None
+    tag_ids: List[str] = []
+    show_in_daily: bool = True
+    # Fields the frontend expects with safe defaults
+    actual_time_minutes: int = 0
+    sort_order: int = 0
+    subtasks: List[Any] = []
     created_at: datetime
     updated_at: datetime
-    completed_at: Optional[datetime]
-    
+    completed_at: Optional[datetime] = None
+
+    @validator("tag_ids", pre=True, always=True)
+    def parse_tag_ids(cls, v):
+        # DB stores tag_ids as a CSV string or JSON-ish; normalize to list
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return v
+        if isinstance(v, str):
+            s = v.strip()
+            if not s:
+                return []
+            # Handle JSON array string like '["id1","id2"]'
+            if s.startswith("["):
+                import json
+                try:
+                    return json.loads(s)
+                except Exception:
+                    pass
+            # Handle CSV
+            return [i.strip() for i in s.split(",") if i.strip()]
+        return []
+
     class Config:
         from_attributes = True
 
@@ -93,9 +119,9 @@ class ProjectUpdate(BaseModel):
 class ProjectResponse(BaseModel):
     id: str
     title: str
-    description: Optional[str]
+    description: Optional[str] = None
     status: str
-    color: Optional[str]
+    color: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     tasks: List[TaskResponse] = []
@@ -119,8 +145,8 @@ class HabitUpdate(BaseModel):
 class HabitResponse(BaseModel):
     id: str
     title: str
-    description: Optional[str]
-    color: Optional[str]
+    description: Optional[str] = None
+    color: Optional[str] = None
     frequency: str
     created_at: datetime
     updated_at: datetime
@@ -137,11 +163,11 @@ class TimeEntryCreate(BaseModel):
 
 class TimeEntryResponse(BaseModel):
     id: str
-    task_id: Optional[str]
-    habit_id: Optional[str]
+    task_id: Optional[str] = None
+    habit_id: Optional[str] = None
     started_at: datetime
-    ended_at: Optional[datetime]
-    note: Optional[str]
+    ended_at: Optional[datetime] = None
+    note: Optional[str] = None
     
     class Config:
         from_attributes = True
@@ -164,7 +190,7 @@ class TimeBlockResponse(BaseModel):
     title: str
     start_time: datetime
     end_time: datetime
-    color: Optional[str]
+    color: Optional[str] = None
     created_at: datetime
     
     class Config:
@@ -183,9 +209,9 @@ class NoteUpdate(BaseModel):
 
 class NoteResponse(BaseModel):
     id: str
-    title: Optional[str]
+    title: Optional[str] = None
     content: str
-    tags: Optional[str]
+    tags: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     
@@ -200,7 +226,7 @@ class TagCreate(BaseModel):
 class TagResponse(BaseModel):
     id: str
     name: str
-    color: Optional[str]
+    color: Optional[str] = None
     created_at: datetime
     
     class Config:
@@ -215,8 +241,8 @@ class CategoryCreate(BaseModel):
 class CategoryResponse(BaseModel):
     id: str
     name: str
-    color: Optional[str]
-    icon: Optional[str]
+    color: Optional[str] = None
+    icon: Optional[str] = None
     created_at: datetime
     
     class Config:
@@ -240,11 +266,11 @@ class CRMPersonUpdate(BaseModel):
 class CRMPersonResponse(BaseModel):
     id: str
     name: str
-    email: Optional[str]
-    phone: Optional[str]
-    company: Optional[str]
-    notes: Optional[str]
-    last_contacted: Optional[datetime]
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    company: Optional[str] = None
+    notes: Optional[str] = None
+    last_contacted: Optional[datetime] = None
     created_at: datetime
     
     class Config:
