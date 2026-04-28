@@ -16,5 +16,28 @@ api.interceptors.request.use((config) => {
 
 export default api;
 
-// TODO: Add the rest of your api objects (tasksApi, projectsApi, etc.) later
-// For now this should at least stop the CORS errors and let us test the connection.
+// ─── Dashboard ────────────────────────────────────────────────
+export const dashboardApi = {
+  get: () => api.get("/dashboard/").then(r => r.data),
+};
+
+// ─── Tasks ────────────────────────────────────────────────────
+export const tasksApi = {
+  list: (params?: any) => api.get("/tasks/", { params }).then(r => r.data),
+  create: (data: any) => api.post("/tasks/", data).then(r => r.data),
+  update: (id: string, data: any) => api.patch(`/tasks/${id}`, data).then(r => r.data),
+  delete: (id: string) => api.delete(`/tasks/${id}`),
+};
+
+// Add more as needed (projects, categories, etc.)
+export const projectsApi = {
+  list: () => api.get("/projects/").then(r => r.data),
+};
+
+export const categoriesApi = {
+  list: () => api.get("/categories/").then(r => r.data),
+};
+
+export const tagsApi = {
+  list: () => api.get("/tags/").then(r => r.data),
+};
