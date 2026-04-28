@@ -16,11 +16,6 @@ api.interceptors.request.use((config) => {
 
 export default api;
 
-// ─── Dashboard ────────────────────────────────────────────────
-export const dashboardApi = {
-  get: () => api.get("/dashboard/").then(r => r.data),
-};
-
 // ─── Tasks ────────────────────────────────────────────────────
 export const tasksApi = {
   list: (params?: any) => api.get("/tasks/", { params }).then(r => r.data),
@@ -29,15 +24,22 @@ export const tasksApi = {
   delete: (id: string) => api.delete(`/tasks/${id}`),
 };
 
-// Add more as needed (projects, categories, etc.)
+// ─── Projects ─────────────────────────────────────────────────
 export const projectsApi = {
   list: () => api.get("/projects/").then(r => r.data),
 };
 
+// ─── Categories ───────────────────────────────────────────────
 export const categoriesApi = {
   list: () => api.get("/categories/").then(r => r.data),
 };
 
+// ─── Tags ─────────────────────────────────────────────────────
 export const tagsApi = {
   list: () => api.get("/tags/").then(r => r.data),
+};
+
+// ─── Time Entries ─────────────────────────────────────────────
+export const timeEntriesApi = {
+  active: () => api.get("/time-entries/active").then(r => r.data),
 };
