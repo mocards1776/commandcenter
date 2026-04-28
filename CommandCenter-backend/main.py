@@ -25,15 +25,17 @@ from schemas import UserCreate, UserResponse, UserLogin
 
 app = FastAPI(title="CommandCenter API")
 
-# CORS - Strong config for Vercel + Digital Ocean
+# CORS - Maximum permissive
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"]
+    expose_headers=["*"],
 )
+
+# Rest of your file continues here...
 )
 
 # ─── Auth ────────────────────────────────────────────────────────────
