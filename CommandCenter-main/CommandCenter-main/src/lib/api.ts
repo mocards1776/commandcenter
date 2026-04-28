@@ -22,6 +22,7 @@ export const tasksApi = {
   create: (data: any) => api.post("/tasks/", data).then(r => r.data),
   update: (id: string, data: any) => api.patch(`/tasks/${id}`, data).then(r => r.data),
   delete: (id: string) => api.delete(`/tasks/${id}`),
+  today: () => api.get("/tasks/?status=today").then(r => r.data),
 };
 
 // ─── Projects ─────────────────────────────────────────────────
