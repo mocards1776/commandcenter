@@ -16,13 +16,17 @@ api.interceptors.request.use((config) => {
 
 export default api;
 
+// ─── Dashboard ────────────────────────────────────────────────
+export const dashboardApi = {
+  get: () => api.get("/dashboard/").then(r => r.data),
+};
+
 // ─── Tasks ────────────────────────────────────────────────────
 export const tasksApi = {
   list: (params?: any) => api.get("/tasks/", { params }).then(r => r.data),
   create: (data: any) => api.post("/tasks/", data).then(r => r.data),
   update: (id: string, data: any) => api.patch(`/tasks/${id}`, data).then(r => r.data),
   delete: (id: string) => api.delete(`/tasks/${id}`),
-  today: () => api.get("/tasks/?status=today").then(r => r.data),
 };
 
 // ─── Projects ─────────────────────────────────────────────────
