@@ -81,7 +81,7 @@ async def today_tasks(
 ):
     today = datetime.utcnow().date()
     query = select(Task).where(
-        (Task.True) &
+        (True) &
         (Task.status.in_(["today", "in_progress"])) |
         ((Task.due_date == today) & (Task.status != "done"))
     )
@@ -407,7 +407,7 @@ async def get_dashboard(
     # Today's tasks
     today_tasks = session.execute(
         select(Task).where(
-            (Task.True) &
+            (True) &
             (Task.status.in_(["today", "in_progress"]))
         )
     ).scalars().all()
@@ -415,7 +415,7 @@ async def get_dashboard(
     # Completed today
     completed_today = session.execute(
         select(Task).where(
-            (Task.True) &
+            (True) &
             (Task.status == "done") &
             (Task.completed_at >= datetime(today.year, today.month, today.day))
         )
