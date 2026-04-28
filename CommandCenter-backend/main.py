@@ -38,7 +38,7 @@ app.add_middleware(
 from sqlalchemy import select
 from models import User
 
-@app.post("/api/auth/register", response_model=UserResponse)
+@app.post("/auth/register", response_model=UserResponse)
 async def register(data: UserCreate, session: Session = Depends(db.get_session)):
     existing = session.execute(select(User).where(User.email == data.email)).scalar()
     if existing:
@@ -50,7 +50,7 @@ async def register(data: UserCreate, session: Session = Depends(db.get_session))
     session.refresh(user)
     return user
 
-@app.post("/api/auth/login")
+@app.post("/auth/login")
 async def login(data: UserLogin, session: Session = Depends(db.get_session)):
     user = session.execute(select(User).where(User.email == data.email)).scalar()
     if not user or not user.check_password(data.password):
@@ -59,7 +59,7 @@ async def login(data: UserLogin, session: Session = Depends(db.get_session)):
     return {"access_token": token, "token_type": "bearer"}
 
 # ─── Tasks ────────────────────────────────────────────────────────────
-@app.get("/api/tasks/", response_model=List[TaskResponse])
+@app.get("/tasks/", response_model=List[TaskResponse])
 async def list_tasks(
     status: Optional[str] = None,
     search: Optional[str] = None,
@@ -74,7 +74,7 @@ async def list_tasks(
     tasks = session.execute(query.order_by(Task.created_at.desc())).scalars().all()
     return tasks
 
-@app.get("/api/tasks/today", response_model=List[TaskResponse])
+@app.get("/tasks/today", response_model=List[TaskResponse])
 async def today_tasks(
     session: Session = Depends(db.get_session),
     user: User = Depends(get_current_user),
@@ -87,7 +87,7 @@ async def today_tasks(
     )
     return session.execute(query.order_by(Task.priority_order)).scalars().all()
 
-@app.post("/api/tasks/", response_model=TaskResponse)
+@app.post("/tasks/", response_model=TaskResponse)
 async def create_task(
     data: TaskCreate,
     session: Session = Depends(db.get_session),
@@ -99,7 +99,7 @@ async def create_task(
     session.refresh(task)
     return task
 
-@app.get("/api/tasks/{task_id}", response_model=TaskResponse)
+@app.get("/tasks/{task_id}", response_model=TaskResponse)
 async def get_task(
     task_id: str,
     session: Session = Depends(db.get_session),
@@ -110,7 +110,7 @@ async def get_task(
         raise HTTPException(status_code=404)
     return task
 
-@app.patch("/api/tasks/{task_id}", response_model=TaskResponse)
+@app.patch("/tasks/{task_id}", response_model=TaskResponse)
 async def update_task(
     task_id: str,
     data: TaskUpdate,
@@ -126,7 +126,7 @@ async def update_task(
     session.refresh(task)
     return task
 
-@app.delete("/api/tasks/{task_id}")
+@app.delete("/tasks/{task_id}")
 async def delete_task(
     task_id: str,
     session: Session = Depends(db.get_session),
@@ -139,7 +139,7 @@ async def delete_task(
     session.commit()
     return {"ok": True}
 
-@app.post("/api/tasks/{task_id}/complete", response_model=TaskResponse)
+@app.post("/tasks/{task_id}/complete", response_model=TaskResponse)
 async def complete_task(
     task_id: str,
     session: Session = Depends(db.get_session),
@@ -154,7 +154,7 @@ async def complete_task(
     session.refresh(task)
     return task
 
-@app.post("/api/tasks/reorder")
+@app.post("/tasks/reorder")
 async def reorder_tasks(
     ids: List[str],
     session: Session = Depends(db.get_session),
@@ -168,7 +168,7 @@ async def reorder_tasks(
     return {"ok": True}
 
 # ─── Projects ────────────────────────────────────────────────────────
-@app.get("/api/projects/", response_model=List[ProjectResponse])
+@app.get("/projects/", response_model=List[ProjectResponse])
 async def list_projects(
     session: Session = Depends(db.get_session),
     user: User = Depends(get_current_user),
@@ -178,7 +178,7 @@ async def list_projects(
     ).scalars().all()
     return projects
 
-@app.post("/api/projects/", response_model=ProjectResponse)
+@app.post("/projects/", response_model=ProjectResponse)
 async def create_project(
     data: ProjectCreate,
     session: Session = Depends(db.get_session),
@@ -190,7 +190,7 @@ async def create_project(
     session.refresh(project)
     return project
 
-@app.get("/api/projects/{project_id}", response_model=ProjectResponse)
+@app.get("/projects/{project_id}", response_model=ProjectResponse)
 async def get_project(
     project_id: str,
     session: Session = Depends(db.get_session),
@@ -201,7 +201,7 @@ async def get_project(
         raise HTTPException(status_code=404)
     return project
 
-@app.patch("/api/projects/{project_id}", response_model=ProjectResponse)
+@app.patch("/projects/{project_id}", response_model=ProjectResponse)
 async def update_project(
     project_id: str,
     data: ProjectUpdate,
@@ -217,7 +217,7 @@ async def update_project(
     session.refresh(project)
     return project
 
-@app.delete("/api/projects/{project_id}")
+@app.delete("/projects/{project_id}")
 async def delete_project(
     project_id: str,
     session: Session = Depends(db.get_session),
@@ -231,7 +231,7 @@ async def delete_project(
     return {"ok": True}
 
 # ─── Time Blocks ─────────────────────────────────────────────────────
-@app.get("/api/time-blocks/", response_model=List[TimeBlockResponse])
+@app.get("/time-blocks/", response_model=List[TimeBlockResponse])
 async def list_time_blocks(
     date: Optional[str] = None,
     session: Session = Depends(db.get_session),
@@ -247,7 +247,7 @@ async def list_time_blocks(
     blocks = session.execute(query.order_by(TimeBlock.start_time)).scalars().all()
     return blocks
 
-@app.post("/api/time-blocks/", response_model=TimeBlockResponse)
+@app.post("/time-blocks/", response_model=TimeBlockResponse)
 async def create_time_block(
     data: TimeBlockCreate,
     session: Session = Depends(db.get_session),
@@ -259,7 +259,7 @@ async def create_time_block(
     session.refresh(block)
     return block
 
-@app.delete("/api/time-blocks/{block_id}")
+@app.delete("/time-blocks/{block_id}")
 async def delete_time_block(
     block_id: str,
     session: Session = Depends(db.get_session),
@@ -273,7 +273,7 @@ async def delete_time_block(
     return {"ok": True}
 
 # ─── Habits ──────────────────────────────────────────────────────────
-@app.get("/api/habits/", response_model=List[HabitResponse])
+@app.get("/habits/", response_model=List[HabitResponse])
 async def list_habits(
     session: Session = Depends(db.get_session),
     user: User = Depends(get_current_user),
@@ -283,7 +283,7 @@ async def list_habits(
     ).scalars().all()
     return habits
 
-@app.post("/api/habits/", response_model=HabitResponse)
+@app.post("/habits/", response_model=HabitResponse)
 async def create_habit(
     data: HabitCreate,
     session: Session = Depends(db.get_session),
@@ -295,7 +295,7 @@ async def create_habit(
     session.refresh(habit)
     return habit
 
-@app.post("/api/habits/{habit_id}/complete")
+@app.post("/habits/{habit_id}/complete")
 async def complete_habit(
     habit_id: str,
     data: dict,
@@ -314,7 +314,7 @@ async def complete_habit(
     session.commit()
     return {"ok": True}
 
-@app.get("/api/habits/{habit_id}/streak")
+@app.get("/habits/{habit_id}/streak")
 async def get_habit_streak(
     habit_id: str,
     session: Session = Depends(db.get_session),
@@ -344,7 +344,7 @@ async def get_habit_streak(
     return {"habit_id": habit_id, "streak": streak}
 
 # ─── Time Entries ────────────────────────────────────────────────────
-@app.get("/api/time-entries/active", response_model=Optional[TimeEntryResponse])
+@app.get("/time-entries/active", response_model=Optional[TimeEntryResponse])
 async def get_active_timer(
     session: Session = Depends(db.get_session),
     user: User = Depends(get_current_user),
@@ -356,7 +356,7 @@ async def get_active_timer(
     ).scalar()
     return entry
 
-@app.post("/api/time-entries/start", response_model=TimeEntryResponse)
+@app.post("/time-entries/start", response_model=TimeEntryResponse)
 async def start_timer(
     data: TimeEntryCreate,
     session: Session = Depends(db.get_session),
@@ -381,7 +381,7 @@ async def start_timer(
     session.refresh(entry)
     return entry
 
-@app.post("/api/time-entries/{entry_id}/stop", response_model=TimeEntryResponse)
+@app.post("/time-entries/{entry_id}/stop", response_model=TimeEntryResponse)
 async def stop_timer(
     entry_id: str,
     data: dict,
@@ -397,7 +397,7 @@ async def stop_timer(
     return entry
 
 # ─── Dashboard ───────────────────────────────────────────────────────
-@app.get("/api/dashboard/", response_model=DashboardSummary)
+@app.get("/dashboard/", response_model=DashboardSummary)
 async def get_dashboard(
     session: Session = Depends(db.get_session),
     user: User = Depends(get_current_user),
@@ -445,7 +445,7 @@ async def get_dashboard(
     )
 
 # ─── Tags & Categories ──────────────────────────────────────────────
-@app.get("/api/tags/", response_model=List[TagResponse])
+@app.get("/tags/", response_model=List[TagResponse])
 async def list_tags(
     session: Session = Depends(db.get_session),
     user: User = Depends(get_current_user),
@@ -455,7 +455,7 @@ async def list_tags(
     ).scalars().all()
     return tags
 
-@app.post("/api/tags/", response_model=TagResponse)
+@app.post("/tags/", response_model=TagResponse)
 async def create_tag(
     data: TagCreate,
     session: Session = Depends(db.get_session),
@@ -467,7 +467,7 @@ async def create_tag(
     session.refresh(tag)
     return tag
 
-@app.get("/api/categories/", response_model=List[CategoryResponse])
+@app.get("/categories/", response_model=List[CategoryResponse])
 async def list_categories(
     session: Session = Depends(db.get_session),
     user: User = Depends(get_current_user),
@@ -477,7 +477,7 @@ async def list_categories(
     ).scalars().all()
     return categories
 
-@app.post("/api/categories/", response_model=CategoryResponse)
+@app.post("/categories/", response_model=CategoryResponse)
 async def create_category(
     data: CategoryCreate,
     session: Session = Depends(db.get_session),
@@ -490,7 +490,7 @@ async def create_category(
     return category
 
 # ─── Notes ──────────────────────────────────────────────────────────
-@app.get("/api/notes/", response_model=List[NoteResponse])
+@app.get("/notes/", response_model=List[NoteResponse])
 async def list_notes(
     session: Session = Depends(db.get_session),
     user: User = Depends(get_current_user),
@@ -500,7 +500,7 @@ async def list_notes(
     ).scalars().all()
     return notes
 
-@app.post("/api/notes/", response_model=NoteResponse)
+@app.post("/notes/", response_model=NoteResponse)
 async def create_note(
     data: NoteCreate,
     session: Session = Depends(db.get_session),
@@ -513,7 +513,7 @@ async def create_note(
     return note
 
 # ─── CRM ────────────────────────────────────────────────────────────
-@app.get("/api/crm/", response_model=List[CRMPersonResponse])
+@app.get("/crm/", response_model=List[CRMPersonResponse])
 async def list_crm(
     session: Session = Depends(db.get_session),
     user: User = Depends(get_current_user),
@@ -523,7 +523,7 @@ async def list_crm(
     ).scalars().all()
     return people
 
-@app.post("/api/crm/", response_model=CRMPersonResponse)
+@app.post("/crm/", response_model=CRMPersonResponse)
 async def create_crm(
     data: CRMPersonCreate,
     session: Session = Depends(db.get_session),
@@ -536,7 +536,7 @@ async def create_crm(
     return person
 
 # ─── Braindump ──────────────────────────────────────────────────────
-@app.get("/api/braindump/", response_model=List[BraindumpEntryResponse])
+@app.get("/braindump/", response_model=List[BraindumpEntryResponse])
 async def list_braindump(
     session: Session = Depends(db.get_session),
     user: User = Depends(get_current_user),
@@ -546,7 +546,7 @@ async def list_braindump(
     ).scalars().all()
     return entries
 
-@app.post("/api/braindump/", response_model=BraindumpEntryResponse)
+@app.post("/braindump/", response_model=BraindumpEntryResponse)
 async def create_braindump(
     data: BraindumpEntryCreate,
     session: Session = Depends(db.get_session),
@@ -558,7 +558,7 @@ async def create_braindump(
     session.refresh(entry)
     return entry
 
-@app.post("/api/braindump/{entry_id}/process")
+@app.post("/braindump/{entry_id}/process")
 async def process_braindump(
     entry_id: str,
     session: Session = Depends(db.get_session),
@@ -584,26 +584,26 @@ if __name__ == "__main__":
 
 # ─── GET Endpoints ────────────────────────────────────────────
 
-@app.get("/api/dashboard/")
+@app.get("/dashboard/")
 def get_dashboard(session: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return {"tasks": 0, "projects": 0}
 
-@app.get("/api/projects/")
+@app.get("/projects/")
 def get_projects(session: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return session.query(Project).filter(Project.user_id == current_user.id).all()
 
-@app.get("/api/tags/")
+@app.get("/tags/")
 def get_tags(session: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return session.query(Tag).filter(Tag.user_id == current_user.id).all()
 
-@app.get("/api/categories/")
+@app.get("/categories/")
 def get_categories(session: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return session.query(Category).filter(Category.user_id == current_user.id).all()
 
-@app.get("/api/time-entries/active")
+@app.get("/time-entries/active")
 def get_active_time_entry(session: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return None
 
-@app.get("/api/tasks/")
+@app.get("/tasks/")
 def get_tasks(session: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return session.query(Task).filter(Task.user_id == current_user.id).all()
