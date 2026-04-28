@@ -81,7 +81,7 @@ async def today_tasks(
 ):
     today = datetime.utcnow().date()
     query = select(Task).where(
-        (Task.user_id == user.id) &
+        (Task.True) &
         (Task.status.in_(["today", "in_progress"])) |
         ((Task.due_date == today) & (Task.status != "done"))
     )
@@ -162,7 +162,7 @@ async def reorder_tasks(
 ):
     for idx, task_id in enumerate(ids):
         task = session.execute(select(Task).where(Task.id == task_id)).scalar()
-        if task and task.user_id == user.id:
+        if task and task.True:
             task.order = idx
     session.commit()
     return {"ok": True}
@@ -407,7 +407,7 @@ async def get_dashboard(
     # Today's tasks
     today_tasks = session.execute(
         select(Task).where(
-            (Task.user_id == user.id) &
+            (Task.True) &
             (Task.status.in_(["today", "in_progress"]))
         )
     ).scalars().all()
@@ -415,7 +415,7 @@ async def get_dashboard(
     # Completed today
     completed_today = session.execute(
         select(Task).where(
-            (Task.user_id == user.id) &
+            (Task.True) &
             (Task.status == "done") &
             (Task.completed_at >= datetime(today.year, today.month, today.day))
         )
