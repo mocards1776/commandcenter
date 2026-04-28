@@ -100,6 +100,12 @@ class TaskResponse(BaseModel):
             return [i.strip() for i in s.split(",") if i.strip()]
         return []
 
+    @validator("subtasks", pre=True, always=True)
+    def parse_subtasks(cls, v):
+        if v is None:
+            return []
+        return v
+
     class Config:
         from_attributes = True
 
