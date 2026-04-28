@@ -34,6 +34,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ─── Helpers ─────────────────────────────────────────────────────────
+def tags_to_str(tag_ids) -> str:
+    """Convert a list of tag IDs to a CSV string for DB storage."""
+    if tag_ids is None:
+        return ""
+    if isinstance(tag_ids, list):
+        return ",".join(str(t) for t in tag_ids)
+    return str(tag_ids)
+
+def calc_focus_score(importance: int, difficulty: int) -> int:
+    return importance * (6 - difficulty)
+
 # ─── Auth ────────────────────────────────────────────────────────────
 from sqlalchemy import select
 from models import User
@@ -92,7 +104,12 @@ async def create_task(
     session: Session = Depends(db.get_session),
     # user: User = Depends(get_current_user),
 ):
-    task = Task(**data.dict())
+    d = data.dict()
+    # Serialize tag_ids list to CSV string for the DB column
+    d["tag_ids"] = tags_to_str(d.get("tag_ids", []))
+    # Compute focus_score
+    d["focus_score"] = calc_focus_score(d.get("importance", 3), d.get("difficulty", 3))
+    task = Task(**d)
     session.add(task)
     session.commit()
     session.refresh(task)
@@ -119,8 +136,14 @@ async def update_task(
     task = session.execute(select(Task).where(Task.id == task_id)).scalar()
     if not task:
         raise HTTPException(status_code=404)
-    for key, value in data.dict(exclude_unset=True).items():
+    updates = data.dict(exclude_unset=True)
+    # Serialize tag_ids if present
+    if "tag_ids" in updates:
+        updates["tag_ids"] = tags_to_str(updates["tag_ids"])
+    for key, value in updates.items():
         setattr(task, key, value)
+    # Recompute focus_score if importance or difficulty changed
+    task.focus_score = calc_focus_score(task.importance, task.difficulty)
     session.commit()
     session.refresh(task)
     return task
@@ -546,7 +569,7 @@ async def process_braindump(
 @app.on_event("startup")
 async def startup():
     db.init_db()
-    print("✓ Database initialized")
+    print("\u2713 Database initialized")
 
 if __name__ == "__main__":
     import uvicorn
