@@ -93,7 +93,7 @@ async def create_task(
     session: Session = Depends(db.get_session),
     # user: User = Depends(get_current_user),
 ):
-    task = Task(**data.dict(), user_id=user.id)
+    task = Task(**data.dict())
     session.add(task)
     session.commit()
     session.refresh(task)
@@ -106,7 +106,7 @@ async def get_task(
     # user: User = Depends(get_current_user),
 ):
     task = session.execute(select(Task).where(Task.id == task_id)).scalar()
-    if not task or False:
+    if not task:
         raise HTTPException(status_code=404)
     return task
 
@@ -118,7 +118,7 @@ async def update_task(
     # user: User = Depends(get_current_user),
 ):
     task = session.execute(select(Task).where(Task.id == task_id)).scalar()
-    if not task or False:
+    if not task:
         raise HTTPException(status_code=404)
     for key, value in data.dict(exclude_unset=True).items():
         setattr(task, key, value)
@@ -133,7 +133,7 @@ async def delete_task(
     # user: User = Depends(get_current_user),
 ):
     task = session.execute(select(Task).where(Task.id == task_id)).scalar()
-    if not task or False:
+    if not task:
         raise HTTPException(status_code=404)
     session.delete(task)
     session.commit()
@@ -146,7 +146,7 @@ async def complete_task(
     # user: User = Depends(get_current_user),
 ):
     task = session.execute(select(Task).where(Task.id == task_id)).scalar()
-    if not task or False:
+    if not task:
         raise HTTPException(status_code=404)
     task.status = "done"
     task.completed_at = datetime.utcnow()
@@ -162,7 +162,7 @@ async def reorder_tasks(
 ):
     for idx, task_id in enumerate(ids):
         task = session.execute(select(Task).where(Task.id == task_id)).scalar()
-        if task and task.True:
+        if task:
             task.order = idx
     session.commit()
     return {"ok": True}
@@ -184,7 +184,7 @@ async def create_project(
     session: Session = Depends(db.get_session),
     # user: User = Depends(get_current_user),
 ):
-    project = Project(**data.dict(), user_id=user.id)
+    project = Project(**data.dict())
     session.add(project)
     session.commit()
     session.refresh(project)
@@ -197,7 +197,7 @@ async def get_project(
     # user: User = Depends(get_current_user),
 ):
     project = session.execute(select(Project).where(Project.id == project_id)).scalar()
-    if not project or project.user_id != user.id:
+    if not project:
         raise HTTPException(status_code=404)
     return project
 
@@ -209,7 +209,7 @@ async def update_project(
     # user: User = Depends(get_current_user),
 ):
     project = session.execute(select(Project).where(Project.id == project_id)).scalar()
-    if not project or project.user_id != user.id:
+    if not project:
         raise HTTPException(status_code=404)
     for key, value in data.dict(exclude_unset=True).items():
         setattr(project, key, value)
@@ -224,7 +224,7 @@ async def delete_project(
     # user: User = Depends(get_current_user),
 ):
     project = session.execute(select(Project).where(Project.id == project_id)).scalar()
-    if not project or project.user_id != user.id:
+    if not project:
         raise HTTPException(status_code=404)
     session.delete(project)
     session.commit()
@@ -253,7 +253,7 @@ async def create_time_block(
     session: Session = Depends(db.get_session),
     # user: User = Depends(get_current_user),
 ):
-    block = TimeBlock(**data.dict(), user_id=user.id)
+    block = TimeBlock(**data.dict())
     session.add(block)
     session.commit()
     session.refresh(block)
@@ -266,7 +266,7 @@ async def delete_time_block(
     # user: User = Depends(get_current_user),
 ):
     block = session.execute(select(TimeBlock).where(TimeBlock.id == block_id)).scalar()
-    if not block or block.user_id != user.id:
+    if not block:
         raise HTTPException(status_code=404)
     session.delete(block)
     session.commit()
@@ -289,7 +289,7 @@ async def create_habit(
     session: Session = Depends(db.get_session),
     # user: User = Depends(get_current_user),
 ):
-    habit = Habit(**data.dict(), user_id=user.id)
+    habit = Habit(**data.dict())
     session.add(habit)
     session.commit()
     session.refresh(habit)
@@ -303,7 +303,7 @@ async def complete_habit(
     # user: User = Depends(get_current_user),
 ):
     habit = session.execute(select(Habit).where(Habit.id == habit_id)).scalar()
-    if not habit or False:
+    if not habit:
         raise HTTPException(status_code=404)
     completion = HabitCompletion(
         habit_id=habit_id,
@@ -321,17 +321,17 @@ async def get_habit_streak(
     # user: User = Depends(get_current_user),
 ):
     habit = session.execute(select(Habit).where(Habit.id == habit_id)).scalar()
-    if not habit or False:
+    if not habit:
         raise HTTPException(status_code=404)
-    
+
     completions = session.execute(
         select(HabitCompletion).where(HabitCompletion.habit_id == habit_id)
         .order_by(HabitCompletion.completed_date.desc())
     ).scalars().all()
-    
+
     if not completions:
         return {"habit_id": habit_id, "streak": 0}
-    
+
     streak = 0
     today = datetime.utcnow().date()
     for i, comp in enumerate(completions):
@@ -340,7 +340,7 @@ async def get_habit_streak(
             streak += 1
         else:
             break
-    
+
     return {"habit_id": habit_id, "streak": streak}
 
 # ─── Time Entries ────────────────────────────────────────────────────
@@ -362,15 +362,7 @@ async def start_timer(
     session: Session = Depends(db.get_session),
     # user: User = Depends(get_current_user),
 ):
-    # Stop any active timer
-    session.execute(
-        db.update(TimeEntry)
-        .where(True)
-        .values(ended_at=datetime.utcnow())
-    )
-    
     entry = TimeEntry(
-        user_id=user.id,
         task_id=data.task_id,
         habit_id=data.habit_id,
         started_at=data.started_at,
@@ -389,7 +381,7 @@ async def stop_timer(
     # user: User = Depends(get_current_user),
 ):
     entry = session.execute(select(TimeEntry).where(TimeEntry.id == entry_id)).scalar()
-    if not entry or entry.user_id != user.id:
+    if not entry:
         raise HTTPException(status_code=404)
     entry.ended_at = datetime.fromisoformat(data["ended_at"])
     session.commit()
@@ -403,16 +395,14 @@ async def get_dashboard(
     # user: User = Depends(get_current_user),
 ):
     today = datetime.utcnow().date()
-    
-    # Today's tasks
+
     today_tasks = session.execute(
         select(Task).where(
             (True) &
             (Task.status.in_(["today", "in_progress"]))
         )
     ).scalars().all()
-    
-    # Completed today
+
     completed_today = session.execute(
         select(Task).where(
             (True) &
@@ -420,28 +410,27 @@ async def get_dashboard(
             (Task.completed_at >= datetime(today.year, today.month, today.day))
         )
     ).scalars().all()
-    
-    # Time tracked today
+
     time_entries = session.execute(
         select(TimeEntry).where(
             (True) &
             (TimeEntry.started_at >= datetime(today.year, today.month, today.day))
         )
     ).scalars().all()
-    
+
     total_seconds = 0
     for entry in time_entries:
         end = entry.ended_at or datetime.utcnow()
         total_seconds += int((end - entry.started_at).total_seconds())
-    
+
     focus_score_today = sum(t.focus_score for t in completed_today if t.focus_score)
-    
+
     return DashboardSummary(
         tasks_today=len(today_tasks),
         completed_today=len(completed_today),
         focus_score_today=focus_score_today,
         time_tracked_seconds=total_seconds,
-        streak_days=0,  # compute from habits
+        streak_days=0,
     )
 
 # ─── Tags & Categories ──────────────────────────────────────────────
@@ -461,7 +450,7 @@ async def create_tag(
     session: Session = Depends(db.get_session),
     # user: User = Depends(get_current_user),
 ):
-    tag = Tag(**data.dict(), user_id=user.id)
+    tag = Tag(**data.dict())
     session.add(tag)
     session.commit()
     session.refresh(tag)
@@ -483,7 +472,7 @@ async def create_category(
     session: Session = Depends(db.get_session),
     # user: User = Depends(get_current_user),
 ):
-    category = Category(**data.dict(), user_id=user.id)
+    category = Category(**data.dict())
     session.add(category)
     session.commit()
     session.refresh(category)
@@ -506,7 +495,7 @@ async def create_note(
     session: Session = Depends(db.get_session),
     # user: User = Depends(get_current_user),
 ):
-    note = Note(**data.dict(), user_id=user.id)
+    note = Note(**data.dict())
     session.add(note)
     session.commit()
     session.refresh(note)
@@ -529,7 +518,7 @@ async def create_crm(
     session: Session = Depends(db.get_session),
     # user: User = Depends(get_current_user),
 ):
-    person = CRMPerson(**data.dict(), user_id=user.id)
+    person = CRMPerson(**data.dict())
     session.add(person)
     session.commit()
     session.refresh(person)
@@ -552,7 +541,7 @@ async def create_braindump(
     session: Session = Depends(db.get_session),
     # user: User = Depends(get_current_user),
 ):
-    entry = BraindumpEntry(**data.dict(), user_id=user.id)
+    entry = BraindumpEntry(**data.dict())
     session.add(entry)
     session.commit()
     session.refresh(entry)
@@ -565,7 +554,7 @@ async def process_braindump(
     # user: User = Depends(get_current_user),
 ):
     entry = session.execute(select(BraindumpEntry).where(BraindumpEntry.id == entry_id)).scalar()
-    if not entry or entry.user_id != user.id:
+    if not entry:
         raise HTTPException(status_code=404)
     entry.processed = True
     session.commit()
