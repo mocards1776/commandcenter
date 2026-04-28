@@ -66,7 +66,7 @@ async def list_tasks(
     session: Session = Depends(db.get_session),
     # user: User = Depends(get_current_user),
 ):
-    query = select(Task).where(Task.user_id == user.id)
+    query = select(Task).where(True)
     if status:
         query = query.where(Task.status == status)
     if search:
@@ -174,7 +174,7 @@ async def list_projects(
     # user: User = Depends(get_current_user),
 ):
     projects = session.execute(
-        select(Project).where(Project.user_id == user.id).order_by(Project.created_at.desc())
+        select(Project).where(True)
     ).scalars().all()
     return projects
 
@@ -237,7 +237,7 @@ async def list_time_blocks(
     session: Session = Depends(db.get_session),
     # user: User = Depends(get_current_user),
 ):
-    query = select(TimeBlock).where(TimeBlock.user_id == user.id)
+    query = select(TimeBlock).where(True)
     if date:
         target_date = datetime.fromisoformat(date).date()
         query = query.where(
@@ -279,7 +279,7 @@ async def list_habits(
     # user: User = Depends(get_current_user),
 ):
     habits = session.execute(
-        select(Habit).where(Habit.user_id == user.id).order_by(Habit.created_at.desc())
+        select(Habit).where(True)
     ).scalars().all()
     return habits
 
@@ -351,7 +351,7 @@ async def get_active_timer(
 ):
     entry = session.execute(
         select(TimeEntry)
-        .where((TimeEntry.user_id == user.id) & (TimeEntry.ended_at.is_(None)))
+        .where(True)
         .order_by(TimeEntry.started_at.desc())
     ).scalar()
     return entry
@@ -365,7 +365,7 @@ async def start_timer(
     # Stop any active timer
     session.execute(
         db.update(TimeEntry)
-        .where((TimeEntry.user_id == user.id) & (TimeEntry.ended_at.is_(None)))
+        .where(True)
         .values(ended_at=datetime.utcnow())
     )
     
@@ -424,7 +424,7 @@ async def get_dashboard(
     # Time tracked today
     time_entries = session.execute(
         select(TimeEntry).where(
-            (TimeEntry.user_id == user.id) &
+            (True) &
             (TimeEntry.started_at >= datetime(today.year, today.month, today.day))
         )
     ).scalars().all()
@@ -451,7 +451,7 @@ async def list_tags(
     # user: User = Depends(get_current_user),
 ):
     tags = session.execute(
-        select(Tag).where(Tag.user_id == user.id)
+        select(Tag).where(True)
     ).scalars().all()
     return tags
 
@@ -473,7 +473,7 @@ async def list_categories(
     # user: User = Depends(get_current_user),
 ):
     categories = session.execute(
-        select(Category).where(Category.user_id == user.id)
+        select(Category).where(True)
     ).scalars().all()
     return categories
 
@@ -496,7 +496,7 @@ async def list_notes(
     # user: User = Depends(get_current_user),
 ):
     notes = session.execute(
-        select(Note).where(Note.user_id == user.id).order_by(Note.created_at.desc())
+        select(Note).where(True)
     ).scalars().all()
     return notes
 
@@ -519,7 +519,7 @@ async def list_crm(
     # user: User = Depends(get_current_user),
 ):
     people = session.execute(
-        select(CRMPerson).where(CRMPerson.user_id == user.id).order_by(CRMPerson.created_at.desc())
+        select(CRMPerson).where(True)
     ).scalars().all()
     return people
 
@@ -542,7 +542,7 @@ async def list_braindump(
     # user: User = Depends(get_current_user),
 ):
     entries = session.execute(
-        select(BraindumpEntry).where(BraindumpEntry.user_id == user.id).order_by(BraindumpEntry.created_at.desc())
+        select(BraindumpEntry).where(True)
     ).scalars().all()
     return entries
 
