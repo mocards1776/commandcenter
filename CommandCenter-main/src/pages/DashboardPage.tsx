@@ -30,13 +30,36 @@ export function DashboardPage() {
   return (
     <div>
       {/* ── TOP BAR ── */}
-      <div className="top-bar">
-        <span style={{fontSize:22}}>🇺🇸</span>
-        <div style={{textAlign:"center",flex:1}}>
-          <div className="top-title">Josh's Command Center</div>
-          <div className="top-date">Good {greeting} · {new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"})}</div>
+      <div className="top-bar" style={{flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"18px 24px",position:"relative"}}>
+        {/* Stars top */}
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:8}}>
+          <div style={{width:70,height:1,background:"rgba(255,255,255,0.12)"}}/>
+          <span style={{color:"#e8a820",fontSize:10,letterSpacing:6,opacity:0.6}}>★ ★ ★</span>
+          <div style={{width:70,height:1,background:"rgba(255,255,255,0.12)"}}/>
         </div>
-        <div style={{textAlign:"right",minWidth:120}}>
+
+        {/* JOSH'S */}
+        <div style={{fontFamily:"'Inter',sans-serif",fontSize:42,fontWeight:900,letterSpacing:"0.15em",color:"rgba(255,255,255,0.75)",textTransform:"uppercase",lineHeight:1,marginBottom:2}}>
+          JOSH'S
+        </div>
+
+        {/* COMMAND CENTER */}
+        <div style={{fontFamily:"'Inter',sans-serif",fontSize:68,fontWeight:900,letterSpacing:"-0.04em",lineHeight:1,color:"#ffffff",textTransform:"uppercase"}}>
+          COMMAND CENTER
+        </div>
+
+        {/* Flag */}
+        <div style={{fontSize:30,marginTop:10}}>🇺🇸</div>
+
+        {/* Stars bottom */}
+        <div style={{display:"flex",alignItems:"center",gap:12,marginTop:10}}>
+          <div style={{width:70,height:1,background:"rgba(255,255,255,0.12)"}}/>
+          <span style={{color:"#e8a820",fontSize:10,letterSpacing:6,opacity:0.6}}>★ ★ ★</span>
+          <div style={{width:70,height:1,background:"rgba(255,255,255,0.12)"}}/>
+        </div>
+
+        {/* Completion badge — absolute top right */}
+        <div style={{position:"absolute",right:24,top:"50%",transform:"translateY(-50%)",textAlign:"right"}}>
           <div style={{fontSize:9,fontWeight:600,letterSpacing:"0.15em",textTransform:"uppercase",color:"rgba(255,255,255,0.35)",marginBottom:3}}>Today's completion</div>
           <div style={{display:"flex",alignItems:"center",gap:6,justifyContent:"flex-end"}}>
             <div className="panel" style={{width:60,height:48}}>
