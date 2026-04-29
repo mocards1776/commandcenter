@@ -237,6 +237,11 @@ export interface DashboardSummary {
   total_tasks_today: number;
   completed_tasks_today: number;
   habit_completion_rate: number;
+  tasks_today?: number;
+  completed_today?: number;
+  focus_score_today?: number;
+  time_tracked_seconds?: number;
+  streak_days?: number;
 }
 
 // ─── Sports ───────────────────────────────────────────────────

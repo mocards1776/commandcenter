@@ -23,6 +23,22 @@ export function DashboardPage() {
   );
 
   const pct = data ? Math.round((data.completed_tasks_today/Math.max(data.total_tasks_today,1))*100) : 0;
+  const overdueCount = data?.overdue_tasks?.length ?? 0;
+  const completed = data?.completed_tasks_today ?? 0;
+  const attempted = data?.total_tasks_today ?? 0;
+  const focusMinutes = data ? Math.round((data.time_tracked_seconds ?? 0) / 60) : 0;
+  const scoreboardStats = data?.gamification ?? {
+    stat_date: today,
+    tasks_completed: completed,
+    tasks_attempted: attempted,
+    habits_completed: 0,
+    total_focus_minutes: focusMinutes,
+    home_runs: 0,
+    hits: completed,
+    strikeouts: overdueCount,
+    batting_average: attempted > 0 ? completed / attempted : 0,
+    hitting_streak: 0,
+  };
   const tasksTodayRaw = data?.today_tasks ?? [];
   const activeTaskId = activeTimer?.task_id;
   const tasksToday = activeTaskId
@@ -68,7 +84,7 @@ export function DashboardPage() {
 
         {/* LEFT: Scoreboard */}
         <div style={{borderRight:"3px solid #1e3629"}}>
-          <GameScoreboard stats={data?.gamification}/>
+          <GameScoreboard stats={scoreboardStats}/>
         </div>
 
         {/* RIGHT: Today's Tasks */}
