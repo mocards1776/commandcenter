@@ -30,43 +30,29 @@ export function DashboardPage() {
   return (
     <div>
       {/* ── TOP BAR ── */}
-      <div className="top-bar" style={{flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"18px 24px",position:"relative"}}>
-        {/* Stars top */}
-        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:8}}>
-          <div style={{width:70,height:1,background:"rgba(255,255,255,0.12)"}}/>
-          <span style={{color:"#e8a820",fontSize:10,letterSpacing:6,opacity:0.6}}>★ ★ ★</span>
-          <div style={{width:70,height:1,background:"rgba(255,255,255,0.12)"}}/>
+      <div className="top-bar" style={{flexDirection:"row",alignItems:"center",justifyContent:"center",padding:"8px 24px",position:"relative",gap:14}}>
+        {/* Stars left */}
+        <span style={{color:"#e8a820",fontSize:9,letterSpacing:5,opacity:0.6}}>★ ★ ★</span>
+
+        {/* JOSH'S COMMAND CENTER — single compact line */}
+        <div style={{display:"flex",alignItems:"baseline",gap:8,lineHeight:1}}>
+          <span style={{fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:900,letterSpacing:"0.15em",color:"rgba(255,255,255,0.75)",textTransform:"uppercase"}}>JOSH'S</span>
+          <span style={{fontFamily:"'Inter',sans-serif",fontSize:24,fontWeight:900,letterSpacing:"-0.03em",color:"#ffffff",textTransform:"uppercase"}}>COMMAND CENTER</span>
+          <span style={{fontSize:14}}>🇺🇸</span>
         </div>
 
-        {/* JOSH'S */}
-        <div style={{fontFamily:"'Inter',sans-serif",fontSize:42,fontWeight:900,letterSpacing:"0.15em",color:"rgba(255,255,255,0.75)",textTransform:"uppercase",lineHeight:1,marginBottom:2}}>
-          JOSH'S
-        </div>
-
-        {/* COMMAND CENTER */}
-        <div style={{fontFamily:"'Inter',sans-serif",fontSize:68,fontWeight:900,letterSpacing:"-0.04em",lineHeight:1,color:"#ffffff",textTransform:"uppercase"}}>
-          COMMAND CENTER
-        </div>
-
-        {/* Flag */}
-        <div style={{fontSize:30,marginTop:10}}>🇺🇸</div>
-
-        {/* Stars bottom */}
-        <div style={{display:"flex",alignItems:"center",gap:12,marginTop:10}}>
-          <div style={{width:70,height:1,background:"rgba(255,255,255,0.12)"}}/>
-          <span style={{color:"#e8a820",fontSize:10,letterSpacing:6,opacity:0.6}}>★ ★ ★</span>
-          <div style={{width:70,height:1,background:"rgba(255,255,255,0.12)"}}/>
-        </div>
+        {/* Stars right */}
+        <span style={{color:"#e8a820",fontSize:9,letterSpacing:5,opacity:0.6}}>★ ★ ★</span>
 
         {/* Completion badge — absolute top right */}
         <div style={{position:"absolute",right:24,top:"50%",transform:"translateY(-50%)",textAlign:"right"}}>
-          <div style={{fontSize:9,fontWeight:600,letterSpacing:"0.15em",textTransform:"uppercase",color:"rgba(255,255,255,0.35)",marginBottom:3}}>Today's completion</div>
+          <div style={{fontSize:8,fontWeight:600,letterSpacing:"0.15em",textTransform:"uppercase",color:"rgba(255,255,255,0.35)",marginBottom:2}}>Today's completion</div>
           <div style={{display:"flex",alignItems:"center",gap:6,justifyContent:"flex-end"}}>
-            <div className="panel" style={{width:60,height:48}}>
-              <span className="panel-num" style={{fontSize:28,color:pct>=80?"#e8a820":pct>=50?"#fff":"#d94040"}}>{pct}%</span>
+            <div className="panel" style={{width:50,height:32}}>
+              <span className="panel-num" style={{fontSize:18,color:pct>=80?"#e8a820":pct>=50?"#fff":"#d94040"}}>{pct}%</span>
             </div>
           </div>
-          <div style={{fontSize:9,fontWeight:600,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.25)",marginTop:3}}>{data?.completed_tasks_today??0} of {data?.total_tasks_today??0} tasks</div>
+          <div style={{fontSize:8,fontWeight:600,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(255,255,255,0.25)",marginTop:2}}>{data?.completed_tasks_today??0} of {data?.total_tasks_today??0} tasks</div>
         </div>
       </div>
 

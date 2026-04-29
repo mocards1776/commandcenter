@@ -302,3 +302,12 @@ class DashboardSummary(BaseModel):
     focus_score_today: int
     time_tracked_seconds: int
     streak_days: int
+    # Fields the frontend reads — populated so the dashboard refreshes after task creation
+    today_tasks: List[Any] = []
+    overdue_tasks: List[Any] = []
+    today_habits: List[Any] = []
+    active_projects: List[Any] = []
+    total_tasks_today: int = 0
+    completed_tasks_today: int = 0
+    habit_completion_rate: float = 0.0
+    gamification: Optional[Any] = None

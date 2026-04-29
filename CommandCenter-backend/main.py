@@ -440,12 +440,67 @@ async def get_dashboard(
 
     focus_score_today = sum(t.focus_score for t in completed_today if t.focus_score)
 
+    # Overdue tasks: due_date < today and not done/cancelled
+    overdue_tasks = session.execute(
+        select(Task).where(
+            (Task.due_date != None) &
+            (Task.due_date < today) &
+            (~Task.status.in_(["done", "cancelled"]))
+        )
+    ).scalars().all()
+
+    # Active projects with task counts and completion %
+    active_projects_rows = session.execute(
+        select(Project).where(Project.status == "active")
+    ).scalars().all()
+    active_projects = []
+    for p in active_projects_rows:
+        proj_tasks = session.execute(
+            select(Task).where(Task.project_id == p.id)
+        ).scalars().all()
+        total = len(proj_tasks)
+        done = sum(1 for t in proj_tasks if t.status == "done")
+        active_projects.append({
+            "id": p.id,
+            "title": p.title,
+            "task_count": total,
+            "completion_percentage": int((done / total) * 100) if total else 0,
+        })
+
+    # Habits with today's completions attached (frontend reads habit.completions and habit.name)
+    habits_rows = session.execute(select(Habit)).scalars().all()
+    today_habits = []
+    for h in habits_rows:
+        comps = session.execute(
+            select(HabitCompletion).where(HabitCompletion.habit_id == h.id)
+        ).scalars().all()
+        today_habits.append({
+            "id": h.id,
+            "name": getattr(h, "title", None) or getattr(h, "name", ""),
+            "color": getattr(h, "color", None),
+            "completions": [
+                {"completed_date": c.completed_date.isoformat() if c.completed_date else None}
+                for c in comps
+            ],
+        })
+
+    today_tasks_serialized = [TaskResponse.from_orm(t).dict() for t in today_tasks]
+    overdue_tasks_serialized = [TaskResponse.from_orm(t).dict() for t in overdue_tasks]
+
     return DashboardSummary(
         tasks_today=len(today_tasks),
         completed_today=len(completed_today),
         focus_score_today=focus_score_today,
         time_tracked_seconds=total_seconds,
         streak_days=0,
+        today_tasks=today_tasks_serialized,
+        overdue_tasks=overdue_tasks_serialized,
+        today_habits=today_habits,
+        active_projects=active_projects,
+        total_tasks_today=len(today_tasks) + len(completed_today),
+        completed_tasks_today=len(completed_today),
+        habit_completion_rate=0.0,
+        gamification=None,
     )
 
 # ─── Tags & Categories ──────────────────────────────────────────────
