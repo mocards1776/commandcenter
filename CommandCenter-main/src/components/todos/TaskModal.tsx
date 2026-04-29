@@ -75,7 +75,7 @@ export function TaskModal({ open, onClose, task, projectId, parentId, defaultSta
   const createMut = useMutation({ mutationFn:()=>tasksApi.create({...payload(),parent_id:parentId}), onSuccess:()=>{inv();toast.success("Order posted!");onClose();} });
   const updateMut = useMutation({ mutationFn:()=>tasksApi.update(task!.id,payload()), onSuccess:()=>{inv();toast.success("Updated!");onClose();} });
   const completeMut = useMutation({ mutationFn:()=>tasksApi.complete(task!.id), onSuccess:()=>{ triggerCelebration({...task!,focus_score:focusScore,importance,difficulty},calcPoints({focus_score:focusScore})); inv(); onClose(); } });
-  const deleteMut = useMutation({ mutationFn:()=>tasksApi.delete(task!.id), onSuccess:()=>{inv();toast.success("Deleted");onClose();} });
+  const deleteMut = useMutation({ mutationFn:()=>tasksApi.delete(task!.id), onSuccess:()=>{inv();toast.success("Deleted");onClose();}, onError:(e:any)=>{toast.error(`Delete failed: ${e?.response?.data?.detail ?? e?.message ?? "unknown"}`);} });
   const subtaskMut = useMutation({ mutationFn:()=>tasksApi.create({title:subtaskTitle.trim(),status:"inbox",priority:"medium",importance:3,difficulty:3,parent_id:task?.id,project_id:selProject||undefined,tag_ids:[],show_in_daily:true}), onSuccess:()=>{inv();setSubtaskTitle("");setAddingSubtask(false);toast.success("Subtask added!");} });
 
   const handleTimer = () => { if(isThisRunning){stop();}else{if(task){setActiveTimer(null,task);start({task_id:task.id});}} };

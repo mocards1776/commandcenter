@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { tasksApi, habitsApi, timersApi } from "@/lib/api";
 import { BarChart3, Clock, CheckSquare, TrendingUp, Loader2 } from "lucide-react";
@@ -30,7 +31,11 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   );
 };
 
+type StatsView = "active" | "completed";
+
 export function StatsPage() {
+  const [view, setView] = useState<StatsView>("active");
+
   const { data: tasks, isLoading: tasksLoading } = useQuery({
     queryKey: ["tasks"],
     queryFn: () => tasksApi.list(),
@@ -47,6 +52,10 @@ export function StatsPage() {
 
   // Active tasks (exclude completed/cancelled) — used for forward-looking stats
   const activeTasks = (tasks ?? []).filter(t => t.status !== "done" && t.status !== "cancelled");
+  // Completed tasks (status==="done") — used in completed view
+  const completedTasks = (tasks ?? []).filter(t => t.status === "done");
+  // Subset of tasks the charts should reflect, depending on view
+  const focusTasks = view === "active" ? activeTasks : completedTasks;
 
   // Task status distribution (full picture, includes completed)
   const statusCounts = (tasks ?? []).reduce((acc: Record<string, number>, t) => {
@@ -55,20 +64,20 @@ export function StatsPage() {
   }, {});
   const statusData = Object.entries(statusCounts).map(([name, value]) => ({ name, value }));
 
-  // Priority distribution (active tasks only)
-  const priorityCounts = activeTasks.reduce((acc: Record<string, number>, t) => {
+  // Priority distribution (scoped to current view)
+  const priorityCounts = focusTasks.reduce((acc: Record<string, number>, t) => {
     acc[t.priority] = (acc[t.priority] || 0) + 1;
     return acc;
   }, {});
   const priorityData = Object.entries(priorityCounts).map(([name, value]) => ({ name, value }));
 
-  // Focus score distribution (active tasks only)
+  // Focus score distribution (scoped to current view)
   const focusData = [
-    { range: "1-5", count: activeTasks.filter(t => t.focus_score >= 1 && t.focus_score <= 5).length },
-    { range: "6-10", count: activeTasks.filter(t => t.focus_score >= 6 && t.focus_score <= 10).length },
-    { range: "11-15", count: activeTasks.filter(t => t.focus_score >= 11 && t.focus_score <= 15).length },
-    { range: "16-20", count: activeTasks.filter(t => t.focus_score >= 16 && t.focus_score <= 20).length },
-    { range: "21-25", count: activeTasks.filter(t => t.focus_score >= 21).length },
+    { range: "1-5", count: focusTasks.filter(t => t.focus_score >= 1 && t.focus_score <= 5).length },
+    { range: "6-10", count: focusTasks.filter(t => t.focus_score >= 6 && t.focus_score <= 10).length },
+    { range: "11-15", count: focusTasks.filter(t => t.focus_score >= 11 && t.focus_score <= 15).length },
+    { range: "16-20", count: focusTasks.filter(t => t.focus_score >= 16 && t.focus_score <= 20).length },
+    { range: "21-25", count: focusTasks.filter(t => t.focus_score >= 21).length },
   ];
 
   // Time variance
@@ -99,27 +108,59 @@ export function StatsPage() {
 
   // Summary stats
   const totalTasks = tasks?.length ?? 0;
-  const doneTasks = tasks?.filter(t => t.status === "done").length ?? 0;
+  const doneTasks = completedTasks.length;
   const totalFocusMin = (timeEntries ?? []).reduce((a, e) => a + (e.duration_seconds / 60), 0);
-  const avgFocusScore = activeTasks.length > 0
-    ? Math.round(activeTasks.reduce((a, t) => a + t.focus_score, 0) / activeTasks.length * 10) / 10
+  const avgFocusScore = focusTasks.length > 0
+    ? Math.round(focusTasks.reduce((a, t) => a + t.focus_score, 0) / focusTasks.length * 10) / 10
     : 0;
+  // Total focus_score points landed by completed tasks (view-only)
+  const completedFocusPoints = completedTasks.reduce((a, t) => a + (t.focus_score || 0), 0);
+
+  const summaryCards = view === "active"
+    ? [
+        { label: "Total Tasks", value: totalTasks, color: "text-indigo-400", icon: CheckSquare },
+        { label: "Active Tasks", value: activeTasks.length, color: "text-cyan-400", icon: CheckSquare },
+        { label: "Focus Time", value: formatMinutes(Math.round(totalFocusMin)), color: "text-violet-400", icon: Clock },
+        { label: "Avg Focus Score", value: avgFocusScore, color: "text-amber-400", icon: TrendingUp },
+      ]
+    : [
+        { label: "Completed", value: `${doneTasks} (${totalTasks > 0 ? Math.round(doneTasks / totalTasks * 100) : 0}%)`, color: "text-emerald-400", icon: CheckSquare },
+        { label: "Total Tasks", value: totalTasks, color: "text-indigo-400", icon: CheckSquare },
+        { label: "Focus Points Earned", value: completedFocusPoints, color: "text-amber-400", icon: TrendingUp },
+        { label: "Avg Focus Score", value: avgFocusScore, color: "text-violet-400", icon: TrendingUp },
+      ];
+
+  const toggleBtn = (id: StatsView, label: string) => (
+    <button
+      key={id}
+      type="button"
+      onClick={() => setView(id)}
+      className={`px-3 py-1 text-xs font-bold uppercase tracking-wider rounded-md border transition ${
+        view === id
+          ? "bg-cyan-500/15 border-cyan-400/60 text-cyan-300"
+          : "bg-transparent border-[#2a2a45] text-slate-400 hover:text-slate-200"
+      }`}
+    >
+      {label}
+    </button>
+  );
 
   return (
     <div className="space-y-5">
-      <h1 className="text-2xl font-black text-white flex items-center gap-2">
-        <BarChart3 className="w-6 h-6 text-cyan-400" />
-        Stats &amp; Insights
-      </h1>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <h1 className="text-2xl font-black text-white flex items-center gap-2">
+          <BarChart3 className="w-6 h-6 text-cyan-400" />
+          Stats &amp; Insights
+        </h1>
+        <div className="flex items-center gap-2">
+          {toggleBtn("active", "Active")}
+          {toggleBtn("completed", `Completed (${doneTasks})`)}
+        </div>
+      </div>
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {[
-          { label: "Total Tasks", value: totalTasks, color: "text-indigo-400", icon: CheckSquare },
-          { label: "Completed", value: `${doneTasks} (${totalTasks > 0 ? Math.round(doneTasks / totalTasks * 100) : 0}%)`, color: "text-emerald-400", icon: CheckSquare },
-          { label: "Focus Time", value: formatMinutes(Math.round(totalFocusMin)), color: "text-violet-400", icon: Clock },
-          { label: "Avg Focus Score", value: avgFocusScore, color: "text-amber-400", icon: TrendingUp },
-        ].map(({ label, value, color, icon: Icon }) => (
+        {summaryCards.map(({ label, value, color, icon: Icon }) => (
           <div key={label} className="rounded-xl border border-[#2a2a45] bg-[#12121f] p-4">
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs text-slate-500 uppercase tracking-wider">{label}</span>
@@ -168,7 +209,7 @@ export function StatsPage() {
         </ChartCard>
 
         {/* Focus score distribution */}
-        <ChartCard title="Focus Score Distribution">
+        <ChartCard title={`Focus Score Distribution · ${view === "active" ? "Active" : "Completed"}`}>
           <ResponsiveContainer width="100%" height={160}>
             <BarChart data={focusData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1a1a2e" />
@@ -181,7 +222,7 @@ export function StatsPage() {
         </ChartCard>
 
         {/* Priority distribution */}
-        <ChartCard title="Tasks by Priority">
+        <ChartCard title={`Tasks by Priority · ${view === "active" ? "Active" : "Completed"}`}>
           <ResponsiveContainer width="100%" height={160}>
             <BarChart data={priorityData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1a1a2e" />

@@ -158,8 +158,22 @@ async def delete_task(
     task = session.execute(select(Task).where(Task.id == task_id)).scalar()
     if not task:
         raise HTTPException(status_code=404)
+
+    # Detach related rows so FK constraints don't block the delete.
+    # time_entries.task_id has no ON DELETE rule, so set it null.
+    session.query(TimeEntry).filter(TimeEntry.task_id == task_id).update({TimeEntry.task_id: None})
+    # Delete subtasks (children referencing this task as parent).
+    children = session.execute(select(Task).where(Task.parent_id == task_id)).scalars().all()
+    for child in children:
+        session.query(TimeEntry).filter(TimeEntry.task_id == child.id).update({TimeEntry.task_id: None})
+        session.delete(child)
+
     session.delete(task)
-    session.commit()
+    try:
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete task: {e}")
     return {"ok": True}
 
 @app.post("/tasks/{task_id}/complete", response_model=TaskResponse)
