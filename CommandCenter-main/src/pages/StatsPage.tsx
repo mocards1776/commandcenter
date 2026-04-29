@@ -32,8 +32,8 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 export function StatsPage() {
   const { data: tasks, isLoading: tasksLoading } = useQuery({
-    queryKey: ["tasks", "all"],
-    queryFn: () => tasksApi.list({ status: undefined }),
+    queryKey: ["tasks"],
+    queryFn: () => tasksApi.list(),
   });
 
   const { data: timeEntries, isLoading: timersLoading } = useQuery({
