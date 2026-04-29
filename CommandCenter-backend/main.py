@@ -44,7 +44,8 @@ def tags_to_str(tag_ids) -> str:
     return str(tag_ids)
 
 def calc_focus_score(importance: int, difficulty: int) -> int:
-    return importance * (6 - difficulty)
+    # Max score = 5 x 5 = 25 (most important AND hardest task)
+    return importance * difficulty
 
 # ─── Auth ────────────────────────────────────────────────────────────
 from sqlalchemy import select
