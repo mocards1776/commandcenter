@@ -10,7 +10,7 @@ import type {
 } from "@/types";
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || "/api",
+  baseURL: import.meta.env.VITE_API_BASE_URL || "https://orca-app-v7oew.ondigitalocean.app",
   headers: { "Content-Type": "application/json" },
 });
 
@@ -142,5 +142,3 @@ export const sportsApi = {
 };
 
 export default api;
-// Force redeploy - Tue Apr 28 14:30:53 CDT 2026
-// Force redeploy - Tue Apr 28 14:36:21 CDT 2026
