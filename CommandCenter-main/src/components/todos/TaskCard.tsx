@@ -5,8 +5,9 @@ import { useActiveTimer } from "@/hooks/useTimer";
 import { useTimerStore, useCelebrationStore, useFocusStore } from "@/store";
 import { TaskModal } from "./TaskModal";
 import { calcPoints, formatDuration, formatMinutes, isOverdue } from "@/lib/utils";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Trash2 } from "lucide-react";
 import type { Task } from "@/types";
+import toast from "react-hot-toast";
 
 const ACCENT: Record<string,string> = { critical:"#d94040", high:"#e8a820", medium:"rgba(255,255,255,0.3)", low:"rgba(255,255,255,0.12)" };
 
@@ -27,7 +28,49 @@ export function TaskCard({ task }: { task: Task }) {
     onSuccess: () => { triggerCelebration(task, calcPoints(task)); qc.invalidateQueries({queryKey:["tasks"]}); qc.invalidateQueries({queryKey:["dashboard"]}); },
   });
 
-  if (task.status === "done") return null;
+  const deleteMut = useMutation({
+    mutationFn: () => tasksApi.delete(task.id),
+    onSuccess: () => {
+      qc.invalidateQueries({queryKey:["tasks"]});
+      qc.invalidateQueries({queryKey:["dashboard"]});
+      toast.success("Deleted");
+    },
+    onError: (e: any) => { toast.error(`Delete failed: ${e?.response?.data?.detail ?? e?.message ?? "unknown"}`); },
+  });
+
+  // Completed task — show a slim deletable row, not nothing
+  if (task.status === "done") {
+    return (
+      <div style={{ margin:"0 10px 4px", display:"flex", alignItems:"center", gap:8,
+        padding:"5px 10px", background:"rgba(0,0,0,0.15)", border:"1px solid rgba(0,0,0,0.25)",
+        opacity: 0.55 }}>
+        <span style={{ color:"#4a8a5a", fontSize:13, flexShrink:0 }}>✓</span>
+        <span style={{ flex:1, fontFamily:"'Oswald',Arial,sans-serif", fontSize:11,
+          fontWeight:600, letterSpacing:"0.06em", textTransform:"uppercase",
+          color:"rgba(245,240,224,0.4)", textDecoration:"line-through",
+          whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+          {task.title}
+        </span>
+        {task.completed_at && (
+          <span style={{ fontSize:9, color:"rgba(245,240,224,0.2)", letterSpacing:"0.08em", flexShrink:0 }}>
+            {new Date(task.completed_at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}
+          </span>
+        )}
+        <button
+          type="button"
+          title="Delete completed task"
+          onClick={e => { e.stopPropagation(); if (confirm("Delete this completed task?")) deleteMut.mutate(); }}
+          disabled={deleteMut.isPending}
+          style={{ background:"none", border:"none", cursor:"pointer",
+            color:"rgba(217,64,64,0.4)", padding:"2px 4px", flexShrink:0,
+            transition:"color 0.1s" }}
+          onMouseEnter={e => (e.currentTarget.style.color="#d94040")}
+          onMouseLeave={e => (e.currentTarget.style.color="rgba(217,64,64,0.4)")}>
+          <Trash2 size={12}/>
+        </button>
+      </div>
+    );
+  }
 
   const handleTimer = (e: React.MouseEvent) => {
     e.stopPropagation();
