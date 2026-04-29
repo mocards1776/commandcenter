@@ -4,12 +4,13 @@ import { GameScoreboard } from "@/components/dashboard/GameScoreboard";
 import { TaskCard } from "@/components/todos/TaskCard";
 import { HabitRow } from "@/components/habits/HabitRow";
 import { QuickAdd } from "@/components/todos/QuickAdd";
-import { useUIStore } from "@/store";
+import { useUIStore, useTimerStore } from "@/store";
 import { Loader2 } from "lucide-react";
 import { todayStr, battingAvgStr } from "@/lib/utils";
 
 export function DashboardPage() {
   const { setActivePage } = useUIStore();
+  const { activeTimer } = useTimerStore();
   const today = todayStr();
   const hour = new Date().getHours();
   const greeting = hour<12?"MORNING":hour<17?"AFTERNOON":"EVENING";
@@ -22,7 +23,11 @@ export function DashboardPage() {
   );
 
   const pct = data ? Math.round((data.completed_tasks_today/Math.max(data.total_tasks_today,1))*100) : 0;
-  const tasksToday = data?.today_tasks ?? [];
+  const tasksTodayRaw = data?.today_tasks ?? [];
+  const activeTaskId = activeTimer?.task_id;
+  const tasksToday = activeTaskId
+    ? [...tasksTodayRaw].sort((a, b) => (a.id === activeTaskId ? -1 : b.id === activeTaskId ? 1 : 0))
+    : tasksTodayRaw;
   const overdueT = data?.overdue_tasks ?? [];
   const habits = data?.today_habits ?? [];
   const projects = data?.active_projects ?? [];

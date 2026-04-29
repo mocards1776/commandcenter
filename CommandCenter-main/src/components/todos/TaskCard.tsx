@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { tasksApi } from "@/lib/api";
 import { useActiveTimer } from "@/hooks/useTimer";
-import { useTimerStore, useCelebrationStore } from "@/store";
+import { useTimerStore, useCelebrationStore, useFocusStore } from "@/store";
 import { TaskModal } from "./TaskModal";
 import { calcPoints, formatDuration, formatMinutes, isOverdue } from "@/lib/utils";
 import { ChevronDown, ChevronRight } from "lucide-react";
@@ -17,6 +17,7 @@ export function TaskCard({ task }: { task: Task }) {
   const { isRunning, activeTimer, elapsedSeconds, start, stop } = useActiveTimer();
   const { setActiveTimer } = useTimerStore();
   const { triggerCelebration } = useCelebrationStore();
+  const { setFocus } = useFocusStore();
   const isThisRunning = isRunning && activeTimer?.task_id === task.id;
   const overdue = isOverdue(task.due_date);
   const activeSubs = task.subtasks.filter(s => s.status !== "done");
@@ -47,8 +48,8 @@ export function TaskCard({ task }: { task: Task }) {
             {completeMut.isPending && "✓"}
           </button>
 
-          {/* Title + meta — clicks to modal */}
-          <div style={{ flex:1, minWidth:0, cursor:"pointer" }} onClick={() => setModalOpen(true)}>
+          {/* Title + meta — clicks to modal (or FocusMode if this task is being timed) */}
+          <div style={{ flex:1, minWidth:0, cursor:"pointer" }} onClick={() => isThisRunning ? setFocus(true) : setModalOpen(true)}>
             <div className="task-name">{task.title}</div>
             <div className="task-fs">
               <span style={{color:ACCENT[task.priority]}}>{task.priority.toUpperCase()}</span>

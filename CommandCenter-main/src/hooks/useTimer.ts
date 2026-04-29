@@ -23,6 +23,7 @@ export function useActiveTimer() {
     queryFn: async () => {
       const timer = await timersApi.active();
       if (timer) setActiveTimer(timer);
+      else clearTimer();
       return timer;
     },
     refetchInterval: 60_000,

@@ -370,6 +370,7 @@ async def get_active_timer(
 ):
     entry = session.execute(
         select(TimeEntry)
+        .where(TimeEntry.ended_at == None)  # noqa: E711 — only active (unstopped) timers
         .order_by(TimeEntry.started_at.desc())
     ).scalar()
     return entry

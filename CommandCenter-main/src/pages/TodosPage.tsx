@@ -5,11 +5,17 @@ import { TaskCard } from "@/components/todos/TaskCard";
 import { QuickAdd } from "@/components/todos/QuickAdd";
 import { Loader2 } from "lucide-react";
 import type { TaskStatus } from "@/types";
+import { useTimerStore } from "@/store";
 const FILTERS:[string,string][] = [["today","📌 Today"],["inbox","📥 Inbox"],["in_progress","⚡ Active"],["waiting","⏳ Waiting"],["all","All"],["done","✅ Done"]];
 export function TodosPage() {
   const [filter,setFilter]=useState("today"); const [search,setSearch]=useState("");
+  const { activeTimer } = useTimerStore();
   const { data:tasks,isLoading } = useQuery({ queryKey:["tasks",filter,search], queryFn:()=>{const p:any={};if(filter!=="all")p.status=filter;if(search)p.search=search;return tasksApi.list(p);}, refetchInterval:30_000 });
-  const visible = tasks?.filter(t=>filter==="done"?t.status==="done":t.status!=="done")??[];
+  const filtered = tasks?.filter(t=>filter==="done"?t.status==="done":t.status!=="done")??[];
+  const activeTaskId = activeTimer?.task_id;
+  const visible = activeTaskId
+    ? [...filtered].sort((a,b) => (a.id===activeTaskId ? -1 : b.id===activeTaskId ? 1 : 0))
+    : filtered;
   return (
     <div>
       <div className="top-bar"><span style={{fontSize:18}}>🇺🇸</span><div className="top-title">Daily Todos</div><span style={{fontSize:9,fontWeight:600,letterSpacing:"0.15em",textTransform:"uppercase",color:"rgba(255,255,255,0.3)"}}>{visible.length} orders</span></div>

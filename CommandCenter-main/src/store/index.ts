@@ -13,9 +13,18 @@ interface TimerState {
 }
 export const useTimerStore = create<TimerState>((set) => ({
   activeTimer: null, activeTask: null, elapsedSeconds: 0, startedAtMs: null,
-  setActiveTimer: (timer, task = null) => set({
-    activeTimer: timer, activeTask: task, elapsedSeconds: 0,
-    startedAtMs: timer ? new Date(timer.started_at).getTime() : null,
+  setActiveTimer: (timer, task = null) => set((s) => {
+    if (!timer) return { activeTimer: null, activeTask: null, elapsedSeconds: 0, startedAtMs: null };
+    // Backend may return naive ISO without "Z" — treat as UTC
+    const raw = timer.started_at;
+    const iso = /([zZ]|[+-]\d{2}:?\d{2})$/.test(raw) ? raw : raw + "Z";
+    const startedAtMs = new Date(iso).getTime();
+    return {
+      activeTimer: timer,
+      activeTask: task ?? s.activeTask,
+      startedAtMs,
+      elapsedSeconds: Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000)),
+    };
   }),
   setElapsed: (s) => set({ elapsedSeconds: s }),
   clearTimer: () => set({ activeTimer: null, activeTask: null, elapsedSeconds: 0, startedAtMs: null }),
