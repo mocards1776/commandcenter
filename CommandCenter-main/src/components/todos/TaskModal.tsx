@@ -52,7 +52,7 @@ export function TaskModal({ open, onClose, task, projectId, parentId, defaultSta
   const [subtaskTitle,setSubtaskTitle]=useState("");
   const [addingSubtask,setAddingSubtask]=useState(false);
 
-  const focusScore = importance*(6-difficulty);
+  const focusScore = difficulty*importance;
   const pColor = {low:"#4a8a5a",medium:"#f5f0e0",high:"#e8a820",critical:"#d94040"}[priority]??"#e8a820";
 
   useEffect(()=>{

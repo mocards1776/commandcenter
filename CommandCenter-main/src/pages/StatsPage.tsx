@@ -45,27 +45,30 @@ export function StatsPage() {
     return <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-indigo-400" /></div>;
   }
 
-  // Task status distribution
+  // Active tasks (exclude completed/cancelled) — used for forward-looking stats
+  const activeTasks = (tasks ?? []).filter(t => t.status !== "done" && t.status !== "cancelled");
+
+  // Task status distribution (full picture, includes completed)
   const statusCounts = (tasks ?? []).reduce((acc: Record<string, number>, t) => {
     acc[t.status] = (acc[t.status] || 0) + 1;
     return acc;
   }, {});
   const statusData = Object.entries(statusCounts).map(([name, value]) => ({ name, value }));
 
-  // Priority distribution
-  const priorityCounts = (tasks ?? []).reduce((acc: Record<string, number>, t) => {
+  // Priority distribution (active tasks only)
+  const priorityCounts = activeTasks.reduce((acc: Record<string, number>, t) => {
     acc[t.priority] = (acc[t.priority] || 0) + 1;
     return acc;
   }, {});
   const priorityData = Object.entries(priorityCounts).map(([name, value]) => ({ name, value }));
 
-  // Focus score distribution
+  // Focus score distribution (active tasks only)
   const focusData = [
-    { range: "1-5", count: tasks?.filter(t => t.focus_score >= 1 && t.focus_score <= 5).length ?? 0 },
-    { range: "6-10", count: tasks?.filter(t => t.focus_score >= 6 && t.focus_score <= 10).length ?? 0 },
-    { range: "11-15", count: tasks?.filter(t => t.focus_score >= 11 && t.focus_score <= 15).length ?? 0 },
-    { range: "16-20", count: tasks?.filter(t => t.focus_score >= 16 && t.focus_score <= 20).length ?? 0 },
-    { range: "21-25", count: tasks?.filter(t => t.focus_score >= 21).length ?? 0 },
+    { range: "1-5", count: activeTasks.filter(t => t.focus_score >= 1 && t.focus_score <= 5).length },
+    { range: "6-10", count: activeTasks.filter(t => t.focus_score >= 6 && t.focus_score <= 10).length },
+    { range: "11-15", count: activeTasks.filter(t => t.focus_score >= 11 && t.focus_score <= 15).length },
+    { range: "16-20", count: activeTasks.filter(t => t.focus_score >= 16 && t.focus_score <= 20).length },
+    { range: "21-25", count: activeTasks.filter(t => t.focus_score >= 21).length },
   ];
 
   // Time variance
@@ -98,8 +101,8 @@ export function StatsPage() {
   const totalTasks = tasks?.length ?? 0;
   const doneTasks = tasks?.filter(t => t.status === "done").length ?? 0;
   const totalFocusMin = (timeEntries ?? []).reduce((a, e) => a + (e.duration_seconds / 60), 0);
-  const avgFocusScore = totalTasks > 0
-    ? Math.round((tasks ?? []).reduce((a, t) => a + t.focus_score, 0) / totalTasks * 10) / 10
+  const avgFocusScore = activeTasks.length > 0
+    ? Math.round(activeTasks.reduce((a, t) => a + t.focus_score, 0) / activeTasks.length * 10) / 10
     : 0;
 
   return (
