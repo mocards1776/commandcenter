@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { X, Square, CheckCircle, Plus } from "lucide-react";
+import { X, Square, CircleCheck, Plus } from "lucide-react";
 import { useFocusStore } from "@/store";
 import { useActiveTimer } from "@/hooks/useTimer";
 import { tasksApi } from "@/lib/api";
@@ -18,7 +18,7 @@ const QUOTES = [
   "Press forward. Do not stop, do not linger. — Goethe",
 ];
 
-const quote = QUOTES[Math.floor(Math.random() * QUOTES.length)];
+const quote = QUOTES[Math.floor(Math.random() * QUOTES.length)] ?? QUOTES[0];
 
 export function FocusMode() {
   const { isFocusMode, setFocus } = useFocusStore();
@@ -202,7 +202,7 @@ export function FocusMode() {
             onMouseEnter={e => { if (!completeMut.isPending) { e.currentTarget.style.background = "rgba(50,160,70,0.28)"; e.currentTarget.style.borderColor = "rgba(80,200,100,0.85)"; } }}
             onMouseLeave={e => { e.currentTarget.style.background = "rgba(50,160,70,0.15)"; e.currentTarget.style.borderColor = "rgba(80,200,100,0.55)"; }}
           >
-            <CheckCircle size={16} />
+            <CircleCheck size={16} />
             {completeMut.isPending ? "Completing..." : "Complete Task"}
           </button>
         )}
