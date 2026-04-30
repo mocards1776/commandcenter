@@ -7,6 +7,11 @@ import os
 import json
 import httpx
 from typing import Optional, List
+import imaplib
+import email
+from email.header import decode_header
+import asyncio
+import re
 
 import db
 from models import Task, Project, Habit, HabitCompletion, TimeEntry, Note, CRMPerson, TimeBlock, Tag, Category, BraindumpEntry
@@ -808,11 +813,157 @@ async def set_telegram_webhook():
     return {"webhook_url": webhook_url, "telegram_response": result}
 
 
+# —— Gmail Integration ————————————————————————————————
+GMAIL_USER = os.getenv("GMAIL_USER", "")
+GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "")
+GMAIL_POLL_INTERVAL = int(os.getenv("GMAIL_POLL_INTERVAL", "300"))  # seconds (default 5 min)
+
+
+def _decode_mime_words(s: str) -> str:
+    """Decode RFC2047-encoded header words."""
+    parts = decode_header(s)
+    decoded = []
+    for part, charset in parts:
+        if isinstance(part, bytes):
+            decoded.append(part.decode(charset or "utf-8", errors="replace"))
+        else:
+            decoded.append(part)
+    return "".join(decoded)
+
+
+def _extract_plain_body(msg) -> str:
+    """Extract plain-text body from an email.message.Message object."""
+    if msg.is_multipart():
+        for part in msg.walk():
+            ct = part.get_content_type()
+            cd = str(part.get("Content-Disposition", ""))
+            if ct == "text/plain" and "attachment" not in cd:
+                charset = part.get_content_charset() or "utf-8"
+                return part.get_payload(decode=True).decode(charset, errors="replace")
+        return ""
+    else:
+        charset = msg.get_content_charset() or "utf-8"
+        return msg.get_payload(decode=True).decode(charset, errors="replace")
+
+
+def _parse_due_date_from_text(text: str):
+    """Very simple due-date extractor: looks for 'due YYYY-MM-DD' or 'by YYYY-MM-DD'."""
+    match = re.search(r'(?:due|by)[:\s]+([\d]{4}-[\d]{2}-[\d]{2})', text, re.IGNORECASE)
+    if match:
+        try:
+            from datetime import date
+            return date.fromisoformat(match.group(1))
+        except ValueError:
+            pass
+    return None
+
+
+def poll_gmail_once():
+    """
+    Connect to Gmail via IMAP, fetch all UNSEEN messages, create a Task for each,
+    then mark them as SEEN.  Returns the number of tasks created.
+    """
+    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+        print("Gmail polling skipped: GMAIL_USER or GMAIL_APP_PASSWORD not set.")
+        return 0
+
+    created = 0
+    try:
+        mail = imaplib.IMAP4_SSL("imap.gmail.com", 993)
+        mail.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+        mail.select("INBOX")
+
+        status, data = mail.search(None, "UNSEEN")
+        if status != "OK" or not data[0]:
+            mail.logout()
+            return 0
+
+        uid_list = data[0].split()
+        session = next(db.get_session())
+        try:
+            for uid in uid_list:
+                _, msg_data = mail.fetch(uid, "(RFC822)")
+                raw = msg_data[0][1]
+                msg = email.message_from_bytes(raw)
+
+                subject = _decode_mime_words(msg.get("Subject") or "(no subject)")
+                sender  = msg.get("From") or "unknown"
+                body    = _extract_plain_body(msg).strip()
+
+                # Build notes field
+                notes_parts = [f"Created via Gmail from: {sender}"]
+                if body:
+                    # Truncate very long bodies to 2000 chars
+                    snippet = body[:2000] + ("..." if len(body) > 2000 else "")
+                    notes_parts.append(snippet)
+                notes = "\n\n".join(notes_parts)
+
+                # Optional due-date parsing from subject + body
+                due_date = _parse_due_date_from_text(subject) or _parse_due_date_from_text(body)
+
+                importance = 3
+                difficulty = 3
+                focus_score = calc_focus_score(importance, difficulty)
+
+                task = Task(
+                    title=subject[:255],
+                    status="today",
+                    priority="medium",
+                    importance=importance,
+                    difficulty=difficulty,
+                    focus_score=focus_score,
+                    notes=notes,
+                    due_date=due_date,
+                    tag_ids="email",
+                    show_in_daily=True,
+                )
+                session.add(task)
+                session.commit()
+                session.refresh(task)
+
+                # Mark as read
+                mail.store(uid, "+FLAGS", "\\Seen")
+                created += 1
+                print(f"Gmail → task created: {subject[:60]}")
+        finally:
+            session.close()
+
+        mail.logout()
+    except Exception as exc:
+        print(f"Gmail poll error: {exc}")
+
+    return created
+
+
+async def gmail_poll_loop():
+    """Background coroutine that polls Gmail every GMAIL_POLL_INTERVAL seconds."""
+    print(f"Gmail poller started (interval={GMAIL_POLL_INTERVAL}s, user={GMAIL_USER or 'NOT SET'})")
+    while True:
+        try:
+            loop = asyncio.get_event_loop()
+            count = await loop.run_in_executor(None, poll_gmail_once)
+            if count:
+                print(f"Gmail poll: {count} new task(s) created.")
+        except Exception as exc:
+            print(f"Gmail poll loop error: {exc}")
+        await asyncio.sleep(GMAIL_POLL_INTERVAL)
+
+
+@app.get("/integrations/email/poll")
+async def manual_email_poll():
+    """Manually trigger a Gmail poll. Returns number of tasks created."""
+    loop = asyncio.get_event_loop()
+    count = await loop.run_in_executor(None, poll_gmail_once)
+    return {"tasks_created": count, "gmail_user": GMAIL_USER or "NOT SET"}
+
+
 # Startup
+
 @app.on_event("startup")
 async def startup():
     db.init_db()
     print("\u2713 Database initialized")
+    asyncio.create_task(gmail_poll_loop())
 
 if __name__ == "__main__":
     import uvicorn
