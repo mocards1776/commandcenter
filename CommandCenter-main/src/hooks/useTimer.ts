@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useTimerStore } from "@/store";
-import { timersApi } from "@/lib/api";
+import { timersApi, tasksApi } from "@/lib/api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 
@@ -22,8 +22,15 @@ export function useActiveTimer() {
     queryKey: ["active-timer"],
     queryFn: async () => {
       const timer = await timersApi.active();
-      if (timer) setActiveTimer(timer);
-      else clearTimer();
+      if (timer) {
+        let task = null;
+        if (timer.task_id) {
+          try { task = await tasksApi.get(timer.task_id); } catch {}
+        }
+        setActiveTimer(timer, task);
+      } else {
+        clearTimer();
+      }
       return timer;
     },
     refetchInterval: 60_000,
@@ -40,7 +47,14 @@ export function useActiveTimer() {
   const startMutation = useMutation({
     mutationFn: (data: { task_id?: string }) =>
       timersApi.start({ ...data, started_at: new Date().toISOString() }),
-    onSuccess: (timer) => { setActiveTimer(timer); qc.invalidateQueries({ queryKey: ["active-timer"] }); },
+    onSuccess: async (timer, variables) => {
+      let task = null;
+      if (variables.task_id) {
+        try { task = await tasksApi.get(variables.task_id); } catch {}
+      }
+      setActiveTimer(timer, task);
+      qc.invalidateQueries({ queryKey: ["active-timer"] });
+    },
     onError: () => toast.error("Failed to start timer"),
   });
 
