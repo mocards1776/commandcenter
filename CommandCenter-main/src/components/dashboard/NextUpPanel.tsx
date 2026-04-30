@@ -34,7 +34,7 @@ function getSelectedCalIds(): string[] {
 interface NextEvent { title: string; startMs: number; }
 
 // ── Flip panel ────────────────────────────────────────────────────────
-function FlipPanel({ value, label }: { value: string; label: string }) {
+function FlipPanel({ value, label, urgent = false }: { value: string; label: string; urgent?: boolean }) {
   const prevRef = useRef(value);
   const [shown, setShown]       = useState(value);
   const [flipping, setFlipping] = useState(false);
@@ -47,11 +47,13 @@ function FlipPanel({ value, label }: { value: string; label: string }) {
     } else { setShown(value); }
   }, [value]);
 
+  const numColor = urgent ? "#d94040" : "#e8a820";
+
   return (
     <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:3 }}>
       <div className={`panel${flipping ? " flip-panel" : ""}`}
         style={{ width:52, height:52, boxShadow:"inset 0 3px 6px rgba(0,0,0,0.55), 0 1px 0 rgba(255,255,255,0.04)" }}>
-        <span className="panel-num gold" style={{ fontSize:28, letterSpacing:"-0.02em" }}>{shown}</span>
+        <span className="panel-num" style={{ fontSize:28, letterSpacing:"-0.02em", color: numColor }}>{shown}</span>
       </div>
       <span className="panel-sub" style={{ fontSize:8, letterSpacing:"0.14em" }}>{label}</span>
     </div>
@@ -63,20 +65,45 @@ function EventCountdown({ event }: { event: NextEvent }) {
   const [now, setNow] = useState(Date.now);
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, []);
 
-  const diffMs  = event.startMs - now;
-  const timeStr = new Date(event.startMs).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
+  const diffMs    = event.startMs - now;
+  const eventDate = new Date(event.startMs);
+  const timeStr   = eventDate.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
+  // e.g. "APR 30"
+  const dateStr   = eventDate.toLocaleDateString([], { month:"short", day:"numeric" }).toUpperCase();
 
   if (diffMs <= 0) {
     return (
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:10,
-        minHeight:52, background:"#2a4a3a", borderBottom:"2px solid #1e3629" }}>
-        <div className="live-dot" />
-        <div style={{ textAlign:"center" }}>
-          <div style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:13, fontWeight:700,
-            letterSpacing:"0.08em", textTransform:"uppercase", color:"#d94040" }}>IN PROGRESS</div>
-          <div style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:10,
-            color:"rgba(245,240,224,0.4)", letterSpacing:"0.1em", textTransform:"uppercase", marginTop:2 }}>
-            {event.title}
+      <div style={{
+        display:"grid", gridTemplateColumns:"2fr 1fr 1fr",
+        alignItems:"center", minHeight:72,
+        background:"#2a4a3a", borderBottom:"2px solid #1e3629",
+      }}>
+        {/* Left: event name */}
+        <div style={{ padding:"8px 8px 8px 14px", borderRight:"2px solid #1e3629",
+          display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:4 }}>
+          <div style={{
+            background:"#1e3629", borderRadius:4,
+            border:"1px solid rgba(0,0,0,0.4)",
+            boxShadow:"inset 0 2px 4px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.05)",
+            padding:"6px 10px", width:"100%", textAlign:"center",
+            minHeight:46, display:"flex", alignItems:"center", justifyContent:"center",
+          }}>
+            <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:13, fontWeight:700,
+              letterSpacing:"0.05em", textTransform:"uppercase", color:"#f5f0e0",
+              lineHeight:1.2, display:"-webkit-box", WebkitLineClamp:2,
+              WebkitBoxOrient:"vertical", overflow:"hidden" }}>
+              {event.title}
+            </span>
+          </div>
+          <div style={{ fontSize:8, fontWeight:600, letterSpacing:"0.1em",
+            textTransform:"uppercase", color:"rgba(245,240,224,0.25)" }}>@ {timeStr}</div>
+        </div>
+        {/* Middle: live indicator */}
+        <div className="sb-cell" style={{ padding:"6px", gridColumn:"2 / span 2" }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+            <div className="live-dot" />
+            <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:11, fontWeight:700,
+              letterSpacing:"0.08em", textTransform:"uppercase", color:"#d94040" }}>IN PROGRESS</span>
           </div>
         </div>
       </div>
@@ -86,24 +113,60 @@ function EventCountdown({ event }: { event: NextEvent }) {
   const totalMins = Math.floor(diffMs / 60_000);
   const hours     = Math.min(Math.floor(totalMins / 60), 99);
   const mins      = totalMins % 60;
+  const urgent    = totalMins < 30;
 
   return (
-    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:"10px 14px",
-      gap:8, minHeight:52, background:"#2a4a3a", borderBottom:"2px solid #1e3629" }}>
-      <div style={{ flex:1, minWidth:0 }}>
-        <div style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:12, fontWeight:700,
-          letterSpacing:"0.07em", textTransform:"uppercase", color:"#f5f0e0",
-          whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", marginBottom:3 }}>
-          {event.title}
+    <div style={{
+      display:"grid", gridTemplateColumns:"2fr 1fr 1fr",
+      alignItems:"center", minHeight:72,
+      background:"#2a4a3a", borderBottom:"2px solid #1e3629",
+    }}>
+      {/* Left: date + event name tile */}
+      <div style={{ padding:"8px 8px 8px 14px", borderRight:"2px solid #1e3629",
+        display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:4 }}>
+        <div style={{
+          background:"#1e3629", borderRadius:4,
+          border:"1px solid rgba(0,0,0,0.4)",
+          boxShadow:"inset 0 2px 4px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.05)",
+          padding:"6px 10px", width:"100%", textAlign:"center",
+          minHeight:46, display:"flex", flexDirection:"column",
+          alignItems:"center", justifyContent:"center", gap:3,
+        }}>
+          <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:9, fontWeight:600,
+            letterSpacing:"0.18em", textTransform:"uppercase",
+            color:"rgba(232,168,32,0.55)", lineHeight:1 }}>
+            {dateStr}
+          </span>
+          <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:13, fontWeight:700,
+            letterSpacing:"0.05em", textTransform:"uppercase", color:"#f5f0e0",
+            lineHeight:1.2, display:"-webkit-box", WebkitLineClamp:2,
+            WebkitBoxOrient:"vertical", overflow:"hidden" }}>
+            {event.title}
+          </span>
         </div>
-        <div style={{ fontSize:9, fontWeight:600, letterSpacing:"0.1em", textTransform:"uppercase",
-          color:"rgba(245,240,224,0.3)" }}>@ {timeStr}</div>
+        <div style={{ fontSize:8, fontWeight:600, letterSpacing:"0.1em",
+          textTransform:"uppercase", color:"rgba(245,240,224,0.25)" }}>@ {timeStr}</div>
       </div>
-      <div style={{ display:"flex", alignItems:"flex-start", gap:4, flexShrink:0 }}>
-        <FlipPanel value={String(hours).padStart(2,"0")} label="HRS" />
-        <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:24, fontWeight:700,
-          color:"rgba(232,168,32,0.3)", lineHeight:"44px", userSelect:"none" }}>:</span>
-        <FlipPanel value={String(mins).padStart(2,"0")} label="MIN" />
+
+      {/* Right two cells: countdown with label */}
+      <div style={{
+        gridColumn:"2 / span 2",
+        display:"flex", flexDirection:"column",
+        alignItems:"center", justifyContent:"center",
+        padding:"6px 4px", gap:4,
+      }}>
+        <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:8, fontWeight:700,
+          letterSpacing:"0.22em", textTransform:"uppercase",
+          color: urgent ? "rgba(217,64,64,0.6)" : "rgba(232,168,32,0.4)" }}>
+          COUNTDOWN
+        </span>
+        <div style={{ display:"flex", alignItems:"flex-start", gap:4 }}>
+          <FlipPanel value={String(hours).padStart(2,"0")} label="HRS" urgent={urgent} />
+          <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:24, fontWeight:700,
+            color: urgent ? "rgba(217,64,64,0.35)" : "rgba(232,168,32,0.3)",
+            lineHeight:"44px", userSelect:"none" }}>:</span>
+          <FlipPanel value={String(mins).padStart(2,"0")} label="MIN" urgent={urgent} />
+        </div>
       </div>
     </div>
   );
@@ -149,7 +212,7 @@ function TaskSlot({ task, size, onClick }: { task: Task; size: "lg" | "sm"; onCl
       onMouseEnter={e => (e.currentTarget.style.background = "rgba(232,168,32,0.06)")}
       onMouseLeave={e => (e.currentTarget.style.background = "#2a4a3a")}
     >
-      {/* Left: task title as a panel tile — same dark box look as priority/FS */}
+      {/* Left: task title as a panel tile */}
       <div style={{
         padding: "8px 8px 8px 14px",
         borderRight: "2px solid #1e3629",
@@ -223,11 +286,6 @@ function TaskSlot({ task, size, onClick }: { task: Task; size: "lg" | "sm"; onCl
   );
 }
 
-// ── Section header — uses sb-header + sb-col-head for pixel-perfect height match ────────
-// sb-header has: padding:4px 0 (outer) + sb-col-head padding:4px 8px (inner)
-// panel-header has: padding:8px 14px → slightly different rendered height
-// Using sb-header class guarantees the gold border-bottom lands at the exact same y
-// as GameScoreboard's sb-header border-bottom.
 function SHead({ icon, label }: { icon: string; label: string }) {
   return (
     <div className="sb-header" style={{ gridTemplateColumns: "1fr" }}>

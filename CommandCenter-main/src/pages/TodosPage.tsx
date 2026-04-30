@@ -1,23 +1,35 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { tasksApi } from "@/lib/api";
 import { TaskCard } from "@/components/todos/TaskCard";
 import { QuickAdd } from "@/components/todos/QuickAdd";
+import { TaskModal } from "@/components/todos/TaskModal";
 import { Loader2 } from "lucide-react";
 import type { TaskStatus } from "@/types";
-import { useTimerStore } from "@/store";
+import { useTimerStore, useUIStore } from "@/store";
 
 const FILTERS:[string,string][] = [["today","📌 Today"],["inbox","📥 Inbox"],["in_progress","⚡ Active"],["waiting","⏳ Waiting"],["all","All"],["done","✅ Done"]];
 
 export function TodosPage() {
   const [filter,setFilter]=useState("today"); const [search,setSearch]=useState("");
   const { activeTimer } = useTimerStore();
+  const { addTaskOpen, setAddTaskOpen } = useUIStore();
+
+  // When the flag is clicked from the sidebar, addTaskOpen flips to true.
+  // We mirror that into a local modal-open state and immediately reset the store flag
+  // so repeat clicks work correctly.
+  const [modalOpen, setModalOpen] = useState(false);
+  useEffect(() => {
+    if (addTaskOpen) {
+      setModalOpen(true);
+      setAddTaskOpen(false);
+    }
+  }, [addTaskOpen, setAddTaskOpen]);
 
   const { data:tasks,isLoading } = useQuery({
     queryKey:["tasks",filter,search],
     queryFn:()=>{
       const p:any={};
-      // "today" tab shows both today + in_progress tasks so nothing falls through the cracks
       if(filter==="today") p.status="today,in_progress";
       else if(filter!=="all") p.status=filter;
       if(search) p.search=search;
@@ -43,6 +55,8 @@ export function TodosPage() {
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search…" style={{marginLeft:"auto",padding:"4px 10px",fontSize:11,width:130}}/>
       </div>
       <QuickAdd defaultStatus={filter==="all"||filter==="done"?"today":filter as TaskStatus}/>
+      {/* Modal triggered by sidebar flag click */}
+      <TaskModal open={modalOpen} onClose={()=>setModalOpen(false)} defaultStatus="today" />
       {isLoading?(<div style={{display:"flex",justifyContent:"center",padding:48}}><Loader2 size={20} style={{color:"#e8a820",animation:"spin 1s linear infinite"}}/></div>):visible.length===0?(
         <div style={{padding:"48px 16px",textAlign:"center"}}>
           <p style={{fontFamily:"'Oswald',Arial,sans-serif",fontSize:11,fontWeight:600,letterSpacing:"0.15em",textTransform:"uppercase",color:"rgba(245,240,224,0.2)"}}>No Tasks In This Category</p>

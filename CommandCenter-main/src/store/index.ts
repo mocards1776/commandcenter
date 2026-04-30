@@ -17,7 +17,6 @@ export const useTimerStore = create<TimerState>()(
       activeTimer: null, activeTask: null, elapsedSeconds: 0, startedAtMs: null,
       setActiveTimer: (timer, task = null) => set((s) => {
         if (!timer) return { activeTimer: null, activeTask: null, elapsedSeconds: 0, startedAtMs: null };
-        // Backend may return naive ISO without "Z" — treat as UTC
         const raw = timer.started_at;
         const iso = /([zZ]|[+-]\d{2}:?\d{2})$/.test(raw) ? raw : raw + "Z";
         const startedAtMs = new Date(iso).getTime();
@@ -33,7 +32,6 @@ export const useTimerStore = create<TimerState>()(
     }),
     {
       name: "timer-store",
-      // Only persist the timer + task identity — elapsed is always recalculated from startedAtMs
       partialize: (state) => ({
         activeTimer: state.activeTimer,
         activeTask: state.activeTask,
@@ -68,15 +66,18 @@ export const useCelebrationStore = create<CelebrationState>((set) => ({
 interface UIState {
   sidebarCollapsed: boolean;
   activePage: string;
+  addTaskOpen: boolean;
   toggleSidebar: () => void;
   setActivePage: (page: string) => void;
+  setAddTaskOpen: (v: boolean) => void;
 }
 export const useUIStore = create<UIState>()(
   persist(
     (set) => ({
-      sidebarCollapsed: false, activePage: "dashboard",
+      sidebarCollapsed: false, activePage: "dashboard", addTaskOpen: false,
       toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
       setActivePage: (page) => set({ activePage: page }),
+      setAddTaskOpen: (v) => set({ addTaskOpen: v }),
     }),
     { name: "ui-store" }
   )

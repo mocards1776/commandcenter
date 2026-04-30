@@ -9,10 +9,15 @@ const NAV = [
 ];
 
 // Compact branding — mirrors the top-of-page "JOSH'S / COMMAND CENTER" design
-function BrandMark({ collapsed }: { collapsed: boolean }) {
+function BrandMark({ collapsed, onFlagClick }: { collapsed: boolean; onFlagClick: () => void }) {
   if (collapsed) {
     return (
-      <div style={{display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}} aria-label="Command Center">🇺🇸</div>
+      <div
+        onClick={onFlagClick}
+        title="Add new task"
+        style={{display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,cursor:"pointer"}}
+        aria-label="Add task"
+      >🇺🇸</div>
     );
   }
   return (
@@ -20,24 +25,35 @@ function BrandMark({ collapsed }: { collapsed: boolean }) {
       <span style={{color:"#e8a820",fontSize:7,letterSpacing:"0.4em",opacity:0.7}}>★ ★ ★</span>
       <span style={{fontFamily:"'Inter',sans-serif",fontSize:10,fontWeight:900,letterSpacing:"0.15em",color:"rgba(255,255,255,0.75)",textTransform:"uppercase"}}>JOSH'S</span>
       <span style={{fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:900,letterSpacing:"-0.02em",color:"#fff",textTransform:"uppercase",whiteSpace:"nowrap"}}>COMMAND CENTER</span>
-      <span style={{fontSize:11,marginTop:1}}>🇺🇸</span>
+      <span
+        onClick={onFlagClick}
+        title="Add new task"
+        style={{fontSize:11,marginTop:1,cursor:"pointer"}}
+        aria-label="Add task"
+      >🇺🇸</span>
     </div>
   );
 }
 
 export function Sidebar() {
-  const { sidebarCollapsed, toggleSidebar, activePage, setActivePage } = useUIStore();
+  const { sidebarCollapsed, toggleSidebar, activePage, setActivePage, setAddTaskOpen } = useUIStore();
   const w = sidebarCollapsed ? 48 : 200;
+
+  function handleFlagClick() {
+    setActivePage("todos");
+    setAddTaskOpen(true);
+  }
+
   return (
     <aside style={{ position:"fixed",left:0,top:0,height:"100%",width:w,zIndex:40,background:"#1a2f22",borderRight:"4px solid #e8a820",display:"flex",flexDirection:"column",transition:"width 0.25s ease",overflow:"hidden" }}>
       <div style={{ minHeight:64,display:"flex",alignItems:"center",justifyContent:sidebarCollapsed?"center":"space-between",padding:sidebarCollapsed?"0 10px":"0 8px 0 4px",borderBottom:"4px solid #e8a820",background:"#162a1c",flexShrink:0 }}>
         {!sidebarCollapsed && (
           <>
-            <BrandMark collapsed={false} />
+            <BrandMark collapsed={false} onFlagClick={handleFlagClick} />
             <button onClick={toggleSidebar} style={{background:"none",border:"none",cursor:"pointer",color:"rgba(232,168,32,0.4)",padding:4,flexShrink:0}} onMouseEnter={e=>(e.currentTarget.style.color="#e8a820")} onMouseLeave={e=>(e.currentTarget.style.color="rgba(232,168,32,0.4)")}><ChevronLeft size={16}/></button>
           </>
         )}
-        {sidebarCollapsed && <BrandMark collapsed={true} />}
+        {sidebarCollapsed && <BrandMark collapsed={true} onFlagClick={handleFlagClick} />}
       </div>
       {sidebarCollapsed&&<button onClick={toggleSidebar} style={{margin:"8px auto",width:30,height:22,display:"flex",alignItems:"center",justifyContent:"center",background:"none",border:"1px solid rgba(232,168,32,0.2)",borderRadius:2,cursor:"pointer",color:"rgba(232,168,32,0.35)"}} onMouseEnter={e=>{e.currentTarget.style.color="#e8a820";e.currentTarget.style.borderColor="rgba(232,168,32,0.5)";}} onMouseLeave={e=>{e.currentTarget.style.color="rgba(232,168,32,0.35)";e.currentTarget.style.borderColor="rgba(232,168,32,0.2)"}}><ChevronRight size={13}/></button>}
       <nav style={{flex:1,overflowY:"auto",padding:"6px"}}>
