@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { dashboardApi, gamificationApi } from "@/lib/api";
 import { GameScoreboard } from "@/components/dashboard/GameScoreboard";
@@ -5,12 +6,22 @@ import { NextUpPanel } from "@/components/dashboard/NextUpPanel";
 import { HabitRow } from "@/components/habits/HabitRow";
 import { useUIStore, useTimerStore } from "@/store";
 import { Loader2 } from "lucide-react";
-import { todayStr, battingAvgStr } from "@/lib/utils";
+import { todayStr } from "@/lib/utils";
+
+function useLiveClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return now;
+}
 
 export function DashboardPage() {
   const { setActivePage } = useUIStore();
   const { activeTimer } = useTimerStore();
   const today = todayStr();
+  const now = useLiveClock();
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "MORNING" : hour < 17 ? "AFTERNOON" : "EVENING";
 
@@ -33,7 +44,6 @@ export function DashboardPage() {
     </div>
   );
 
-  const pct = data ? Math.round((data.completed_tasks_today / Math.max(data.total_tasks_today, 1)) * 100) : 0;
   const overdueCount = data?.overdue_tasks?.length ?? 0;
   const completed = data?.completed_tasks_today ?? 0;
   const attempted = data?.total_tasks_today ?? 0;
@@ -56,8 +66,23 @@ export function DashboardPage() {
   const habits = data?.today_habits ?? [];
   const projects = data?.active_projects ?? [];
 
-  // All non-done tasks (today + overdue) passed to NextUpPanel
   const allPending = [...(data?.today_tasks ?? []), ...overdueT];
+
+  // Live clock strings in CDT
+  const timeStr = now.toLocaleTimeString("en-US", {
+    timeZone: "America/Chicago",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
+  const dateStr = now.toLocaleDateString("en-US", {
+    timeZone: "America/Chicago",
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).toUpperCase();
 
   return (
     <div>
@@ -70,38 +95,44 @@ export function DashboardPage() {
           <span style={{ fontSize: 14 }}>&#x1F1FA;&#x1F1F8;</span>
         </div>
         <span style={{ color: "#e8a820", fontSize: 9, letterSpacing: 5, opacity: 0.6 }}>&#9733; &#9733; &#9733;</span>
+
+        {/* Date + Time — right side (matches HabitsPage) */}
         <div style={{ position: "absolute", right: 24, top: "50%", transform: "translateY(-50%)", textAlign: "right" }}>
-          <div style={{ fontSize: 8, fontWeight: 600, letterSpacing: "0.15em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 2 }}>Today's completion</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
-            <div className="panel" style={{ width: 50, height: 32 }}>
-              <span className="panel-num" style={{ fontSize: 18, color: pct >= 80 ? "#e8a820" : pct >= 50 ? "#fff" : "#d94040" }}>{pct}%</span>
-            </div>
-          </div>
-          <div style={{ fontSize: 8, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.25)", marginTop: 2 }}>{data?.completed_tasks_today ?? 0} of {data?.total_tasks_today ?? 0} tasks</div>
+          <div style={{
+            fontFamily: "'Oswald', Arial, sans-serif",
+            fontSize: 18,
+            fontWeight: 700,
+            letterSpacing: "0.06em",
+            color: "#f4c842",
+            lineHeight: 1,
+            fontVariantNumeric: "tabular-nums",
+          }}>{timeStr}</div>
+          <div style={{
+            fontSize: 8,
+            fontWeight: 600,
+            letterSpacing: "0.14em",
+            color: "rgba(255,255,255,0.3)",
+            marginTop: 3,
+          }}>{dateStr}</div>
         </div>
       </div>
 
       <div className="stripe" />
 
-      {/* MAIN GRID: Scoreboard left, NextUpPanel right — identical structure to original */}
+      {/* MAIN GRID */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderBottom: "3px solid #1e3629" }}>
-
-        {/* LEFT: Scoreboard — untouched */}
         <div style={{ borderRight: "3px solid #1e3629" }}>
           <GameScoreboard stats={scoreboardStats} history={gamHistory} />
         </div>
-
-        {/* RIGHT: NextUpPanel in the exact same box Today's Tasks used to occupy */}
         <div style={{ display: "flex", flexDirection: "column" }}>
           <NextUpPanel tasks={allPending} />
         </div>
-
       </div>
 
       <div className="stripe-thin" />
       <div className="stripe-3" />
 
-      {/* BOTTOM ROW — identical to original */}
+      {/* BOTTOM ROW */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr" }}>
 
         {/* Habits */}
