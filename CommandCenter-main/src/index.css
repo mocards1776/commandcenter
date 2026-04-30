@@ -138,12 +138,12 @@ body {
 .task-name { font-size: 13px; font-weight: 600; color: #fff; letter-spacing: 0.05em; text-transform: uppercase; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .task-fs   { font-size: 9px; color: rgba(255,255,255,0.3); letter-spacing: 0.1em; text-transform: uppercase; margin-top: 2px; }
 
-/* ── SCOREBOARD CHECKBOX ── */
+/* ── SCOREBOARD CHECKBOX (circular) ── */
 .sb-check {
   width: 22px; height: 22px;
   background: #162a1c;
   border: 2px solid rgba(232,168,32,0.35);
-  border-radius: 2px;
+  border-radius: 50%;
   box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
   display: flex; align-items: center; justify-content: center;
   cursor: pointer; flex-shrink: 0;
@@ -182,8 +182,8 @@ body {
 .habit-row:hover { background: rgba(232,168,32,0.04); }
 .habit-name      { font-size: 11px; font-weight: 400; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255,255,255,0.4); flex: 1; }
 .habit-name.done { color: #f5f0e0; }
-.hdots { display: flex; gap: 3px; }
-.hd    { width: 4px; height: 4px; border-radius: 50%; }
+.hdots { display: flex; gap: 3px; align-items: center; }
+.hd    { width: 6px; height: 6px; border-radius: 50%; }
 
 /* ── Project rows ── */
 .proj-row { padding: 8px 14px; border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer; transition: background 0.1s; }

@@ -43,7 +43,7 @@ export function HabitRow({ habit, todayStr }: Props) {
   return (
     <>
       <div className="habit-row">
-        {/* Scoreboard checkbox */}
+        {/* Circular scoreboard checkbox */}
         <button type="button"
           className={`sb-check ${isDone?"done":""}`}
           onClick={e=>{e.stopPropagation();isDone?uncompleteMut.mutate():completeMut.mutate();}}
@@ -56,10 +56,22 @@ export function HabitRow({ habit, todayStr }: Props) {
           <span className={`habit-name ${isDone?"done":""}`}>{habit.name}</span>
           {timeStr&&<span style={{fontFamily:"'Oswald',Arial,sans-serif",fontSize:9,fontWeight:600,color:"rgba(232,168,32,0.45)",letterSpacing:"0.08em",marginLeft:2}}>{timeStr}</span>}
         </div>
-        {/* 7-day dots */}
+        {/* 7-day history — circles */}
         <div className="hdots">
           {last7.map(({date,done,isToday})=>(
-            <div key={date} title={date} style={{width:isToday?14:6,height:isToday?6:4,borderRadius:1,background:done?"#e8a820":"rgba(255,255,255,0.1)",boxShadow:done?"0 0 4px rgba(232,168,32,0.4)":"none",transition:"all 0.15s"}}/>
+            <div
+              key={date}
+              title={date}
+              style={{
+                width: isToday ? 9 : 6,
+                height: isToday ? 9 : 6,
+                borderRadius: "50%",
+                background: done ? "#e8a820" : "rgba(255,255,255,0.1)",
+                boxShadow: done ? "0 0 4px rgba(232,168,32,0.4)" : "none",
+                transition: "all 0.15s",
+                flexShrink: 0,
+              }}
+            />
           ))}
         </div>
         <span style={{fontFamily:"'Oswald',Arial,sans-serif",fontSize:10,fontWeight:600,color:"rgba(232,168,32,0.4)",marginLeft:4}}>{habit.completions.length}🔥</span>
