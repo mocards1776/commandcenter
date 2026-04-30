@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Calendar as CalendarIcon,
   List,
@@ -10,6 +10,8 @@ import {
   MapPin,
   Clock,
   AlignLeft,
+  EyeOff,
+  Eye,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
@@ -17,7 +19,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "react-hot-toast";
 import type { Task, TimeBlock } from "@/types";
 
-const HOURS = Array.from({ length: 19 }, (_, i) => i + 5); // 5 AM – 11 PM
+const HOURS = Array.from({ length: 19 }, (_, i) => i + 5);
 const BLOCK_COLORS = [
   "#4285f4","#0f9d58","#f4b400","#db4437",
   "#ab47bc","#00acc1","#ff7043","#e8a820",
@@ -36,14 +38,17 @@ interface GCalEvent {
   calendar_id: string;
 }
 
-const GC_TOKEN_KEY         = "gcal_access_token";
-const GC_EXPIRY_KEY        = "gcal_token_expiry";
-const GC_SELECTED_CALS_KEY = "gcal_selected_calendar_ids";
-const GC_EVENT_COLORS_KEY  = "gcal_event_color_overrides"; // { [eventId]: color }
+const GC_TOKEN_KEY          = "gcal_access_token";
+const GC_EXPIRY_KEY         = "gcal_token_expiry";
+const GC_SELECTED_CALS_KEY  = "gcal_selected_calendar_ids";
+const GC_EVENT_COLORS_KEY   = "gcal_event_color_overrides";
+const CAL_ZOOM_KEY          = "cal_zoom_level";          // ← sticky zoom
+const CAL_HIDDEN_TASKS_KEY  = "cal_hidden_task_ids";      // ← hidden backlog tasks
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
 const GCAL_SCOPE       = "https://www.googleapis.com/auth/calendar.readonly";
 
+// ── localStorage helpers ──────────────────────────────────────────────────────
 function getStoredToken(): string | null {
   try {
     const token  = localStorage.getItem(GC_TOKEN_KEY);
@@ -66,10 +71,18 @@ function getEventColorOverrides(): Record<string, string> {
 }
 function saveEventColorOverride(eventId: string, color: string) {
   try {
-    const overrides = getEventColorOverrides();
-    overrides[eventId] = color;
-    localStorage.setItem(GC_EVENT_COLORS_KEY, JSON.stringify(overrides));
+    const o = getEventColorOverrides(); o[eventId] = color;
+    localStorage.setItem(GC_EVENT_COLORS_KEY, JSON.stringify(o));
   } catch { /* */ }
+}
+function getSavedZoom(): number {
+  try { return parseInt(localStorage.getItem(CAL_ZOOM_KEY) || "80", 10) || 80; } catch { return 80; }
+}
+function getHiddenTaskIds(): string[] {
+  try { return JSON.parse(localStorage.getItem(CAL_HIDDEN_TASKS_KEY) || "[]"); } catch { return []; }
+}
+function saveHiddenTaskIds(ids: string[]) {
+  try { localStorage.setItem(CAL_HIDDEN_TASKS_KEY, JSON.stringify(ids)); } catch { /* */ }
 }
 
 function connectGoogleCalendar() {
@@ -79,12 +92,9 @@ function connectGoogleCalendar() {
   }
   const redirectUri = window.location.origin + window.location.pathname;
   const params = new URLSearchParams({
-    client_id: GOOGLE_CLIENT_ID,
-    redirect_uri: redirectUri,
-    response_type: "token",
-    scope: GCAL_SCOPE,
-    include_granted_scopes: "true",
-    prompt: "consent",
+    client_id: GOOGLE_CLIENT_ID, redirect_uri: redirectUri,
+    response_type: "token", scope: GCAL_SCOPE,
+    include_granted_scopes: "true", prompt: "consent",
   });
   window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }
@@ -118,25 +128,21 @@ function computeLayout<T extends Slottable>(items: T[]): (T & { col: number; tot
   });
 }
 
-// ── Color-picker popover ──────────────────────────────────────────────────────
+// ── Color picker ──────────────────────────────────────────────────────────────
 function ColorPicker({ current, onPick, onClose }: {
   current: string; onPick: (c: string) => void; onClose: () => void;
 }) {
   return (
-    <div
-      onClick={(e) => e.stopPropagation()}
+    <div onClick={(e) => e.stopPropagation()}
       style={{
         position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 200,
         background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.15)",
-        borderRadius: 8, padding: "8px 10px",
-        display: "flex", gap: 6, flexWrap: "wrap", width: 164,
-        boxShadow: "0 8px 24px rgba(0,0,0,0.6)",
+        borderRadius: 8, padding: "8px 10px", display: "flex", gap: 6,
+        flexWrap: "wrap", width: 164, boxShadow: "0 8px 24px rgba(0,0,0,0.6)",
       }}
     >
       <div style={{ width: "100%", fontSize: 9, color: "rgba(255,255,255,0.35)",
-        letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 2 }}>
-        Change Color
-      </div>
+        letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 2 }}>Change Color</div>
       {BLOCK_COLORS.map((c) => (
         <button key={c} onClick={() => { onPick(c); onClose(); }}
           style={{ width: 22, height: 22, borderRadius: "50%", backgroundColor: c,
@@ -149,52 +155,29 @@ function ColorPicker({ current, onPick, onClose }: {
 
 // ── Event detail modal ────────────────────────────────────────────────────────
 interface EventModalProps {
-  event: GCalEvent;
-  calColor: string;
-  currentColor: string;
-  onColorChange: (color: string) => void;
-  onClose: () => void;
+  event: GCalEvent; calColor: string; currentColor: string;
+  onColorChange: (color: string) => void; onClose: () => void;
 }
 function EventModal({ event, calColor, currentColor, onColorChange, onClose }: EventModalProps) {
-  const [showPicker, setShowPicker] = useState(false);
   const isAllDay = !event.start.dateTime;
   const startDt  = event.start.dateTime ? new Date(event.start.dateTime) : null;
   const endDt    = event.end.dateTime   ? new Date(event.end.dateTime)   : null;
   const color    = currentColor || calColor;
-
-  const formatTime = (d: Date) =>
-    d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  const formatDate = (s: string) =>
-    new Date(s + "T12:00:00").toLocaleDateString("en-US",
-      { weekday: "long", month: "long", day: "numeric" });
-
+  const fmt      = (d: Date) => d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const fmtDate  = (s: string) => new Date(s + "T12:00:00").toLocaleDateString("en-US",
+    { weekday: "long", month: "long", day: "numeric" });
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed", inset: 0, zIndex: 1000,
-        background: "rgba(0,0,0,0.55)", display: "flex",
-        alignItems: "center", justifyContent: "center",
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "#1e3629", border: `1px solid ${color}44`,
-          borderTop: `3px solid ${color}`,
-          borderRadius: 10, padding: "20px 24px", width: 360, maxWidth: "90vw",
-          boxShadow: "0 24px 64px rgba(0,0,0,0.6)", position: "relative",
-        }}
-      >
-        {/* Close */}
-        <button onClick={onClose} style={{
-          position: "absolute", top: 10, right: 10, background: "none", border: "none",
-          color: "rgba(255,255,255,0.4)", cursor: "pointer", padding: 4,
-        }}>
+    <div onClick={onClose}
+      style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,0.55)",
+        display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div onClick={(e) => e.stopPropagation()}
+        style={{ background: "#1e3629", border: `1px solid ${color}44`,
+          borderTop: `3px solid ${color}`, borderRadius: 10, padding: "20px 24px",
+          width: 360, maxWidth: "90vw", boxShadow: "0 24px 64px rgba(0,0,0,0.6)", position: "relative" }}>
+        <button onClick={onClose} style={{ position: "absolute", top: 10, right: 10,
+          background: "none", border: "none", color: "rgba(255,255,255,0.4)", cursor: "pointer", padding: 4 }}>
           <X size={14} />
         </button>
-
-        {/* Title row */}
         <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 14 }}>
           <div style={{ width: 12, height: 12, borderRadius: "50%", backgroundColor: color,
             marginTop: 3, flexShrink: 0 }} />
@@ -202,18 +185,13 @@ function EventModal({ event, calColor, currentColor, onColorChange, onClose }: E
             {event.summary || "(No title)"}
           </div>
         </div>
-
-        {/* Time */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8,
           fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
           <Clock size={12} style={{ flexShrink: 0, color }} />
           {isAllDay
-            ? <span>All day · {formatDate(event.start.date!)}</span>
-            : <span>{startDt && formatTime(startDt)} – {endDt && formatTime(endDt)}</span>
-          }
+            ? <span>All day · {fmtDate(event.start.date!)}</span>
+            : <span>{startDt && fmt(startDt)} – {endDt && fmt(endDt)}</span>}
         </div>
-
-        {/* Location */}
         {event.location && (
           <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 8,
             fontSize: 12, color: "rgba(255,255,255,0.6)" }}>
@@ -221,34 +199,65 @@ function EventModal({ event, calColor, currentColor, onColorChange, onClose }: E
             <span>{event.location}</span>
           </div>
         )}
-
-        {/* Description */}
         {event.description && (
           <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 10,
             fontSize: 11, color: "rgba(255,255,255,0.5)", lineHeight: 1.5 }}>
             <AlignLeft size={12} style={{ flexShrink: 0, marginTop: 2, color }} />
             <span style={{ maxHeight: 80, overflowY: "auto" }}
-              dangerouslySetInnerHTML={{ __html: event.description.replace(/<[^>]*>/g,"") }} />
+              dangerouslySetInnerHTML={{ __html: event.description.replace(/<[^>]*>/g, "") }} />
           </div>
         )}
-
-        {/* Divider */}
         <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: 12, paddingTop: 12 }}>
-          {/* Color override */}
           <div style={{ fontSize: 9, opacity: 0.35, letterSpacing: "0.12em",
             textTransform: "uppercase", marginBottom: 6 }}>Override Color</div>
-          <div style={{ position: "relative", display: "inline-block" }}>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {BLOCK_COLORS.map((c) => (
-                <button key={c} onClick={() => { onColorChange(c); }}
-                  style={{ width: 20, height: 20, borderRadius: "50%", backgroundColor: c,
-                    border: color === c ? "2px solid #fff" : "2px solid transparent",
-                    cursor: "pointer", padding: 0 }} />
-              ))}
-            </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {BLOCK_COLORS.map((c) => (
+              <button key={c} onClick={() => onColorChange(c)}
+                style={{ width: 20, height: 20, borderRadius: "50%", backgroundColor: c,
+                  border: color === c ? "2px solid #fff" : "2px solid transparent",
+                  cursor: "pointer", padding: 0 }} />
+            ))}
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Right-click context menu ──────────────────────────────────────────────────
+interface CtxMenu { x: number; y: number; taskId: string; }
+function TaskContextMenu({ menu, onHide, onClose }: {
+  menu: CtxMenu; onHide: (id: string) => void; onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onClose]);
+  return (
+    <div ref={ref}
+      style={{
+        position: "fixed", top: menu.y, left: menu.x, zIndex: 2000,
+        background: "#1e3629", border: "1px solid rgba(255,255,255,0.12)",
+        borderRadius: 6, padding: "4px 0", minWidth: 160,
+        boxShadow: "0 8px 28px rgba(0,0,0,0.6)",
+      }}
+    >
+      <button
+        onClick={() => { onHide(menu.taskId); onClose(); }}
+        style={{
+          display: "flex", alignItems: "center", gap: 8, width: "100%",
+          padding: "7px 14px", background: "none", border: "none",
+          color: "rgba(255,255,255,0.75)", fontSize: 12, cursor: "pointer", textAlign: "left",
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.07)")}
+        onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+      >
+        <EyeOff size={13} /> Hide from Backlog
+      </button>
     </div>
   );
 }
@@ -258,12 +267,8 @@ function DayColumn({
   date, zoom, gcalEvents, localBlocks, calColors, eventColorOverrides,
   onLocalColorChange, onDrop, onEventClick,
 }: {
-  date: string;
-  zoom: number;
-  gcalEvents: GCalEvent[];
-  localBlocks: TimeBlock[];
-  calColors: Record<string, string>;
-  eventColorOverrides: Record<string, string>;
+  date: string; zoom: number; gcalEvents: GCalEvent[]; localBlocks: TimeBlock[];
+  calColors: Record<string, string>; eventColorOverrides: Record<string, string>;
   onLocalColorChange: (id: string, color: string) => void;
   onDrop: (e: React.DragEvent, date: string, hour: number) => void;
   onEventClick: (ev: GCalEvent) => void;
@@ -271,72 +276,55 @@ function DayColumn({
   const [pickerBlockId, setPickerBlockId] = useState<string | null>(null);
   const START_HOUR = 5;
 
-  // Timed GCal events only (exclude all-day)
-  const gcalForDay = useMemo(() => {
-    return gcalEvents
+  const gcalForDay = useMemo(() =>
+    gcalEvents
       .filter((e) => e.start.dateTime && e.start.dateTime.startsWith(date))
       .map((e) => {
-        const start = new Date(e.start.dateTime!);
-        const end   = new Date(e.end.dateTime   || e.end.date + "T23:59:59");
-        return { ...e, startMin: start.getHours() * 60 + start.getMinutes(),
-          endMin: end.getHours() * 60 + end.getMinutes() };
-      });
-  }, [gcalEvents, date]);
+        const s = new Date(e.start.dateTime!);
+        const en = new Date(e.end.dateTime || e.end.date + "T23:59:59");
+        return { ...e, startMin: s.getHours() * 60 + s.getMinutes(),
+          endMin: en.getHours() * 60 + en.getMinutes() };
+      })
+  , [gcalEvents, date]);
 
-  const localForDay = useMemo(() => {
-    return localBlocks
+  const localForDay = useMemo(() =>
+    localBlocks
       .filter((b) => (b.start_time || "").startsWith(date))
       .map((b) => {
-        const start = new Date(b.start_time);
-        const end   = new Date(b.end_time);
-        return { ...b, startMin: start.getHours() * 60 + start.getMinutes(),
-          endMin: end.getHours() * 60 + end.getMinutes() };
-      });
-  }, [localBlocks, date]);
+        const s = new Date(b.start_time); const en = new Date(b.end_time);
+        return { ...b, startMin: s.getHours() * 60 + s.getMinutes(),
+          endMin: en.getHours() * 60 + en.getMinutes() };
+      })
+  , [localBlocks, date]);
 
   const gcalLayout  = computeLayout(gcalForDay);
   const localLayout = computeLayout(localForDay);
   const totalH      = HOURS.length * zoom;
 
   return (
-    <div
-      style={{ flex: 1, borderLeft: "1px solid rgba(255,255,255,0.03)",
-        position: "relative", height: totalH }}
-      onDragOver={(e) => e.preventDefault()}
-    >
+    <div style={{ flex: 1, borderLeft: "1px solid rgba(255,255,255,0.03)",
+      position: "relative", height: totalH }}
+      onDragOver={(e) => e.preventDefault()}>
       {HOURS.map((h) => (
         <div key={h} onDrop={(e) => onDrop(e, date, h)} onDragOver={(e) => e.preventDefault()}
           style={{ height: zoom, borderTop: "1px solid rgba(255,255,255,0.03)" }} />
       ))}
-
-      {/* GCal timed events */}
       {gcalLayout.map((ev) => {
         const top    = ((ev.startMin - START_HOUR * 60) / 60) * zoom;
         const height = Math.max(((ev.endMin - ev.startMin) / 60) * zoom, 18);
-        const wPct   = 100 / ev.totalCols;
-        const lPct   = ev.col * wPct;
-        const calColor   = calColors[ev.calendar_id] || "#4285f4";
-        const color      = eventColorOverrides[ev.id] || calColor;
+        const wPct   = 100 / ev.totalCols; const lPct = ev.col * wPct;
+        const calColor = calColors[ev.calendar_id] || "#4285f4";
+        const color    = eventColorOverrides[ev.id] || calColor;
         const start  = new Date(ev.start.dateTime!);
         return (
-          <div
-            key={ev.id}
-            onClick={() => onEventClick(ev)}
-            title={ev.summary}
-            style={{
-              position: "absolute", top, height,
-              left:  `calc(${lPct}% + 2px)`,
-              width: `calc(${wPct}% - 4px)`,
-              background: color + "1a",
-              borderLeft: `3px solid ${color}`,
-              borderRadius: "0 4px 4px 0",
-              padding: "3px 5px", overflow: "hidden",
-              zIndex: 10, cursor: "pointer",
-              transition: "filter 0.12s",
-            }}
+          <div key={ev.id} onClick={() => onEventClick(ev)} title={ev.summary}
+            style={{ position: "absolute", top, height,
+              left: `calc(${lPct}% + 2px)`, width: `calc(${wPct}% - 4px)`,
+              background: color + "1a", borderLeft: `3px solid ${color}`,
+              borderRadius: "0 4px 4px 0", padding: "3px 5px", overflow: "hidden",
+              zIndex: 10, cursor: "pointer", transition: "filter 0.12s" }}
             onMouseEnter={(e) => (e.currentTarget.style.filter = "brightness(1.25)")}
-            onMouseLeave={(e) => (e.currentTarget.style.filter = "")}
-          >
+            onMouseLeave={(e) => (e.currentTarget.style.filter = "")}>
             <div style={{ fontSize: 9, color, fontWeight: 700 }}>
               {start.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
             </div>
@@ -348,29 +336,19 @@ function DayColumn({
           </div>
         );
       })}
-
-      {/* Local time blocks */}
       {localLayout.map((block) => {
         const top    = ((block.startMin - START_HOUR * 60) / 60) * zoom;
         const height = Math.max(((block.endMin - block.startMin) / 60) * zoom, 18);
-        const wPct   = 100 / block.totalCols;
-        const lPct   = block.col * wPct;
+        const wPct   = 100 / block.totalCols; const lPct = block.col * wPct;
         const color  = block.color || "#e8a820";
         return (
           <div key={block.id}
             onClick={() => setPickerBlockId(pickerBlockId === block.id ? null : block.id)}
-            style={{
-              position: "absolute", top, height,
-              left:  `calc(${lPct}% + 2px)`,
-              width: `calc(${wPct}% - 4px)`,
-              background: color + "22",
-              borderLeft: `3px solid ${color}`,
-              borderRadius: "0 4px 4px 0",
-              padding: "3px 5px", overflow: "visible",
-              cursor: "pointer",
-              zIndex: pickerBlockId === block.id ? 50 : 20,
-            }}
-          >
+            style={{ position: "absolute", top, height,
+              left: `calc(${lPct}% + 2px)`, width: `calc(${wPct}% - 4px)`,
+              background: color + "22", borderLeft: `3px solid ${color}`,
+              borderRadius: "0 4px 4px 0", padding: "3px 5px", overflow: "visible",
+              cursor: "pointer", zIndex: pickerBlockId === block.id ? 50 : 20 }}>
             {height >= 20 && (
               <div style={{ fontSize: 10, fontWeight: 700, color, whiteSpace: "nowrap",
                 overflow: "hidden", textOverflow: "ellipsis", letterSpacing: "0.03em" }}>
@@ -389,23 +367,16 @@ function DayColumn({
   );
 }
 
-// ── All-day events strip for a single date ────────────────────────────────────
+// ── All-day strip ─────────────────────────────────────────────────────────────
 function AllDayStrip({ date, gcalEvents, calColors, eventColorOverrides, onEventClick }: {
-  date: string;
-  gcalEvents: GCalEvent[];
-  calColors: Record<string, string>;
-  eventColorOverrides: Record<string, string>;
-  onEventClick: (ev: GCalEvent) => void;
+  date: string; gcalEvents: GCalEvent[]; calColors: Record<string, string>;
+  eventColorOverrides: Record<string, string>; onEventClick: (ev: GCalEvent) => void;
 }) {
   const allDay = gcalEvents.filter((e) => {
     if (e.start.dateTime) return false;
-    const start = e.start.date!;
-    const end   = e.end.date   || start;
-    return date >= start && date < end;
+    return date >= (e.start.date || "") && date < (e.end.date || e.start.date || "");
   });
-
   if (!allDay.length) return <div style={{ height: 4 }} />;
-
   return (
     <div style={{ padding: "2px 4px", display: "flex", flexDirection: "column",
       gap: 2, borderLeft: "1px solid rgba(255,255,255,0.03)" }}>
@@ -413,19 +384,13 @@ function AllDayStrip({ date, gcalEvents, calColors, eventColorOverrides, onEvent
         const calColor = calColors[ev.calendar_id] || "#4285f4";
         const color    = eventColorOverrides[ev.id] || calColor;
         return (
-          <div key={ev.id} onClick={() => onEventClick(ev)}
-            title={ev.summary}
-            style={{
-              background: color + "22", borderLeft: `2px solid ${color}`,
-              borderRadius: "0 3px 3px 0",
-              padding: "1px 5px", fontSize: 9, fontWeight: 600,
-              color, whiteSpace: "nowrap", overflow: "hidden",
-              textOverflow: "ellipsis", cursor: "pointer",
-              lineHeight: "14px",
-            }}
+          <div key={ev.id} onClick={() => onEventClick(ev)} title={ev.summary}
+            style={{ background: color + "22", borderLeft: `2px solid ${color}`,
+              borderRadius: "0 3px 3px 0", padding: "1px 5px", fontSize: 9,
+              fontWeight: 600, color, whiteSpace: "nowrap", overflow: "hidden",
+              textOverflow: "ellipsis", cursor: "pointer", lineHeight: "14px" }}
             onMouseEnter={(e) => (e.currentTarget.style.filter = "brightness(1.3)")}
-            onMouseLeave={(e) => (e.currentTarget.style.filter = "")}
-          >
+            onMouseLeave={(e) => (e.currentTarget.style.filter = "")}>
             {ev.summary}
           </div>
         );
@@ -441,7 +406,8 @@ export function CalendarPage() {
   const [gcalToken, setGcalToken]       = useState<string | null>(getStoredToken());
   const [calendars, setCalendars]       = useState<GoogleCalendar[]>([]);
   const [calColors, setCalColors]       = useState<Record<string, string>>({});
-  const [zoom, setZoom]                 = useState(80);
+  // ── Sticky zoom: initialise from localStorage ──────────────────────────────
+  const [zoom, setZoom]                 = useState<number>(getSavedZoom);
   const [selectedCalendarIds, setSelectedCalendarIds] = useState<string[]>(() => {
     try { const s = localStorage.getItem(GC_SELECTED_CALS_KEY); return s ? JSON.parse(s) : ["primary"]; }
     catch { return ["primary"]; }
@@ -450,7 +416,11 @@ export function CalendarPage() {
   const [gcalLoading, setGcalLoading]   = useState(false);
   const [showCalendarList, setShowCalendarList] = useState(false);
   const [eventModal, setEventModal]     = useState<GCalEvent | null>(null);
-  const [eventColorOverrides, setEventColorOverrides] = useState<Record<string, string>>(getEventColorOverrides());
+  const [eventColorOverrides, setEventColorOverrides] = useState<Record<string, string>>(getEventColorOverrides);
+  // ── Hideable tasks ─────────────────────────────────────────────────────────
+  const [hiddenTaskIds, setHiddenTaskIds] = useState<string[]>(getHiddenTaskIds);
+  const [showHidden, setShowHidden]       = useState(false);
+  const [ctxMenu, setCtxMenu]             = useState<CtxMenu | null>(null);
 
   const qc = useQueryClient();
 
@@ -460,6 +430,11 @@ export function CalendarPage() {
     return [selectedDate, addDays(selectedDate, 1), addDays(selectedDate, 2)];
   }, [selectedDate, viewMode]);
 
+  // Persist zoom whenever it changes
+  useEffect(() => {
+    try { localStorage.setItem(CAL_ZOOM_KEY, String(zoom)); } catch { /* */ }
+  }, [zoom]);
+
   // Handle OAuth redirect
   useEffect(() => {
     const hash = window.location.hash;
@@ -468,7 +443,7 @@ export function CalendarPage() {
       const token     = params.get("access_token");
       const expiresIn = parseInt(params.get("expires_in") || "3600", 10);
       const errorMsg  = params.get("error");
-      if (errorMsg) { toast.error(`Google auth error: ${errorMsg}`); }
+      if (errorMsg) toast.error(`Google auth error: ${errorMsg}`);
       else if (token) { storeToken(token, expiresIn); setGcalToken(token); toast.success("Google Calendar connected!"); }
       window.history.replaceState(null, "", window.location.pathname + window.location.search);
     }
@@ -489,7 +464,6 @@ export function CalendarPage() {
       const data = await res.json();
       const items: GoogleCalendar[] = data.items ?? [];
       setCalendars(items);
-      // Build color map: calId → backgroundColor
       const map: Record<string, string> = {};
       items.forEach((cal) => { if (cal.backgroundColor) map[cal.id] = cal.backgroundColor; });
       setCalColors(map);
@@ -534,7 +508,30 @@ export function CalendarPage() {
     setEventColorOverrides((prev) => ({ ...prev, [eventId]: color }));
   };
 
-  // ── Backlog ─────────────────────────────────────────────────────────────────
+  // ── Task hide / unhide helpers ─────────────────────────────────────────────
+  const hideTask = (taskId: string) => {
+    setHiddenTaskIds((prev) => {
+      const next = [...prev, taskId];
+      saveHiddenTaskIds(next);
+      return next;
+    });
+    toast("Task hidden from backlog", { icon: "👁" });
+  };
+  const unhideAll = () => {
+    setHiddenTaskIds([]);
+    saveHiddenTaskIds([]);
+    setShowHidden(false);
+    toast.success("All tasks restored");
+  };
+  const unhideOne = (taskId: string) => {
+    setHiddenTaskIds((prev) => {
+      const next = prev.filter((id) => id !== taskId);
+      saveHiddenTaskIds(next);
+      return next;
+    });
+  };
+
+  // ── Backlog ────────────────────────────────────────────────────────────────
   const apiBase = import.meta.env.VITE_API_BASE_URL || "";
   const { data: tasks = [] } = useQuery<Task[]>({
     queryKey: ["tasks-backlog-calendar"],
@@ -545,12 +542,11 @@ export function CalendarPage() {
         .catch(() => []),
     refetchInterval: 60_000,
   });
-  // Show all non-done / non-cancelled tasks in backlog
-  const backlogTasks = tasks.filter(
-    (t) => t.status !== "done" && t.status !== "cancelled"
-  );
+  const allActiveTasks = tasks.filter((t) => t.status !== "done" && t.status !== "cancelled");
+  const backlogTasks   = allActiveTasks.filter((t) => !hiddenTaskIds.includes(t.id));
+  const hiddenTasks    = allActiveTasks.filter((t) =>  hiddenTaskIds.includes(t.id));
 
-  // ── Local time blocks ────────────────────────────────────────────────────────
+  // ── Local time blocks ─────────────────────────────────────────────────────
   const { data: localBlocks = [] } = useQuery<TimeBlock[]>({
     queryKey: ["time-blocks", selectedDate, viewMode],
     queryFn: async () => {
@@ -567,12 +563,10 @@ export function CalendarPage() {
     mutationFn: ({ id, color }: { id: string; color: string }) =>
       axios.patch(`${apiBase}/api/time-blocks/${id}/`, { color }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["time-blocks"] }); toast.success("Color updated"); },
-    onError: () => toast.error("Failed to update color"),
+    onError:   () => toast.error("Failed to update color"),
   });
 
-  const onDragStart = (e: React.DragEvent, taskId: string) => {
-    e.dataTransfer.setData("taskId", taskId);
-  };
+  const onDragStart = (e: React.DragEvent, taskId: string) => e.dataTransfer.setData("taskId", taskId);
 
   const onDrop = async (e: React.DragEvent, date: string, hour: number) => {
     const taskId = e.dataTransfer.getData("taskId");
@@ -580,8 +574,8 @@ export function CalendarPage() {
     const task = tasks.find((t) => t.id === taskId);
     try {
       await axios.post(`${apiBase}/api/time-blocks/`, {
-        title:      task?.title || "Scheduled Task",
-        date, start_time: `${date}T${String(hour).padStart(2, "0")}:00:00`,
+        title: task?.title || "Scheduled Task", date,
+        start_time: `${date}T${String(hour).padStart(2, "0")}:00:00`,
         end_time:   `${date}T${String(hour + 1).padStart(2, "0")}:00:00`,
         task_id: taskId, color: "#e8a820",
       });
@@ -590,18 +584,19 @@ export function CalendarPage() {
     } catch { toast.error("Failed to schedule task"); }
   };
 
-  const isToday  = selectedDate === new Date().toISOString().split("T")[0];
-  const now      = new Date();
-  const nowMin   = now.getHours() * 60 + now.getMinutes();
-  const nowTop   = ((nowMin - 5 * 60) / 60) * zoom;
+  const isToday = selectedDate === new Date().toISOString().split("T")[0];
+  const now     = new Date();
+  const nowMin  = now.getHours() * 60 + now.getMinutes();
+  const nowTop  = ((nowMin - 5 * 60) / 60) * zoom;
 
-  // Check if any date has all-day events
   const hasAllDayEvents = dates.some((d) =>
     gcalEvents.some((e) => !e.start.dateTime && d >= (e.start.date || "") && d < (e.end.date || e.start.date || ""))
   );
 
   return (
-    <div className="sb-shell" style={{ height: "100vh", display: "flex", flexDirection: "column", background: "#162a1c" }}>
+    <div className="sb-shell" style={{ height: "100vh", display: "flex", flexDirection: "column", background: "#162a1c" }}
+      onClick={() => setCtxMenu(null)}>
+
       {/* ── Top bar ── */}
       <div className="top-bar">
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -620,13 +615,17 @@ export function CalendarPage() {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ display: "flex", gap: 5 }}>
+          {/* Zoom controls — current level shown */}
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <button onClick={() => setZoom((z) => Math.max(40, z - 20))}
-              style={{ background: "rgba(255,255,255,0.1)", border: "none", color: "#fff", padding: 5, borderRadius: 4, cursor: "pointer" }}>
+              style={{ background: "rgba(255,255,255,0.1)", border: "none", color: "#fff",
+                padding: 5, borderRadius: 4, cursor: "pointer" }}>
               <Minimize2 size={12} />
             </button>
+            <span style={{ fontSize: 9, opacity: 0.4, minWidth: 28, textAlign: "center" }}>{zoom}px</span>
             <button onClick={() => setZoom((z) => Math.min(160, z + 20))}
-              style={{ background: "rgba(255,255,255,0.1)", border: "none", color: "#fff", padding: 5, borderRadius: 4, cursor: "pointer" }}>
+              style={{ background: "rgba(255,255,255,0.1)", border: "none", color: "#fff",
+                padding: 5, borderRadius: 4, cursor: "pointer" }}>
               <Maximize2 size={12} />
             </button>
           </div>
@@ -634,12 +633,10 @@ export function CalendarPage() {
           {!gcalToken ? (
             <button onClick={connectGoogleCalendar}
               title={!GOOGLE_CLIENT_ID ? "VITE_GOOGLE_CLIENT_ID not set" : "Connect Google Calendar"}
-              style={{
-                background: GOOGLE_CLIENT_ID ? "#4285f4" : "rgba(255,255,255,0.1)",
+              style={{ background: GOOGLE_CLIENT_ID ? "#4285f4" : "rgba(255,255,255,0.1)",
                 border: "none", color: "#fff", padding: "4px 10px", borderRadius: 4,
                 fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", gap: 4,
-                opacity: GOOGLE_CLIENT_ID ? 1 : 0.5,
-              }}>
+                opacity: GOOGLE_CLIENT_ID ? 1 : 0.5 }}>
               <LogIn size={12} /> CONNECT GCAL
             </button>
           ) : (
@@ -668,7 +665,6 @@ export function CalendarPage() {
                               setSelectedCalendarIds((prev) =>
                                 prev.includes(cal.id) ? prev.filter((x) => x !== cal.id) : [...prev, cal.id]
                               )} />
-                          {/* Color swatch */}
                           <span style={{ width: 10, height: 10, borderRadius: "50%",
                             backgroundColor: color, flexShrink: 0, display: "inline-block" }} />
                           <span style={{ textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
@@ -697,35 +693,82 @@ export function CalendarPage() {
         <div style={{ width: 200, background: "#1e3629", borderRight: "2px solid #162a1c",
           padding: 15, overflowY: "auto", display: "flex", flexDirection: "column" }}>
           <div style={{ fontSize: 9, opacity: 0.5, marginBottom: 4, letterSpacing: "0.1em" }}>BACKLOG</div>
-          <div style={{ fontSize: 9, opacity: 0.3, marginBottom: 12 }}>Drag to schedule →</div>
-          {backlogTasks.length === 0 ? (
+          <div style={{ fontSize: 9, opacity: 0.3, marginBottom: 12 }}>Drag → schedule · Right-click → hide</div>
+
+          {backlogTasks.length === 0 && hiddenTasks.length === 0 && (
             <div style={{ fontSize: 10, opacity: 0.25, fontStyle: "italic", textAlign: "center", marginTop: 20 }}>
               All clear
             </div>
-          ) : (
-            backlogTasks.map((task) => (
-              <div key={task.id} draggable onDragStart={(e) => onDragStart(e, task.id)}
-                style={{ background: "rgba(0,0,0,0.2)", padding: "8px 10px", borderRadius: 4,
-                  marginBottom: 7, fontSize: 11, borderLeft: "3px solid #e8a820",
-                  cursor: "grab", lineHeight: 1.3 }}>
-                <div style={{ fontWeight: 600, marginBottom: 2 }}>{task.title}</div>
-                <div style={{ fontSize: 9, opacity: 0.45, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                  {task.status === "today" ? "📌 Today"
-                    : task.status === "in_progress" ? "⚡ Active"
-                    : task.status === "inbox" ? "📥 Inbox"
-                    : task.status}
-                </div>
+          )}
+
+          {backlogTasks.map((task) => (
+            <div key={task.id} draggable
+              onDragStart={(e) => onDragStart(e, task.id)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setCtxMenu({ x: e.clientX, y: e.clientY, taskId: task.id });
+              }}
+              style={{ background: "rgba(0,0,0,0.2)", padding: "8px 10px", borderRadius: 4,
+                marginBottom: 7, fontSize: 11, borderLeft: "3px solid #e8a820",
+                cursor: "grab", lineHeight: 1.3, userSelect: "none" }}>
+              <div style={{ fontWeight: 600, marginBottom: 2 }}>{task.title}</div>
+              <div style={{ fontSize: 9, opacity: 0.45, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                {task.status === "today" ? "📌 Today"
+                  : task.status === "in_progress" ? "⚡ Active"
+                  : task.status === "inbox" ? "📥 Inbox"
+                  : task.status}
               </div>
-            ))
+            </div>
+          ))}
+
+          {/* ── Hidden tasks footer ── */}
+          {hiddenTasks.length > 0 && (
+            <div style={{ marginTop: "auto", paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+              <button onClick={() => setShowHidden((v) => !v)}
+                style={{ display: "flex", alignItems: "center", gap: 6, background: "none",
+                  border: "none", color: "rgba(255,255,255,0.35)", fontSize: 10,
+                  cursor: "pointer", padding: 0, width: "100%" }}>
+                {showHidden ? <EyeOff size={11} /> : <Eye size={11} />}
+                {hiddenTasks.length} hidden task{hiddenTasks.length > 1 ? "s" : ""}
+              </button>
+
+              {showHidden && (
+                <div style={{ marginTop: 8 }}>
+                  {hiddenTasks.map((task) => (
+                    <div key={task.id}
+                      style={{ display: "flex", alignItems: "center", gap: 6,
+                        padding: "5px 6px", marginBottom: 4,
+                        background: "rgba(0,0,0,0.15)", borderRadius: 4,
+                        borderLeft: "3px solid rgba(255,255,255,0.1)" }}>
+                      <span style={{ flex: 1, fontSize: 10, opacity: 0.4,
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {task.title}
+                      </span>
+                      <button onClick={() => unhideOne(task.id)}
+                        title="Restore"
+                        style={{ background: "none", border: "none",
+                          color: "rgba(255,255,255,0.3)", cursor: "pointer", padding: 2, flexShrink: 0 }}>
+                        <Eye size={11} />
+                      </button>
+                    </div>
+                  ))}
+                  <button onClick={unhideAll}
+                    style={{ width: "100%", marginTop: 4, padding: "4px 0",
+                      background: "rgba(255,255,255,0.05)", border: "none",
+                      color: "rgba(255,255,255,0.35)", fontSize: 9, cursor: "pointer",
+                      borderRadius: 4, letterSpacing: "0.08em" }}>
+                    RESTORE ALL
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
         {/* ── Calendar grid ── */}
         <div style={{ flex: 1, overflowY: "auto", background: "#162a1c" }}>
-          {/* Date + all-day header (sticky) */}
           <div style={{ background: "#1e3629", position: "sticky", top: 0, zIndex: 50,
             borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-            {/* Date row */}
             <div style={{ display: "flex" }}>
               <div style={{ width: 60 }} />
               {dates.map((d) => (
@@ -738,8 +781,7 @@ export function CalendarPage() {
                 </div>
               ))}
             </div>
-            {/* All-day strip — only render row if there are any all-day events */}
-            {(gcalToken && (hasAllDayEvents || true)) && (
+            {gcalToken && (
               <div style={{ display: "flex", minHeight: 6 }}>
                 <div style={{ width: 60, display: "flex", alignItems: "center",
                   justifyContent: "flex-end", paddingRight: 6 }}>
@@ -756,9 +798,7 @@ export function CalendarPage() {
             )}
           </div>
 
-          {/* Time grid */}
           <div style={{ display: "flex", position: "relative" }}>
-            {/* Hour labels */}
             <div style={{ width: 60, flexShrink: 0 }}>
               {HOURS.map((h) => (
                 <div key={h} style={{ height: zoom, display: "flex", alignItems: "flex-start",
@@ -769,8 +809,6 @@ export function CalendarPage() {
                 </div>
               ))}
             </div>
-
-            {/* Day columns */}
             {dates.map((date) => (
               <DayColumn key={date} date={date} zoom={zoom}
                 gcalEvents={gcalEvents} localBlocks={localBlocks}
@@ -778,8 +816,6 @@ export function CalendarPage() {
                 onLocalColorChange={(id, color) => colorMutation.mutate({ id, color })}
                 onDrop={onDrop} onEventClick={setEventModal} />
             ))}
-
-            {/* Current time line */}
             {isToday && nowMin >= 5 * 60 && nowMin <= 23 * 60 && (
               <div style={{ position: "absolute", top: nowTop, left: 60, right: 0,
                 height: 2, background: "#f43f5e", zIndex: 30, pointerEvents: "none", opacity: 0.85 }}>
@@ -793,13 +829,18 @@ export function CalendarPage() {
 
       {/* ── Event detail modal ── */}
       {eventModal && (
-        <EventModal
-          event={eventModal}
+        <EventModal event={eventModal}
           calColor={calColors[eventModal.calendar_id] || "#4285f4"}
           currentColor={eventColorOverrides[eventModal.id] || ""}
           onColorChange={(color) => handleEventColorChange(eventModal.id, color)}
-          onClose={() => setEventModal(null)}
-        />
+          onClose={() => setEventModal(null)} />
+      )}
+
+      {/* ── Right-click context menu ── */}
+      {ctxMenu && (
+        <TaskContextMenu menu={ctxMenu}
+          onHide={hideTask}
+          onClose={() => setCtxMenu(null)} />
       )}
     </div>
   );
