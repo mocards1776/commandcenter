@@ -35,6 +35,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# NOTE: datetime.now() respects the TZ environment variable (set to America/Chicago in DO).
+# datetime.utcnow() always returns UTC regardless of TZ — never use it here.
+
 # ─── Auth ────────────────────────────────────────────────────
 from models import User
 
@@ -79,7 +82,7 @@ async def today_tasks(
     session: Session = Depends(db.get_session),
     user: User = Depends(get_current_user),
 ):
-    today = datetime.utcnow().date()
+    today = datetime.now().date()  # respects TZ=America/Chicago
     query = select(Task).where(
         (Task.user_id == user.id) &
         (Task.status.in_(["today", "in_progress"])) |
@@ -149,7 +152,7 @@ async def complete_task(
     if not task or task.user_id != user.id:
         raise HTTPException(status_code=404)
     task.status = "done"
-    task.completed_at = datetime.utcnow()
+    task.completed_at = datetime.now()  # respects TZ=America/Chicago
     session.commit()
     session.refresh(task)
     return task
@@ -372,7 +375,7 @@ async def get_habit_streak(
         return {"habit_id": habit_id, "streak": 0}
     
     streak = 0
-    today = datetime.utcnow().date()
+    today = datetime.now().date()  # respects TZ=America/Chicago
     for i, comp in enumerate(completions):
         expected_date = today - timedelta(days=i)
         if comp.completed_date == expected_date:
@@ -405,7 +408,7 @@ async def start_timer(
     session.execute(
         db.update(TimeEntry)
         .where((TimeEntry.user_id == user.id) & (TimeEntry.ended_at.is_(None)))
-        .values(ended_at=datetime.utcnow())
+        .values(ended_at=datetime.now())  # respects TZ=America/Chicago
     )
     
     entry = TimeEntry(
@@ -441,7 +444,9 @@ async def get_dashboard(
     session: Session = Depends(db.get_session),
     user: User = Depends(get_current_user),
 ):
-    today = datetime.utcnow().date()
+    now = datetime.now()  # respects TZ=America/Chicago
+    today = now.date()
+    today_start = datetime(today.year, today.month, today.day)
     
     today_tasks = session.execute(
         select(Task).where(
@@ -454,20 +459,20 @@ async def get_dashboard(
         select(Task).where(
             (Task.user_id == user.id) &
             (Task.status == "done") &
-            (Task.completed_at >= datetime(today.year, today.month, today.day))
+            (Task.completed_at >= today_start)
         )
     ).scalars().all()
     
     time_entries = session.execute(
         select(TimeEntry).where(
             (TimeEntry.user_id == user.id) &
-            (TimeEntry.started_at >= datetime(today.year, today.month, today.day))
+            (TimeEntry.started_at >= today_start)
         )
     ).scalars().all()
     
     total_seconds = 0
     for entry in time_entries:
-        end = entry.ended_at or datetime.utcnow()
+        end = entry.ended_at or datetime.now()  # respects TZ=America/Chicago
         total_seconds += int((end - entry.started_at).total_seconds())
     
     focus_score_today = sum(t.focus_score for t in completed_today if t.focus_score)
