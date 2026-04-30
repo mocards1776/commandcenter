@@ -61,7 +61,7 @@ function calcMonthPct(completions: { completed_date: string }[]): number {
   return Math.round((count / dayElapsed) * 100);
 }
 
-// Matches the .panel class from the global dashboard CSS
+// Scoreboard inset panel — used on the habits page only
 function slot(overrides?: React.CSSProperties): React.CSSProperties {
   return {
     background: "rgba(0,0,0,0.45)",
@@ -92,9 +92,6 @@ export function HabitRow({ habit, todayStr, last7 = [], isEven = false }: Props)
   const bestColor   = best   >= 14 ? "#f4c842" : best   >= 5  ? "#e8a820" : "rgba(240,236,224,0.4)";
   const mthColor    = mthPct >= 80 ? "#6dcf6d" : mthPct >= 50 ? "#e8a820" : "rgba(240,236,224,0.35)";
 
-  const timeStr = fmtTime(habit.time_hour, habit.time_minute);
-  const hasTime = habit.time_hour != null;
-
   const completeMut = useMutation({
     mutationFn: () => habitsApi.complete(habit.id, { completed_date: todayStr }),
     onSuccess: () => {
@@ -115,7 +112,120 @@ export function HabitRow({ habit, todayStr, last7 = [], isEven = false }: Props)
     isDoneToday ? uncompleteMut.mutate() : completeMut.mutate();
   };
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // DASHBOARD MODE — classic circle-checkbox + name + dots
+  // Only used when the dashboard passes no last7 prop
+  // ─────────────────────────────────────────────────────────────────────────
+  if (last7.length === 0) {
+    // Build last 8 days ending today
+    const last8 = Array.from({ length: 8 }, (_, i) => {
+      const d = new Date(todayStr + "T12:00:00");
+      d.setDate(d.getDate() - (7 - i));
+      return toCDT(d);
+    });
+
+    const rowBg = isEven ? "rgba(0,0,0,0.10)" : "transparent";
+
+    return (
+      <>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            padding: "7px 14px",
+            gap: 10,
+            borderBottom: "1px solid rgba(240,236,224,0.05)",
+            background: rowBg,
+            cursor: "default",
+            transition: "background 0.12s",
+          }}
+          onMouseEnter={e => (e.currentTarget.style.background = "rgba(232,168,32,0.04)")}
+          onMouseLeave={e => (e.currentTarget.style.background = rowBg)}
+        >
+          {/* Circle checkbox */}
+          <div
+            onClick={handleTodayClick}
+            title={isDoneToday ? "Mark incomplete" : "Mark complete"}
+            style={{ cursor: "pointer", flexShrink: 0, lineHeight: 0 }}
+          >
+            {isDoneToday ? (
+              <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+                <circle cx="11" cy="11" r="10" stroke="#e8a820" strokeWidth="1.5" />
+                <circle cx="11" cy="11" r="7" fill="#e8a820" />
+                <path d="M7.5 11l2.5 2.5 4.5-4.5" stroke="#1a2e1f" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            ) : (
+              <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+                <circle cx="11" cy="11" r="10" stroke="rgba(240,236,224,0.25)" strokeWidth="1.5" />
+              </svg>
+            )}
+          </div>
+
+          {/* Habit name */}
+          <div
+            onClick={() => setModalOpen(true)}
+            title="Edit habit"
+            style={{ flex: 1, cursor: "pointer", minWidth: 0 }}
+          >
+            <span style={{
+              fontFamily: "'Oswald', Arial, sans-serif",
+              fontWeight: 700,
+              fontSize: 13,
+              letterSpacing: "0.10em",
+              textTransform: "uppercase",
+              color: isDoneToday ? "#f0ece0" : "rgba(240,236,224,0.55)",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}>
+              {habit.icon && <span style={{ fontSize: 14, flexShrink: 0 }}>{habit.icon}</span>}
+              {habit.name}
+            </span>
+          </div>
+
+          {/* 8-day dot row */}
+          <div style={{ display: "flex", gap: 3, alignItems: "center", flexShrink: 0 }}>
+            {last8.map(d => {
+              const done  = doneSet.has(d);
+              const isT   = d === todayStr;
+              const isFut = d > todayStr;
+              return (
+                <div
+                  key={d}
+                  style={{
+                    width:  done ? 8 : isT ? 7 : 6,
+                    height: done ? 8 : isT ? 7 : 6,
+                    borderRadius: "50%",
+                    flexShrink: 0,
+                    background: done
+                      ? isT ? "#f4c842" : "rgba(232,168,32,0.55)"
+                      : isFut ? "rgba(240,236,224,0.06)"
+                      : isT  ? "rgba(232,168,32,0.18)"
+                      : "rgba(240,236,224,0.10)",
+                    border: isT && !done ? "1px solid rgba(232,168,32,0.35)" : "none",
+                    boxShadow: done && isT ? "0 0 6px rgba(244,200,66,0.55)" : "none",
+                    transition: "all 0.15s",
+                  }}
+                />
+              );
+            })}
+          </div>
+        </div>
+
+        <HabitModal open={modalOpen} onClose={() => setModalOpen(false)} habit={habit} />
+      </>
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // HABITS PAGE MODE — full scoreboard slot layout (UNCHANGED)
+  // ─────────────────────────────────────────────────────────────────────────
   const rowBg = isEven ? "rgba(0,0,0,0.12)" : "rgba(0,0,0,0.04)";
+  const timeStr = fmtTime(habit.time_hour, habit.time_minute);
+  const hasTime = habit.time_hour != null;
 
   return (
     <>
@@ -181,92 +291,68 @@ export function HabitRow({ habit, todayStr, last7 = [], isEven = false }: Props)
           </span>
         </div>
 
-        {/* ── DAY SLOTS (7-day full view) or TODAY slot (dashboard compact) ── */}
-        {last7.length > 0 ? (
-          <div style={{ display: "flex", flex: 1, gap: 4 }}>
-            {last7.map(dateStr => {
-              const isToday  = dateStr === todayStr;
-              const done     = doneSet.has(dateStr);
-              const missed   = dateStr < todayStr && !done;
+        {/* ── DAY SLOTS (7-day full view) ── */}
+        <div style={{ display: "flex", flex: 1, gap: 4 }}>
+          {last7.map(dateStr => {
+            const isToday  = dateStr === todayStr;
+            const done     = doneSet.has(dateStr);
+            const missed   = dateStr < todayStr && !done;
 
-              return (
-                <div
-                  key={dateStr}
-                  onClick={isToday ? handleTodayClick : undefined}
-                  title={
-                    isToday   ? (isDoneToday ? "Mark incomplete" : "Mark complete")
-                    : done    ? `Done ✓ ${dateStr}`
-                    : missed  ? `Missed ${dateStr}`
-                    : undefined
-                  }
-                  style={slot({
-                    flex: 1,
-                    height: 50,
-                    cursor: isToday ? "pointer" : "default",
-                    background: done
-                      ? isToday ? "rgba(232,168,32,0.22)" : "rgba(232,168,32,0.10)"
-                      : missed  ? "rgba(150,25,25,0.14)"
-                      : isToday ? "rgba(232,168,32,0.06)"
-                      : "rgba(0,0,0,0.45)",
-                    border: isToday
-                      ? `1.5px solid rgba(232,168,32,${isDoneToday ? "0.5" : "0.28"})`
-                      : "1.5px solid rgba(240,236,224,0.07)",
-                    boxShadow: done && isToday
-                      ? "inset 0 2px 8px rgba(0,0,0,0.35), 0 0 12px rgba(232,168,32,0.18)"
-                      : "inset 0 2px 8px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.03)",
-                  })}
-                >
-                  {done ? (
-                    <span style={{
-                      fontFamily: "'Oswald', Arial, sans-serif",
-                      fontSize: isToday ? 26 : 20,
-                      fontWeight: 900,
-                      lineHeight: 1,
-                      userSelect: "none",
-                      color: isToday ? "#f4c842" : "#c8962a",
-                      textShadow: isToday ? "0 0 14px rgba(244,200,66,0.6)" : "none",
-                    }}>✓</span>
-                  ) : missed ? (
-                    <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1, userSelect: "none", color: "rgba(200,50,50,0.45)" }}>✗</span>
-                  ) : isToday ? (
-                    <span style={{
-                      display: "inline-block",
-                      width: 15,
-                      height: 15,
-                      borderRadius: "50%",
-                      border: "2px solid rgba(232,168,32,0.42)",
-                      animation: "pulse-ring 2s ease-in-out infinite",
-                    }} />
-                  ) : (
-                    <span style={{ fontSize: 10, color: "rgba(240,236,224,0.07)" }}>—</span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          /* Dashboard compact: single TODAY slot */
-          <div
-            onClick={handleTodayClick}
-            title={isDoneToday ? "Mark incomplete" : "Mark complete"}
-            style={slot({
-              flex: 1,
-              height: 50,
-              cursor: "pointer",
-              background: isDoneToday ? "rgba(232,168,32,0.22)" : "rgba(0,0,0,0.45)",
-              border: `1.5px solid rgba(232,168,32,${isDoneToday ? "0.5" : "0.18"})`,
-              boxShadow: isDoneToday
-                ? "inset 0 2px 8px rgba(0,0,0,0.35), 0 0 12px rgba(232,168,32,0.18)"
-                : "inset 0 2px 8px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.03)",
-            })}
-          >
-            {isDoneToday ? (
-              <span style={{ fontFamily: "'Oswald',Arial,sans-serif", fontSize: 24, fontWeight: 900, color: "#f4c842", userSelect: "none", textShadow: "0 0 12px rgba(244,200,66,0.5)" }}>✓</span>
-            ) : (
-              <span style={{ display: "inline-block", width: 15, height: 15, borderRadius: "50%", border: "2px solid rgba(232,168,32,0.35)", animation: "pulse-ring 2s ease-in-out infinite" }} />
-            )}
-          </div>
-        )}
+            return (
+              <div
+                key={dateStr}
+                onClick={isToday ? handleTodayClick : undefined}
+                title={
+                  isToday   ? (isDoneToday ? "Mark incomplete" : "Mark complete")
+                  : done    ? `Done ✓ ${dateStr}`
+                  : missed  ? `Missed ${dateStr}`
+                  : undefined
+                }
+                style={slot({
+                  flex: 1,
+                  height: 50,
+                  cursor: isToday ? "pointer" : "default",
+                  background: done
+                    ? isToday ? "rgba(232,168,32,0.22)" : "rgba(232,168,32,0.10)"
+                    : missed  ? "rgba(150,25,25,0.14)"
+                    : isToday ? "rgba(232,168,32,0.06)"
+                    : "rgba(0,0,0,0.45)",
+                  border: isToday
+                    ? `1.5px solid rgba(232,168,32,${isDoneToday ? "0.5" : "0.28"})`
+                    : "1.5px solid rgba(240,236,224,0.07)",
+                  boxShadow: done && isToday
+                    ? "inset 0 2px 8px rgba(0,0,0,0.35), 0 0 12px rgba(232,168,32,0.18)"
+                    : "inset 0 2px 8px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.03)",
+                })}
+              >
+                {done ? (
+                  <span style={{
+                    fontFamily: "'Oswald', Arial, sans-serif",
+                    fontSize: isToday ? 26 : 20,
+                    fontWeight: 900,
+                    lineHeight: 1,
+                    userSelect: "none",
+                    color: isToday ? "#f4c842" : "#c8962a",
+                    textShadow: isToday ? "0 0 14px rgba(244,200,66,0.6)" : "none",
+                  }}>✓</span>
+                ) : missed ? (
+                  <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1, userSelect: "none", color: "rgba(200,50,50,0.45)" }}>✗</span>
+                ) : isToday ? (
+                  <span style={{
+                    display: "inline-block",
+                    width: 15,
+                    height: 15,
+                    borderRadius: "50%",
+                    border: "2px solid rgba(232,168,32,0.42)",
+                    animation: "pulse-ring 2s ease-in-out infinite",
+                  }} />
+                ) : (
+                  <span style={{ fontSize: 10, color: "rgba(240,236,224,0.07)" }}>—</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
 
         {/* ── WHITE DIVIDER (matches scoreboard's R|H|E bar) ── */}
         <div style={{ width: 3, height: 48, flexShrink: 0, background: "#dedad0", borderRadius: 1, opacity: 0.88 }} />
