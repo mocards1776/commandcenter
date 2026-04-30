@@ -8,7 +8,7 @@ import axios from "axios";
 const PRIORITY_WEIGHT: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
 const ACCENT: Record<string, string> = {
   critical: "#d94040", high: "#e8a820",
-  medium: "rgba(255,255,255,0.3)", low: "rgba(255,255,255,0.12)",
+  medium: "rgba(255,255,255,0.45)", low: "rgba(255,255,255,0.18)",
 };
 
 const GC_TOKEN_KEY    = "gcal_access_token";
@@ -33,7 +33,7 @@ function getSelectedCalIds(): string[] {
 
 interface NextEvent { title: string; startMs: number; }
 
-// ── Flip panel ──────────────────────────────────────────────────────────────
+// ── Flip panel ────────────────────────────────────────────────────────
 function FlipPanel({ value, label }: { value: string; label: string }) {
   const prevRef = useRef(value);
   const [shown, setShown]       = useState(value);
@@ -64,7 +64,7 @@ function FlipPanel({ value, label }: { value: string; label: string }) {
   );
 }
 
-// ── Countdown clock ─────────────────────────────────────────────────────────
+// ── Countdown clock ──────────────────────────────────────────────────
 function EventCountdown({ event }: { event: NextEvent }) {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
@@ -77,7 +77,7 @@ function EventCountdown({ event }: { event: NextEvent }) {
 
   if (diffMs <= 0) {
     return (
-      <div style={{ padding:"12px 14px 14px", display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
+      <div className="sb-row" style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:10, minHeight:52 }}>
         <div className="live-dot" />
         <div style={{ textAlign:"center" }}>
           <div style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:13, fontWeight:700,
@@ -96,112 +96,124 @@ function EventCountdown({ event }: { event: NextEvent }) {
   const mins      = totalMins % 60;
 
   return (
-    <div style={{ padding:"10px 14px 14px", textAlign:"center" }}>
-      <div style={{
-        fontFamily:"'Oswald',Arial,sans-serif", fontSize:12, fontWeight:700,
-        letterSpacing:"0.07em", textTransform:"uppercase", color:"#f5f0e0",
-        marginBottom:10, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
-      }}>
-        {event.title}
-      </div>
-      <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"center", gap:5 }}>
-        <FlipPanel value={String(hours).padStart(2,"0")} label="HRS" />
-        <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:30, fontWeight:700,
-          color:"rgba(232,168,32,0.3)", lineHeight:"52px", userSelect:"none" }}>:</span>
-        <FlipPanel value={String(mins).padStart(2,"0")} label="MIN" />
-        <div style={{ marginLeft:6, alignSelf:"flex-end", paddingBottom:4,
-          fontFamily:"'Oswald',Arial,sans-serif", fontSize:8, fontWeight:600,
-          letterSpacing:"0.12em", textTransform:"uppercase", color:"rgba(245,240,224,0.18)" }}>
-          @ {timeStr}
+    <div className="sb-row" style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:"10px 14px", gap:8, minHeight:52 }}>
+      <div style={{ flex:1, minWidth:0 }}>
+        <div style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:12, fontWeight:700,
+          letterSpacing:"0.07em", textTransform:"uppercase", color:"#f5f0e0",
+          whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", marginBottom:3 }}>
+          {event.title}
         </div>
+        <div style={{ fontSize:9, fontWeight:600, letterSpacing:"0.1em", textTransform:"uppercase",
+          color:"rgba(245,240,224,0.3)" }}>@ {timeStr}</div>
+      </div>
+      <div style={{ display:"flex", alignItems:"flex-start", gap:4, flexShrink:0 }}>
+        <FlipPanel value={String(hours).padStart(2,"0")} label="HRS" />
+        <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:24, fontWeight:700,
+          color:"rgba(232,168,32,0.3)", lineHeight:"44px", userSelect:"none" }}>:</span>
+        <FlipPanel value={String(mins).padStart(2,"0")} label="MIN" />
       </div>
     </div>
   );
 }
 
-// ── Empty slot ───────────────────────────────────────────────────────────────
+// ── Empty slot ─────────────────────────────────────────────────────────────
 function EmptySlot({ text }: { text: string }) {
   return (
-    <div style={{ padding:"12px 14px", textAlign:"center",
-      fontFamily:"'Oswald',Arial,sans-serif", fontSize:10,
-      color:"rgba(245,240,224,0.15)", letterSpacing:"0.14em",
-      textTransform:"uppercase", fontStyle:"italic" }}>
-      &mdash; {text} &mdash;
+    <div className="sb-row" style={{ display:"flex", alignItems:"center", justifyContent:"center", minHeight:52 }}>
+      <span style={{ fontFamily:"'Oswald',Arial,sans-serif",
+        fontSize:10, color:"rgba(245,240,224,0.15)", letterSpacing:"0.14em",
+        textTransform:"uppercase", fontStyle:"italic" }}>
+        &mdash; {text} &mdash;
+      </span>
     </div>
   );
 }
 
-// ── Task row (centered) ───────────────────────────────────────────────────────
+// ── Task row — scoreboard style matching sb-row ─────────────────────────────────
 function TaskSlot({ task, size, onClick }: { task: Task; size: "lg" | "sm"; onClick: () => void }) {
   const overdue = isOverdue(task.due_date);
   const accent  = ACCENT[task.priority];
+  const fsColor = task.focus_score >= 20 ? "#d94040" : task.focus_score >= 12 ? "#e8a820" : "rgba(245,240,224,0.3)";
+
+  // Panel tile for priority
+  const priLabel = task.priority === "critical" ? "CRIT"
+    : task.priority === "high" ? "HIGH"
+    : task.priority === "medium" ? "MED" : "LOW";
+
   return (
     <div
+      className="sb-row"
       onClick={onClick}
       title="View tasks"
       style={{
-        padding: size === "lg" ? "10px 14px 12px" : "7px 14px 9px",
-        textAlign: "center",
+        display: "grid",
+        gridTemplateColumns: "1fr auto auto",
+        alignItems: "center",
+        minHeight: size === "lg" ? 64 : 52,
         cursor: "pointer",
         transition: "background 0.1s",
-        borderTop: `3px solid ${accent}`,
+        borderBottom: "2px solid #1e3629",
       }}
-      onMouseEnter={e => (e.currentTarget.style.background = "rgba(232,168,32,0.04)")}
-      onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+      onMouseEnter={e => (e.currentTarget.style.background = "rgba(232,168,32,0.06)")}
+      onMouseLeave={e => (e.currentTarget.style.background = "")}
     >
+      {/* Left: task name as scoreboard label */}
       <div style={{
-        fontFamily: "'Oswald',Arial,sans-serif",
-        fontSize: size === "lg" ? 14 : 12,
-        fontWeight: 700,
-        letterSpacing: "0.06em",
-        textTransform: "uppercase",
-        color: "#f5f0e0",
-        whiteSpace: "nowrap",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        lineHeight: 1.2,
-        marginBottom: 4,
+        padding: "8px 8px 8px 16px",
+        borderRight: "2px solid #1e3629",
       }}>
-        {task.title}
-      </div>
-      <div style={{
-        fontFamily: "'Oswald',Arial,sans-serif",
-        fontSize: 9,
-        fontWeight: 600,
-        letterSpacing: "0.12em",
-        textTransform: "uppercase",
-        color: "rgba(245,240,224,0.3)",
-        display: "flex",
-        gap: 5,
-        flexWrap: "wrap",
-        justifyContent: "center",
-      }}>
-        <span style={{ color: accent }}>{task.priority.toUpperCase()}</span>
-        <span style={{ opacity: 0.35 }}>&middot;</span>
-        <span style={{ color: task.focus_score >= 20 ? "#d94040" : task.focus_score >= 12 ? "#e8a820" : "rgba(245,240,224,0.3)" }}>
-          FS:{task.focus_score}
-        </span>
-        {task.time_estimate_minutes && (
-          <><span style={{ opacity: 0.35 }}>&middot;</span>
-          <span>{task.time_estimate_minutes >= 60
-            ? `${Math.floor(task.time_estimate_minutes / 60)}h${task.time_estimate_minutes % 60 > 0 ? ` ${task.time_estimate_minutes % 60}m` : ""}`
-            : `${task.time_estimate_minutes}m`}
-          </span></>
-        )}
+        <div style={{
+          fontFamily: "'Oswald',Arial,sans-serif",
+          fontSize: size === "lg" ? 14 : 12,
+          fontWeight: 700,
+          letterSpacing: "0.07em",
+          textTransform: "uppercase",
+          color: "#f5f0e0",
+          lineHeight: 1.2,
+          marginBottom: 3,
+          overflow: "hidden",
+          display: "-webkit-box",
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: "vertical",
+        }}>
+          {task.title}
+        </div>
         {task.due_date && (
-          <><span style={{ opacity: 0.35 }}>&middot;</span>
-          <span style={{ color: overdue ? "#d94040" : "rgba(245,240,224,0.3)" }}>
+          <div style={{ fontSize: 8, fontWeight: 600, letterSpacing: "0.12em",
+            textTransform: "uppercase",
+            color: overdue ? "#d94040" : "rgba(245,240,224,0.25)" }}>
             {overdue ? "⚠ " : ""}{task.due_date}
-          </span></>
+          </div>
         )}
+      </div>
+
+      {/* Middle: priority tile */}
+      <div className="sb-cell" style={{ padding: "6px 8px" }}>
+        <div className="panel panel-sm" style={{ width: 44, height: 40 }}>
+          <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize: 11,
+            fontWeight: 700, letterSpacing: "0.06em", color: accent,
+            textTransform: "uppercase", lineHeight: 1 }}>
+            {priLabel}
+          </span>
+        </div>
+        <div className="panel-sub">PRIORITY</div>
+      </div>
+
+      {/* Right: focus score tile */}
+      <div className="sb-cell" style={{ padding: "6px 8px", borderRight: "none" }}>
+        <div className="panel panel-sm" style={{ width: 44, height: 40 }}>
+          <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize: 16,
+            fontWeight: 700, color: fsColor, lineHeight: 1 }}>
+            {task.focus_score}
+          </span>
+        </div>
+        <div className="panel-sub">FS</div>
       </div>
     </div>
   );
 }
 
-// ── Section header ───────────────────────────────────────────────────────────
-// Uses default panel-header padding (8px 14px) so its border-bottom gold line
-// sits at the same y-position as sb-header's border-bottom on the left panel.
+// ── Section header ─────────────────────────────────────────────────────────
 function SHead({ icon, label }: { icon: string; label: string }) {
   return (
     <div className="panel-header" style={{ justifyContent: "center" }}>
@@ -212,7 +224,7 @@ function SHead({ icon, label }: { icon: string; label: string }) {
   );
 }
 
-// ── Main export ───────────────────────────────────────────────────────────────
+// ── Main export ───────────────────────────────────────────────────────────
 export function NextUpPanel({ tasks }: { tasks: Task[] }) {
   const { setActivePage } = useUIStore();
   const apiBase = import.meta.env.VITE_API_BASE_URL || "";
@@ -266,25 +278,19 @@ export function NextUpPanel({ tasks }: { tasks: Task[] }) {
   const onDeckTask = sorted[1] ?? null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+    // Explicit background matches sb-shell (#2a4a3a) so colour is identical to left panel
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#2a4a3a" }}>
 
-      {/* NEXT TASK — panel-header uses default 8px padding to match sb-header height */}
       <SHead icon="▶" label="Next Task" />
       {nextTask
         ? <TaskSlot task={nextTask} size="lg" onClick={() => setActivePage("todos")} />
         : <EmptySlot text="Clear" />}
 
-      <div style={{ height: 1, background: "#1e3629" }} />
-
-      {/* ON DECK */}
       <SHead icon="⋯" label="On Deck" />
       {onDeckTask
         ? <TaskSlot task={onDeckTask} size="sm" onClick={() => setActivePage("todos")} />
         : <EmptySlot text="Nothing on deck" />}
 
-      <div style={{ height: 1, background: "#1e3629" }} />
-
-      {/* NEXT EVENT */}
       <SHead icon="◷" label="Next Event" />
       {nextEvent
         ? <EventCountdown event={nextEvent} />
