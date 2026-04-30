@@ -1,8 +1,8 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 from datetime import datetime, date
 from typing import Optional, List
 
-# ─── Auth ────────────────────────────────────────────────────────────
+# ─── Auth ─────────────────────────────────────────────────────
 class UserCreate(BaseModel):
     email: str
     password: str
@@ -19,7 +19,7 @@ class UserResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# ─── Tasks ───────────────────────────────────────────────────────────
+# ─── Tasks ────────────────────────────────────────────────────
 class TaskCreate(BaseModel):
     title: str
     description: Optional[str] = None
@@ -77,7 +77,7 @@ class TaskResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# ─── Projects ────────────────────────────────────────────────────────
+# ─── Projects ──────────────────────────────────────────────────
 class ProjectCreate(BaseModel):
     title: str
     description: Optional[str] = None
@@ -103,32 +103,63 @@ class ProjectResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# ─── Habits ──────────────────────────────────────────────────────────
-class HabitCreate(BaseModel):
-    title: str
-    description: Optional[str] = None
-    color: Optional[str] = None
-    frequency: str = "daily"
-
-class HabitUpdate(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
-    color: Optional[str] = None
-    frequency: Optional[str] = None
-
-class HabitResponse(BaseModel):
+# ─── Habits ────────────────────────────────────────────────────
+class HabitCompletionResponse(BaseModel):
     id: str
-    title: str
-    description: Optional[str]
-    color: Optional[str]
-    frequency: str
-    created_at: datetime
-    updated_at: datetime
-    
+    completed_date: date
+    note: Optional[str]
     class Config:
         from_attributes = True
 
-# ─── Time Entries ────────────────────────────────────────────────────
+class HabitCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    icon: Optional[str] = "\U0001f525"
+    color: Optional[str] = None
+    frequency: str = "daily"
+    custom_days: Optional[List[int]] = None
+    target_minutes: Optional[int] = None
+    time_hour: Optional[int] = None
+    time_minute: Optional[int] = 0
+
+class HabitUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    icon: Optional[str] = None
+    color: Optional[str] = None
+    frequency: Optional[str] = None
+    custom_days: Optional[List[int]] = None
+    target_minutes: Optional[int] = None
+    time_hour: Optional[int] = None
+    time_minute: Optional[int] = None
+
+class HabitResponse(BaseModel):
+    id: str
+    name: str
+    description: Optional[str]
+    icon: Optional[str]
+    color: Optional[str]
+    frequency: str
+    custom_days: Optional[List[int]] = None
+    target_minutes: Optional[int]
+    time_hour: Optional[int]
+    time_minute: Optional[int]
+    created_at: datetime
+    updated_at: datetime
+    completions: List[HabitCompletionResponse] = []
+
+    @validator("custom_days", pre=True, always=True)
+    def parse_custom_days(cls, v):
+        if not v:
+            return None
+        if isinstance(v, str):
+            return [int(x) for x in v.split(",") if x.strip().isdigit()]
+        return v
+
+    class Config:
+        from_attributes = True
+
+# ─── Time Entries ──────────────────────────────────────────────
 class TimeEntryCreate(BaseModel):
     task_id: Optional[str] = None
     habit_id: Optional[str] = None
@@ -146,7 +177,7 @@ class TimeEntryResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# ─── Time Blocks ─────────────────────────────────────────────────────
+# ─── Time Blocks ──────────────────────────────────────────────────
 class TimeBlockCreate(BaseModel):
     title: str
     start_time: datetime
@@ -170,7 +201,7 @@ class TimeBlockResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# ─── Notes ───────────────────────────────────────────────────────────
+# ─── Notes ─────────────────────────────────────────────────────
 class NoteCreate(BaseModel):
     title: Optional[str] = None
     content: str
@@ -192,7 +223,7 @@ class NoteResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# ─── Tags ────────────────────────────────────────────────────────────
+# ─── Tags ────────────────────────────────────────────────────────
 class TagCreate(BaseModel):
     name: str
     color: Optional[str] = None
@@ -206,7 +237,7 @@ class TagResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# ─── Categories ──────────────────────────────────────────────────────
+# ─── Categories ──────────────────────────────────────────────────
 class CategoryCreate(BaseModel):
     name: str
     color: Optional[str] = None
@@ -222,7 +253,7 @@ class CategoryResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# ─── CRM ─────────────────────────────────────────────────────────────
+# ─── CRM ────────────────────────────────────────────────────────
 class CRMPersonCreate(BaseModel):
     name: str
     email: Optional[str] = None
@@ -250,7 +281,7 @@ class CRMPersonResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# ─── Braindump ───────────────────────────────────────────────────────
+# ─── Braindump ───────────────────────────────────────────────────
 class BraindumpEntryCreate(BaseModel):
     raw_text: str
 
@@ -263,7 +294,7 @@ class BraindumpEntryResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# ─── Dashboard ───────────────────────────────────────────────────────
+# ─── Dashboard ──────────────────────────────────────────────────
 class DashboardSummary(BaseModel):
     tasks_today: int
     completed_today: int
