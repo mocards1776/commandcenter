@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from "react";
 import {
   Calendar as CalendarIcon,
   List,
@@ -18,6 +18,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import { cn } from "@/lib/utils";
+import { tasksApi } from "@/lib/api";
 import { toast } from "react-hot-toast";
 import type { Task, TimeBlock } from "@/types";
 
@@ -332,9 +333,10 @@ function DayColumn({
       {gcalLayout.map((ev) => {
         const rawH   = ((ev.endMin - ev.startMin) / 60) * zoom;
         const top    = ((ev.startMin - START_HOUR * 60) / 60) * zoom;
-        // Minimum rendered height: 22px so ultra-short events are still clickable
-        const height = Math.max(rawH, 22);
-        const isShort = rawH < 36; // compact single-line layout threshold
+        // Min height 30px — keeps ultra-short events readable and clickable
+        const height = Math.max(rawH, 30);
+        // Compact single-line layout for events under ~48min rendered height
+        const isShort = rawH < 48;
         const wPct   = 100 / ev.totalCols; const lPct = ev.col * wPct;
         const calColor = calColors[ev.calendar_id] || "#4285f4";
         const color    = eventColorOverrides[ev.id] || calColor;
@@ -350,10 +352,10 @@ function DayColumn({
             style={{
               position: "absolute", top, height,
               left: `calc(${lPct}% + 2px)`, width: `calc(${wPct}% - 4px)`,
-              background: color + (isHovered ? "30" : "1a"),
+              background: color + (isHovered ? "38" : "2c"),
               borderLeft: `3px solid ${color}`,
               borderRadius: "0 4px 4px 0",
-              padding: isShort ? "0 5px" : "3px 5px",
+              padding: isShort ? "1px 5px" : "3px 5px",
               overflow: "visible",
               zIndex: isHovered ? 40 : 10,
               cursor: "pointer",
@@ -364,31 +366,28 @@ function DayColumn({
               gap: isShort ? 4 : 1,
             }}
           >
-            {/* Short event: single-line "time · title" */}
             {isShort ? (
               <>
-                <span style={{ fontSize: 9, color, fontWeight: 700, flexShrink: 0, lineHeight: 1 }}>
+                <span style={{ fontSize: 10, color, fontWeight: 700, flexShrink: 0, lineHeight: 1.1, whiteSpace: "nowrap" }}>
                   {timeStr}
                 </span>
                 <span style={{
-                  fontSize: 10, fontWeight: 600, color: "#fff", lineHeight: 1,
+                  fontSize: 11, fontWeight: 700, color: "#fff", lineHeight: 1.1,
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1,
                 }}>
                   {ev.summary}
                 </span>
-                {/* Tooltip on hover for full title */}
                 {isHovered && ev.summary && (
                   <EventTooltip text={`${timeStr} · ${ev.summary}`} color={color} />
                 )}
               </>
             ) : (
-              /* Normal event: time on first line, title below */
               <>
-                <div style={{ fontSize: 9, color, fontWeight: 700, lineHeight: 1.3 }}>
+                <div style={{ fontSize: 10, color, fontWeight: 700, lineHeight: 1.3, whiteSpace: "nowrap" }}>
                   {timeStr}
                 </div>
                 <div style={{
-                  fontSize: 10, fontWeight: 600, color: "#fff", lineHeight: 1.25,
+                  fontSize: 11, fontWeight: 700, color: "#fff", lineHeight: 1.25,
                   overflow: "hidden", display: "-webkit-box",
                   WebkitLineClamp: Math.max(1, Math.floor((height - 20) / 14)),
                   WebkitBoxOrient: "vertical",
@@ -404,8 +403,8 @@ function DayColumn({
       {localLayout.map((block) => {
         const rawH   = ((block.endMin - block.startMin) / 60) * zoom;
         const top    = ((block.startMin - START_HOUR * 60) / 60) * zoom;
-        const height = Math.max(rawH, 22);
-        const isShort = rawH < 36;
+        const height = Math.max(rawH, 30);
+        const isShort = rawH < 48;
         const wPct   = 100 / block.totalCols; const lPct = block.col * wPct;
         const color  = block.color || "#e8a820";
         const isHov  = hoveredEventId === block.id;
@@ -417,10 +416,10 @@ function DayColumn({
             style={{
               position: "absolute", top, height,
               left: `calc(${lPct}% + 2px)`, width: `calc(${wPct}% - 4px)`,
-              background: color + "22",
+              background: color + "2c",
               borderLeft: `3px solid ${color}`,
               borderRadius: "0 4px 4px 0",
-              padding: isShort ? "0 5px" : "3px 5px",
+              padding: isShort ? "1px 5px" : "3px 5px",
               overflow: "visible",
               cursor: "pointer",
               zIndex: pickerBlockId === block.id ? 50 : isHov ? 40 : 20,
@@ -431,7 +430,7 @@ function DayColumn({
             {isShort ? (
               <>
                 <span style={{
-                  fontSize: 10, fontWeight: 700, color, whiteSpace: "nowrap",
+                  fontSize: 11, fontWeight: 700, color, whiteSpace: "nowrap",
                   overflow: "hidden", textOverflow: "ellipsis", flex: 1,
                 }}>
                   {block.title}
@@ -440,7 +439,7 @@ function DayColumn({
               </>
             ) : (
               <div style={{
-                fontSize: 10, fontWeight: 700, color, lineHeight: 1.25,
+                fontSize: 11, fontWeight: 700, color, lineHeight: 1.25,
                 overflow: "hidden", display: "-webkit-box",
                 WebkitLineClamp: Math.max(1, Math.floor((height - 8) / 14)),
                 WebkitBoxOrient: "vertical",
@@ -513,7 +512,6 @@ export function CalendarPage() {
   const [showHidden, setShowHidden]       = useState(false);
   const [ctxMenu, setCtxMenu]             = useState<CtxMenu | null>(null);
 
-  // Ref for the scrollable calendar grid — used for auto-scroll to current time
   const scrollRef = useRef<HTMLDivElement>(null);
   const didAutoScroll = useRef(false);
 
@@ -554,19 +552,23 @@ export function CalendarPage() {
     try { localStorage.setItem(GC_SELECTED_CALS_KEY, JSON.stringify(selectedCalendarIds)); } catch { /* */ }
   }, [selectedCalendarIds]);
 
-  // ── Auto-scroll to current time on load ───────────────────────────────────
-  useEffect(() => {
+  // ── Auto-scroll to current time on first render ───────────────────────────
+  // useLayoutEffect + rAF ensures the grid has painted and clientHeight is valid
+  useLayoutEffect(() => {
     if (didAutoScroll.current) return;
-    const el = scrollRef.current;
-    if (!el) return;
-    const now     = new Date();
-    const nowMin  = now.getHours() * 60 + now.getMinutes();
-    const nowTop  = ((nowMin - 5 * 60) / 60) * zoom;
-    // Scroll so the red bar is ~1/3 down the viewport
-    const offset  = Math.max(0, nowTop - el.clientHeight / 3);
-    el.scrollTop  = offset;
-    didAutoScroll.current = true;
-  }, [zoom]); // runs once zoom is settled
+    const raf = requestAnimationFrame(() => {
+      const el = scrollRef.current;
+      if (!el) return;
+      const now    = new Date();
+      const nowMin = now.getHours() * 60 + now.getMinutes();
+      const nowTop = ((nowMin - 5 * 60) / 60) * zoom;
+      // Position the red "now" bar ~1/3 down from the top of the viewport
+      const offset = Math.max(0, nowTop - el.clientHeight / 3);
+      el.scrollTop = offset;
+      didAutoScroll.current = true;
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [zoom]);
 
   const fetchCalendars = useCallback(async (token: string) => {
     try {
@@ -647,6 +649,8 @@ export function CalendarPage() {
   };
 
   // ── Backlog ────────────────────────────────────────────────────────────────
+  // Use tasksApi (shared instance) so the correct backend baseURL is always used.
+  // Raw axios.get with apiBase="" would hit the Vercel domain instead of DigitalOcean.
   const apiBase = import.meta.env.VITE_API_BASE_URL || "";
   const {
     data: tasks = [],
@@ -655,9 +659,8 @@ export function CalendarPage() {
   } = useQuery<Task[]>({
     queryKey: ["tasks-backlog-calendar"],
     queryFn: async () => {
-      const r = await axios.get(`${apiBase}/api/tasks/`, { params: { limit: 200 } });
-      const raw = Array.isArray(r.data) ? r.data : (r.data.results ?? []);
-      return raw;
+      const raw = await tasksApi.list({ limit: 200 });
+      return Array.isArray(raw) ? raw : ((raw as any).results ?? []);
     },
     retry: 2,
     refetchInterval: 60_000,
