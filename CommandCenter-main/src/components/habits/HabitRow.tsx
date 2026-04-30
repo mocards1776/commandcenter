@@ -13,27 +13,36 @@ function fmtTime(h:number, m:number):string {
   return `${h12}:${String(m).padStart(2,"0")} ${ampm}`;
 }
 
+// Returns "YYYY-MM-DD" in America/Chicago for a given Date object.
+// Using toISOString() would give UTC dates, which flip at 6/7 PM CDT.
+function toCDTDateStr(d: Date): string {
+  return d.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+}
+
 export function HabitRow({ habit, todayStr }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const qc = useQueryClient();
   const isDone = habit.completions.some(c => c.completed_date === todayStr);
-  const last7 = Array.from({length:7},(_,i)=>{
-    const d=new Date();
-    d.setDate(d.getDate()-(6-i));
-    const ds=d.toISOString().split("T")[0];
-    return{date:ds,done:habit.completions.some(c=>c.completed_date===ds),isToday:ds===todayStr};
+
+  // Build last-7-days grid using CDT dates, not UTC
+  const last7 = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    const ds = toCDTDateStr(d);  // CDT date string — won't flip at 7 PM
+    return { date: ds, done: habit.completions.some(c => c.completed_date === ds), isToday: ds === todayStr };
   });
+
   const completeMut = useMutation({
-    mutationFn:()=>habitsApi.complete(habit.id,{completed_date:todayStr}),
-    onSuccess:()=>{
-      qc.invalidateQueries({queryKey:["habits"]});
-      qc.invalidateQueries({queryKey:["dashboard"]});
-      toast.success(`${habit.name} ✓`,{icon:"🔥"});
+    mutationFn: () => habitsApi.complete(habit.id, { completed_date: todayStr }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["habits"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      toast.success(`${habit.name} ✓`, { icon: "🔥" });
     }
   });
   const uncompleteMut = useMutation({
-    mutationFn:()=>habitsApi.uncomplete(habit.id,todayStr),
-    onSuccess:()=>qc.invalidateQueries({queryKey:["habits"]})
+    mutationFn: () => habitsApi.uncomplete(habit.id, todayStr),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["habits"] })
   });
 
   const timeStr = (habit.time_hour != null)
@@ -45,20 +54,20 @@ export function HabitRow({ habit, todayStr }: Props) {
       <div className="habit-row">
         {/* Circular scoreboard checkbox */}
         <button type="button"
-          className={`sb-check ${isDone?"done":""}`}
-          onClick={e=>{e.stopPropagation();isDone?uncompleteMut.mutate():completeMut.mutate();}}
-          title={isDone?"Mark incomplete":"Mark complete"}>
-          {isDone&&"✓"}
+          className={`sb-check ${isDone ? "done" : ""}`}
+          onClick={e => { e.stopPropagation(); isDone ? uncompleteMut.mutate() : completeMut.mutate(); }}
+          title={isDone ? "Mark incomplete" : "Mark complete"}>
+          {isDone && "✓"}
         </button>
         {/* Name + time — click to open modal */}
-        <div style={{flex:1,cursor:"pointer",display:"flex",alignItems:"center",gap:6}} onClick={()=>setModalOpen(true)}>
-          {habit.icon&&<span style={{fontSize:12}}>{habit.icon}</span>}
-          <span className={`habit-name ${isDone?"done":""}`}>{habit.name}</span>
-          {timeStr&&<span style={{fontFamily:"'Oswald',Arial,sans-serif",fontSize:9,fontWeight:600,color:"rgba(232,168,32,0.45)",letterSpacing:"0.08em",marginLeft:2}}>{timeStr}</span>}
+        <div style={{ flex: 1, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }} onClick={() => setModalOpen(true)}>
+          {habit.icon && <span style={{ fontSize: 12 }}>{habit.icon}</span>}
+          <span className={`habit-name ${isDone ? "done" : ""}`}>{habit.name}</span>
+          {timeStr && <span style={{ fontFamily: "'Oswald',Arial,sans-serif", fontSize: 9, fontWeight: 600, color: "rgba(232,168,32,0.45)", letterSpacing: "0.08em", marginLeft: 2 }}>{timeStr}</span>}
         </div>
-        {/* 7-day history — circles */}
+        {/* 7-day history — circles, CDT-aware */}
         <div className="hdots">
-          {last7.map(({date,done,isToday})=>(
+          {last7.map(({ date, done, isToday }) => (
             <div
               key={date}
               title={date}
@@ -66,17 +75,17 @@ export function HabitRow({ habit, todayStr }: Props) {
                 width: isToday ? 9 : 6,
                 height: isToday ? 9 : 6,
                 borderRadius: "50%",
-                background: done ? "#e8a820" : "rgba(255,255,255,0.1)",
-                boxShadow: done ? "0 0 4px rgba(232,168,32,0.4)" : "none",
+                background: done ? "#e8a820" : (isToday ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.1)"),
+                boxShadow: done ? "0 0 4px rgba(232,168,32,0.4)" : (isToday ? "0 0 4px rgba(255,255,255,0.15)" : "none"),
                 transition: "all 0.15s",
                 flexShrink: 0,
               }}
             />
           ))}
         </div>
-        <span style={{fontFamily:"'Oswald',Arial,sans-serif",fontSize:10,fontWeight:600,color:"rgba(232,168,32,0.4)",marginLeft:4}}>{habit.completions.length}🔥</span>
+        <span style={{ fontFamily: "'Oswald',Arial,sans-serif", fontSize: 10, fontWeight: 600, color: "rgba(232,168,32,0.4)", marginLeft: 4 }}>{habit.completions.length}🔥</span>
       </div>
-      <HabitModal open={modalOpen} onClose={()=>setModalOpen(false)} habit={habit}/>
+      <HabitModal open={modalOpen} onClose={() => setModalOpen(false)} habit={habit} />
     </>
   );
 }

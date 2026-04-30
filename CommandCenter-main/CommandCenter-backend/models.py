@@ -10,12 +10,15 @@ Base = declarative_base()
 def gen_id():
     return str(uuid.uuid4())
 
+# NOTE: datetime.now() respects TZ=America/Chicago env var set in DigitalOcean.
+# datetime.utcnow() is hardcoded UTC and must never be used in this project.
+
 class User(Base):
     __tablename__ = "users"
     id = Column(String(36), primary_key=True, default=gen_id)
     email = Column(String(255), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
     
     tasks = relationship("Task", back_populates="user", cascade="all, delete-orphan")
     projects = relationship("Project", back_populates="user", cascade="all, delete-orphan")
@@ -44,12 +47,12 @@ class Task(Base):
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
-    status = Column(String(50), default="inbox", index=True)  # inbox, today, in_progress, waiting, done, cancelled
-    priority = Column(String(50), default="medium")  # low, medium, high, critical
+    status = Column(String(50), default="inbox", index=True)
+    priority = Column(String(50), default="medium")
     
-    importance = Column(Integer, default=3)  # 1-5
-    difficulty = Column(Integer, default=3)  # 1-5
-    focus_score = Column(Integer, default=0)  # computed
+    importance = Column(Integer, default=3)
+    difficulty = Column(Integer, default=3)
+    focus_score = Column(Integer, default=0)
     
     due_date = Column(Date, nullable=True, index=True)
     time_estimate_minutes = Column(Integer, nullable=True)
@@ -58,10 +61,10 @@ class Task(Base):
     order = Column(Integer, default=0)
     
     category_id = Column(String(36), ForeignKey("categories.id"), nullable=True)
-    tag_ids = Column(String(1000), default="")  # CSV of tag IDs
+    tag_ids = Column(String(1000), default="")
     
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     completed_at = Column(DateTime, nullable=True)
     
     user = relationship("User", back_populates="tasks")
@@ -81,11 +84,11 @@ class Project(Base):
     
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
-    status = Column(String(50), default="active")  # active, paused, completed, archived
+    status = Column(String(50), default="active")
     color = Column(String(50), nullable=True)
     
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
     user = relationship("User", back_populates="projects")
     tasks = relationship("Task", back_populates="project")
@@ -95,18 +98,18 @@ class Habit(Base):
     id = Column(String(36), primary_key=True, default=gen_id)
     user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
     
-    name = Column(String(255), nullable=False)       # was "title" — migrated via startup ALTER
+    name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     icon = Column(String(100), nullable=True)
     color = Column(String(50), nullable=True)
-    frequency = Column(String(50), default="daily")  # daily, weekdays, weekends, weekly, custom
-    custom_days = Column(String(100), nullable=True)  # CSV of day ints e.g. "1,2,3,4,5"
+    frequency = Column(String(50), default="daily")
+    custom_days = Column(String(100), nullable=True)
     target_minutes = Column(Integer, nullable=True)
     time_hour = Column(Integer, nullable=True)
     time_minute = Column(Integer, nullable=True, default=0)
     
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
     user = relationship("User", back_populates="habits")
     completions = relationship("HabitCompletion", cascade="all, delete-orphan")
@@ -117,7 +120,7 @@ class HabitCompletion(Base):
     habit_id = Column(String(36), ForeignKey("habits.id"), nullable=False)
     completed_date = Column(Date, nullable=False, index=True)
     note = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
 
 class TimeEntry(Base):
     __tablename__ = "time_entries"
@@ -130,13 +133,13 @@ class TimeEntry(Base):
     ended_at = Column(DateTime, nullable=True, index=True)
     note = Column(Text, nullable=True)
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
     
     user = relationship("User", back_populates="time_entries")
     
     @property
     def duration_seconds(self):
-        end = self.ended_at or datetime.utcnow()
+        end = self.ended_at or datetime.now()  # respects TZ=America/Chicago
         return int((end - self.started_at).total_seconds())
 
 class TimeBlock(Base):
@@ -149,8 +152,8 @@ class TimeBlock(Base):
     end_time = Column(DateTime, nullable=False)
     color = Column(String(50), nullable=True)
     
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
     user = relationship("User", back_populates="time_blocks")
 
@@ -163,8 +166,8 @@ class Note(Base):
     content = Column(Text, nullable=False)
     tags = Column(String(500), nullable=True)
     
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
     user = relationship("User", back_populates="notes")
 
@@ -176,7 +179,7 @@ class Tag(Base):
     name = Column(String(100), nullable=False)
     color = Column(String(50), nullable=True)
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
     
     user = relationship("User", back_populates="tags")
 
@@ -189,7 +192,7 @@ class Category(Base):
     color = Column(String(50), nullable=True)
     icon = Column(String(100), nullable=True)
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
     
     user = relationship("User", back_populates="categories")
 
@@ -205,8 +208,8 @@ class CRMPerson(Base):
     notes = Column(Text, nullable=True)
     last_contacted = Column(DateTime, nullable=True)
     
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
     user = relationship("User", back_populates="crm")
 
@@ -218,6 +221,6 @@ class BraindumpEntry(Base):
     raw_text = Column(Text, nullable=False)
     processed = Column(Boolean, default=False)
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
     
     user = relationship("User", back_populates="braindump")
