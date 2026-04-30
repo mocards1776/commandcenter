@@ -108,7 +108,7 @@ def parse_telegram_task(text: str) -> dict:
         raise ValueError("Usage: /task Your task title here")
 
     priority = "medium"
-    status = "inbox"
+    status = "today"
     importance = 3
     difficulty = 3
 
