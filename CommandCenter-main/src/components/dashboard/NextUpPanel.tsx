@@ -78,22 +78,39 @@ function EventCountdown({ event }: { event: NextEvent }) {
         alignItems:"center", minHeight:72,
         background:"#2a4a3a", borderBottom:"2px solid #1e3629",
       }}>
-        {/* Left: event name */}
+        {/* Left: date box + event name box side by side */}
         <div style={{ padding:"8px 8px 8px 14px", borderRight:"2px solid #1e3629",
           display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:4 }}>
-          <div style={{
-            background:"#1e3629", borderRadius:4,
-            border:"1px solid rgba(0,0,0,0.4)",
-            boxShadow:"inset 0 2px 4px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.05)",
-            padding:"6px 10px", width:"100%", textAlign:"center",
-            minHeight:46, display:"flex", alignItems:"center", justifyContent:"center",
-          }}>
-            <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:13, fontWeight:700,
-              letterSpacing:"0.05em", textTransform:"uppercase", color:"#f5f0e0",
-              lineHeight:1.2, display:"-webkit-box", WebkitLineClamp:2,
-              WebkitBoxOrient:"vertical", overflow:"hidden" }}>
-              {event.title}
-            </span>
+          <div style={{ display:"flex", gap:6, width:"100%", alignItems:"stretch" }}>
+            {/* Date box */}
+            <div style={{
+              background:"#1e3629", borderRadius:4,
+              border:"1px solid rgba(0,0,0,0.4)",
+              boxShadow:"inset 0 2px 4px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.05)",
+              padding:"6px 8px", flexShrink:0, minWidth:42,
+              display:"flex", alignItems:"center", justifyContent:"center",
+            }}>
+              <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:9, fontWeight:700,
+                letterSpacing:"0.14em", textTransform:"uppercase",
+                color:"rgba(232,168,32,0.7)", lineHeight:1.3, textAlign:"center" }}>
+                {dateStr.split(" ")[0]}<br />{dateStr.split(" ")[1]}
+              </span>
+            </div>
+            {/* Title box */}
+            <div style={{
+              background:"#1e3629", borderRadius:4,
+              border:"1px solid rgba(0,0,0,0.4)",
+              boxShadow:"inset 0 2px 4px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.05)",
+              padding:"6px 10px", flex:1, textAlign:"center",
+              minHeight:46, display:"flex", alignItems:"center", justifyContent:"center",
+            }}>
+              <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:13, fontWeight:700,
+                letterSpacing:"0.05em", textTransform:"uppercase", color:"#f5f0e0",
+                lineHeight:1.2, display:"-webkit-box", WebkitLineClamp:2,
+                WebkitBoxOrient:"vertical", overflow:"hidden" }}>
+                {event.title}
+              </span>
+            </div>
           </div>
           <div style={{ fontSize:8, fontWeight:600, letterSpacing:"0.1em",
             textTransform:"uppercase", color:"rgba(245,240,224,0.25)" }}>@ {timeStr}</div>
@@ -115,34 +132,48 @@ function EventCountdown({ event }: { event: NextEvent }) {
   const mins      = totalMins % 60;
   const urgent    = totalMins < 30;
 
+  // Gray color for COUNTDOWN label and colon — same as HRS/MIN panel-sub
+  const grayLabel = "rgba(245,240,224,0.35)";
+
   return (
     <div style={{
       display:"grid", gridTemplateColumns:"2fr 1fr 1fr",
       alignItems:"center", minHeight:72,
       background:"#2a4a3a", borderBottom:"2px solid #1e3629",
     }}>
-      {/* Left: date + event name tile */}
+      {/* Left: date box + event name box side by side */}
       <div style={{ padding:"8px 8px 8px 14px", borderRight:"2px solid #1e3629",
         display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:4 }}>
-        <div style={{
-          background:"#1e3629", borderRadius:4,
-          border:"1px solid rgba(0,0,0,0.4)",
-          boxShadow:"inset 0 2px 4px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.05)",
-          padding:"6px 10px", width:"100%", textAlign:"center",
-          minHeight:46, display:"flex", flexDirection:"column",
-          alignItems:"center", justifyContent:"center", gap:3,
-        }}>
-          <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:9, fontWeight:600,
-            letterSpacing:"0.18em", textTransform:"uppercase",
-            color:"rgba(232,168,32,0.55)", lineHeight:1 }}>
-            {dateStr}
-          </span>
-          <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:13, fontWeight:700,
-            letterSpacing:"0.05em", textTransform:"uppercase", color:"#f5f0e0",
-            lineHeight:1.2, display:"-webkit-box", WebkitLineClamp:2,
-            WebkitBoxOrient:"vertical", overflow:"hidden" }}>
-            {event.title}
-          </span>
+        <div style={{ display:"flex", gap:6, width:"100%", alignItems:"stretch" }}>
+          {/* Date box */}
+          <div style={{
+            background:"#1e3629", borderRadius:4,
+            border:"1px solid rgba(0,0,0,0.4)",
+            boxShadow:"inset 0 2px 4px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.05)",
+            padding:"6px 8px", flexShrink:0, minWidth:42,
+            display:"flex", alignItems:"center", justifyContent:"center",
+          }}>
+            <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:9, fontWeight:700,
+              letterSpacing:"0.14em", textTransform:"uppercase",
+              color:"rgba(232,168,32,0.7)", lineHeight:1.3, textAlign:"center" }}>
+              {dateStr.split(" ")[0]}<br />{dateStr.split(" ")[1]}
+            </span>
+          </div>
+          {/* Title box */}
+          <div style={{
+            background:"#1e3629", borderRadius:4,
+            border:"1px solid rgba(0,0,0,0.4)",
+            boxShadow:"inset 0 2px 4px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.05)",
+            padding:"6px 10px", flex:1, textAlign:"center",
+            minHeight:46, display:"flex", alignItems:"center", justifyContent:"center",
+          }}>
+            <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:13, fontWeight:700,
+              letterSpacing:"0.05em", textTransform:"uppercase", color:"#f5f0e0",
+              lineHeight:1.2, display:"-webkit-box", WebkitLineClamp:2,
+              WebkitBoxOrient:"vertical", overflow:"hidden" }}>
+              {event.title}
+            </span>
+          </div>
         </div>
         <div style={{ fontSize:8, fontWeight:600, letterSpacing:"0.1em",
           textTransform:"uppercase", color:"rgba(245,240,224,0.25)" }}>@ {timeStr}</div>
@@ -155,15 +186,16 @@ function EventCountdown({ event }: { event: NextEvent }) {
         alignItems:"center", justifyContent:"center",
         padding:"6px 4px", gap:4,
       }}>
+        {/* COUNTDOWN label — always gray */}
         <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:8, fontWeight:700,
-          letterSpacing:"0.22em", textTransform:"uppercase",
-          color: urgent ? "rgba(217,64,64,0.6)" : "rgba(232,168,32,0.4)" }}>
+          letterSpacing:"0.22em", textTransform:"uppercase", color: grayLabel }}>
           COUNTDOWN
         </span>
         <div style={{ display:"flex", alignItems:"flex-start", gap:4 }}>
           <FlipPanel value={String(hours).padStart(2,"0")} label="HRS" urgent={urgent} />
+          {/* Colon — always gray */}
           <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:24, fontWeight:700,
-            color: urgent ? "rgba(217,64,64,0.35)" : "rgba(232,168,32,0.3)",
+            color: grayLabel,
             lineHeight:"44px", userSelect:"none" }}>:</span>
           <FlipPanel value={String(mins).padStart(2,"0")} label="MIN" urgent={urgent} />
         </div>
