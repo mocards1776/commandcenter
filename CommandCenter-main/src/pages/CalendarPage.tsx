@@ -12,6 +12,8 @@ import {
   AlignLeft,
   EyeOff,
   Eye,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
@@ -42,8 +44,8 @@ const GC_TOKEN_KEY          = "gcal_access_token";
 const GC_EXPIRY_KEY         = "gcal_token_expiry";
 const GC_SELECTED_CALS_KEY  = "gcal_selected_calendar_ids";
 const GC_EVENT_COLORS_KEY   = "gcal_event_color_overrides";
-const CAL_ZOOM_KEY          = "cal_zoom_level";          // ← sticky zoom
-const CAL_HIDDEN_TASKS_KEY  = "cal_hidden_task_ids";      // ← hidden backlog tasks
+const CAL_ZOOM_KEY          = "cal_zoom_level";
+const CAL_HIDDEN_TASKS_KEY  = "cal_hidden_task_ids";
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
 const GCAL_SCOPE       = "https://www.googleapis.com/auth/calendar.readonly";
@@ -262,6 +264,22 @@ function TaskContextMenu({ menu, onHide, onClose }: {
   );
 }
 
+// ── Hover tooltip ─────────────────────────────────────────────────────────────
+function EventTooltip({ text, color }: { text: string; color: string }) {
+  return (
+    <div style={{
+      position: "absolute", bottom: "calc(100% + 4px)", left: 0,
+      background: "#0d1f14", border: `1px solid ${color}55`,
+      borderRadius: 5, padding: "4px 8px", fontSize: 11, fontWeight: 600,
+      color: "#fff", whiteSpace: "nowrap", zIndex: 300,
+      pointerEvents: "none", boxShadow: "0 4px 16px rgba(0,0,0,0.7)",
+      maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis",
+    }}>
+      {text}
+    </div>
+  );
+}
+
 // ── Single day column ─────────────────────────────────────────────────────────
 function DayColumn({
   date, zoom, gcalEvents, localBlocks, calColors, eventColorOverrides,
@@ -274,6 +292,7 @@ function DayColumn({
   onEventClick: (ev: GCalEvent) => void;
 }) {
   const [pickerBlockId, setPickerBlockId] = useState<string | null>(null);
+  const [hoveredEventId, setHoveredEventId] = useState<string | null>(null);
   const START_HOUR = 5;
 
   const gcalForDay = useMemo(() =>
@@ -309,49 +328,123 @@ function DayColumn({
         <div key={h} onDrop={(e) => onDrop(e, date, h)} onDragOver={(e) => e.preventDefault()}
           style={{ height: zoom, borderTop: "1px solid rgba(255,255,255,0.03)" }} />
       ))}
+
       {gcalLayout.map((ev) => {
+        const rawH   = ((ev.endMin - ev.startMin) / 60) * zoom;
         const top    = ((ev.startMin - START_HOUR * 60) / 60) * zoom;
-        const height = Math.max(((ev.endMin - ev.startMin) / 60) * zoom, 18);
+        // Minimum rendered height: 22px so ultra-short events are still clickable
+        const height = Math.max(rawH, 22);
+        const isShort = rawH < 36; // compact single-line layout threshold
         const wPct   = 100 / ev.totalCols; const lPct = ev.col * wPct;
         const calColor = calColors[ev.calendar_id] || "#4285f4";
         const color    = eventColorOverrides[ev.id] || calColor;
         const start  = new Date(ev.start.dateTime!);
+        const timeStr = start.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+        const isHovered = hoveredEventId === ev.id;
+
         return (
-          <div key={ev.id} onClick={() => onEventClick(ev)} title={ev.summary}
-            style={{ position: "absolute", top, height,
+          <div key={ev.id}
+            onClick={() => onEventClick(ev)}
+            onMouseEnter={() => setHoveredEventId(ev.id)}
+            onMouseLeave={() => setHoveredEventId(null)}
+            style={{
+              position: "absolute", top, height,
               left: `calc(${lPct}% + 2px)`, width: `calc(${wPct}% - 4px)`,
-              background: color + "1a", borderLeft: `3px solid ${color}`,
-              borderRadius: "0 4px 4px 0", padding: "3px 5px", overflow: "hidden",
-              zIndex: 10, cursor: "pointer", transition: "filter 0.12s" }}
-            onMouseEnter={(e) => (e.currentTarget.style.filter = "brightness(1.25)")}
-            onMouseLeave={(e) => (e.currentTarget.style.filter = "")}>
-            <div style={{ fontSize: 9, color, fontWeight: 700 }}>
-              {start.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-            </div>
-            {height >= 28 && (
-              <div style={{ fontSize: 10, fontWeight: 600, color: "#fff", lineHeight: 1.2 }}>
-                {ev.summary}
-              </div>
+              background: color + (isHovered ? "30" : "1a"),
+              borderLeft: `3px solid ${color}`,
+              borderRadius: "0 4px 4px 0",
+              padding: isShort ? "0 5px" : "3px 5px",
+              overflow: "visible",
+              zIndex: isHovered ? 40 : 10,
+              cursor: "pointer",
+              transition: "background 0.1s",
+              display: "flex",
+              alignItems: isShort ? "center" : "flex-start",
+              flexDirection: isShort ? "row" : "column",
+              gap: isShort ? 4 : 1,
+            }}
+          >
+            {/* Short event: single-line "time · title" */}
+            {isShort ? (
+              <>
+                <span style={{ fontSize: 9, color, fontWeight: 700, flexShrink: 0, lineHeight: 1 }}>
+                  {timeStr}
+                </span>
+                <span style={{
+                  fontSize: 10, fontWeight: 600, color: "#fff", lineHeight: 1,
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1,
+                }}>
+                  {ev.summary}
+                </span>
+                {/* Tooltip on hover for full title */}
+                {isHovered && ev.summary && (
+                  <EventTooltip text={`${timeStr} · ${ev.summary}`} color={color} />
+                )}
+              </>
+            ) : (
+              /* Normal event: time on first line, title below */
+              <>
+                <div style={{ fontSize: 9, color, fontWeight: 700, lineHeight: 1.3 }}>
+                  {timeStr}
+                </div>
+                <div style={{
+                  fontSize: 10, fontWeight: 600, color: "#fff", lineHeight: 1.25,
+                  overflow: "hidden", display: "-webkit-box",
+                  WebkitLineClamp: Math.max(1, Math.floor((height - 20) / 14)),
+                  WebkitBoxOrient: "vertical",
+                }}>
+                  {ev.summary}
+                </div>
+              </>
             )}
           </div>
         );
       })}
+
       {localLayout.map((block) => {
+        const rawH   = ((block.endMin - block.startMin) / 60) * zoom;
         const top    = ((block.startMin - START_HOUR * 60) / 60) * zoom;
-        const height = Math.max(((block.endMin - block.startMin) / 60) * zoom, 18);
+        const height = Math.max(rawH, 22);
+        const isShort = rawH < 36;
         const wPct   = 100 / block.totalCols; const lPct = block.col * wPct;
         const color  = block.color || "#e8a820";
+        const isHov  = hoveredEventId === block.id;
         return (
           <div key={block.id}
             onClick={() => setPickerBlockId(pickerBlockId === block.id ? null : block.id)}
-            style={{ position: "absolute", top, height,
+            onMouseEnter={() => setHoveredEventId(block.id)}
+            onMouseLeave={() => setHoveredEventId(null)}
+            style={{
+              position: "absolute", top, height,
               left: `calc(${lPct}% + 2px)`, width: `calc(${wPct}% - 4px)`,
-              background: color + "22", borderLeft: `3px solid ${color}`,
-              borderRadius: "0 4px 4px 0", padding: "3px 5px", overflow: "visible",
-              cursor: "pointer", zIndex: pickerBlockId === block.id ? 50 : 20 }}>
-            {height >= 20 && (
-              <div style={{ fontSize: 10, fontWeight: 700, color, whiteSpace: "nowrap",
-                overflow: "hidden", textOverflow: "ellipsis", letterSpacing: "0.03em" }}>
+              background: color + "22",
+              borderLeft: `3px solid ${color}`,
+              borderRadius: "0 4px 4px 0",
+              padding: isShort ? "0 5px" : "3px 5px",
+              overflow: "visible",
+              cursor: "pointer",
+              zIndex: pickerBlockId === block.id ? 50 : isHov ? 40 : 20,
+              display: "flex", alignItems: isShort ? "center" : "flex-start",
+              flexDirection: isShort ? "row" : "column",
+            }}
+          >
+            {isShort ? (
+              <>
+                <span style={{
+                  fontSize: 10, fontWeight: 700, color, whiteSpace: "nowrap",
+                  overflow: "hidden", textOverflow: "ellipsis", flex: 1,
+                }}>
+                  {block.title}
+                </span>
+                {isHov && block.title && <EventTooltip text={block.title} color={color} />}
+              </>
+            ) : (
+              <div style={{
+                fontSize: 10, fontWeight: 700, color, lineHeight: 1.25,
+                overflow: "hidden", display: "-webkit-box",
+                WebkitLineClamp: Math.max(1, Math.floor((height - 8) / 14)),
+                WebkitBoxOrient: "vertical",
+              }}>
                 {block.title}
               </div>
             )}
@@ -406,7 +499,6 @@ export function CalendarPage() {
   const [gcalToken, setGcalToken]       = useState<string | null>(getStoredToken());
   const [calendars, setCalendars]       = useState<GoogleCalendar[]>([]);
   const [calColors, setCalColors]       = useState<Record<string, string>>({});
-  // ── Sticky zoom: initialise from localStorage ──────────────────────────────
   const [zoom, setZoom]                 = useState<number>(getSavedZoom);
   const [selectedCalendarIds, setSelectedCalendarIds] = useState<string[]>(() => {
     try { const s = localStorage.getItem(GC_SELECTED_CALS_KEY); return s ? JSON.parse(s) : ["primary"]; }
@@ -417,10 +509,13 @@ export function CalendarPage() {
   const [showCalendarList, setShowCalendarList] = useState(false);
   const [eventModal, setEventModal]     = useState<GCalEvent | null>(null);
   const [eventColorOverrides, setEventColorOverrides] = useState<Record<string, string>>(getEventColorOverrides);
-  // ── Hideable tasks ─────────────────────────────────────────────────────────
   const [hiddenTaskIds, setHiddenTaskIds] = useState<string[]>(getHiddenTaskIds);
   const [showHidden, setShowHidden]       = useState(false);
   const [ctxMenu, setCtxMenu]             = useState<CtxMenu | null>(null);
+
+  // Ref for the scrollable calendar grid — used for auto-scroll to current time
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const didAutoScroll = useRef(false);
 
   const qc = useQueryClient();
 
@@ -430,7 +525,13 @@ export function CalendarPage() {
     return [selectedDate, addDays(selectedDate, 1), addDays(selectedDate, 2)];
   }, [selectedDate, viewMode]);
 
-  // Persist zoom whenever it changes
+  // ── Date navigation helpers ────────────────────────────────────────────────
+  const navDays = viewMode === "3day" ? 3 : viewMode === "2day" ? 2 : 1;
+  const goBack  = () => setSelectedDate((d) => addDays(d, -navDays));
+  const goFwd   = () => setSelectedDate((d) => addDays(d,  navDays));
+  const goToday = () => setSelectedDate(new Date().toISOString().split("T")[0]);
+
+  // Persist zoom
   useEffect(() => {
     try { localStorage.setItem(CAL_ZOOM_KEY, String(zoom)); } catch { /* */ }
   }, [zoom]);
@@ -452,6 +553,20 @@ export function CalendarPage() {
   useEffect(() => {
     try { localStorage.setItem(GC_SELECTED_CALS_KEY, JSON.stringify(selectedCalendarIds)); } catch { /* */ }
   }, [selectedCalendarIds]);
+
+  // ── Auto-scroll to current time on load ───────────────────────────────────
+  useEffect(() => {
+    if (didAutoScroll.current) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const now     = new Date();
+    const nowMin  = now.getHours() * 60 + now.getMinutes();
+    const nowTop  = ((nowMin - 5 * 60) / 60) * zoom;
+    // Scroll so the red bar is ~1/3 down the viewport
+    const offset  = Math.max(0, nowTop - el.clientHeight / 3);
+    el.scrollTop  = offset;
+    didAutoScroll.current = true;
+  }, [zoom]); // runs once zoom is settled
 
   const fetchCalendars = useCallback(async (token: string) => {
     try {
@@ -511,7 +626,7 @@ export function CalendarPage() {
   // ── Task hide / unhide helpers ─────────────────────────────────────────────
   const hideTask = (taskId: string) => {
     setHiddenTaskIds((prev) => {
-      const next = [...prev, taskId];
+      const next = [...prev, String(taskId)];
       saveHiddenTaskIds(next);
       return next;
     });
@@ -525,7 +640,7 @@ export function CalendarPage() {
   };
   const unhideOne = (taskId: string) => {
     setHiddenTaskIds((prev) => {
-      const next = prev.filter((id) => id !== taskId);
+      const next = prev.filter((id) => id !== String(taskId));
       saveHiddenTaskIds(next);
       return next;
     });
@@ -533,18 +648,26 @@ export function CalendarPage() {
 
   // ── Backlog ────────────────────────────────────────────────────────────────
   const apiBase = import.meta.env.VITE_API_BASE_URL || "";
-  const { data: tasks = [] } = useQuery<Task[]>({
+  const {
+    data: tasks = [],
+    isLoading: tasksLoading,
+    isError: tasksError,
+  } = useQuery<Task[]>({
     queryKey: ["tasks-backlog-calendar"],
-    queryFn: () =>
-      axios
-        .get(`${apiBase}/api/tasks/`, { params: { limit: 200 } })
-        .then((r) => (Array.isArray(r.data) ? r.data : r.data.results ?? []))
-        .catch(() => []),
+    queryFn: async () => {
+      const r = await axios.get(`${apiBase}/api/tasks/`, { params: { limit: 200 } });
+      const raw = Array.isArray(r.data) ? r.data : (r.data.results ?? []);
+      return raw;
+    },
+    retry: 2,
     refetchInterval: 60_000,
   });
-  const allActiveTasks = tasks.filter((t) => t.status !== "done" && t.status !== "cancelled");
-  const backlogTasks   = allActiveTasks.filter((t) => !hiddenTaskIds.includes(t.id));
-  const hiddenTasks    = allActiveTasks.filter((t) =>  hiddenTaskIds.includes(t.id));
+
+  // Normalise IDs to strings for comparison; show all non-terminal statuses
+  const DONE_STATUSES = new Set(["done", "cancelled", "complete", "completed"]);
+  const allActiveTasks = tasks.filter((t) => !DONE_STATUSES.has(String(t.status).toLowerCase()));
+  const backlogTasks   = allActiveTasks.filter((t) => !hiddenTaskIds.includes(String(t.id)));
+  const hiddenTasks    = allActiveTasks.filter((t) =>  hiddenTaskIds.includes(String(t.id)));
 
   // ── Local time blocks ─────────────────────────────────────────────────────
   const { data: localBlocks = [] } = useQuery<TimeBlock[]>({
@@ -571,7 +694,7 @@ export function CalendarPage() {
   const onDrop = async (e: React.DragEvent, date: string, hour: number) => {
     const taskId = e.dataTransfer.getData("taskId");
     if (!taskId) return;
-    const task = tasks.find((t) => t.id === taskId);
+    const task = tasks.find((t) => String(t.id) === taskId);
     try {
       await axios.post(`${apiBase}/api/time-blocks/`, {
         title: task?.title || "Scheduled Task", date,
@@ -593,6 +716,14 @@ export function CalendarPage() {
     gcalEvents.some((e) => !e.start.dateTime && d >= (e.start.date || "") && d < (e.end.date || e.start.date || ""))
   );
 
+  // ── Formatted date range label ─────────────────────────────────────────────
+  const dateLabel = useMemo(() => {
+    const fmt = (d: string) => new Date(d + "T12:00:00").toLocaleDateString("en-US",
+      { weekday: "short", month: "short", day: "numeric" });
+    if (viewMode === "day") return fmt(selectedDate);
+    return `${fmt(dates[0])} – ${fmt(dates[dates.length - 1])}`;
+  }, [dates, selectedDate, viewMode]);
+
   return (
     <div className="sb-shell" style={{ height: "100vh", display: "flex", flexDirection: "column", background: "#162a1c" }}
       onClick={() => setCtxMenu(null)}>
@@ -612,10 +743,35 @@ export function CalendarPage() {
               </button>
             ))}
           </div>
+
+          {/* ── Date navigation ── */}
+          <div style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: 16 }}>
+            <button onClick={goBack}
+              style={{ background: "rgba(255,255,255,0.08)", border: "none", color: "#fff",
+                padding: "4px 6px", borderRadius: 4, cursor: "pointer", display: "flex", alignItems: "center" }}>
+              <ChevronLeft size={13} />
+            </button>
+            <button onClick={goToday}
+              title="Jump to today"
+              style={{
+                background: isToday ? "#e8a820" : "rgba(255,255,255,0.08)",
+                border: "none",
+                color: isToday ? "#000" : "rgba(255,255,255,0.7)",
+                padding: "3px 10px", borderRadius: 4, cursor: "pointer",
+                fontSize: 10, fontWeight: 600, whiteSpace: "nowrap", minWidth: 130, textAlign: "center",
+              }}>
+              {dateLabel}
+            </button>
+            <button onClick={goFwd}
+              style={{ background: "rgba(255,255,255,0.08)", border: "none", color: "#fff",
+                padding: "4px 6px", borderRadius: 4, cursor: "pointer", display: "flex", alignItems: "center" }}>
+              <ChevronRight size={13} />
+            </button>
+          </div>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {/* Zoom controls — current level shown */}
+          {/* Zoom controls */}
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <button onClick={() => setZoom((z) => Math.max(40, z - 20))}
               style={{ background: "rgba(255,255,255,0.1)", border: "none", color: "#fff",
@@ -692,10 +848,24 @@ export function CalendarPage() {
         {/* ── Backlog sidebar ── */}
         <div style={{ width: 200, background: "#1e3629", borderRight: "2px solid #162a1c",
           padding: 15, overflowY: "auto", display: "flex", flexDirection: "column" }}>
-          <div style={{ fontSize: 9, opacity: 0.5, marginBottom: 4, letterSpacing: "0.1em" }}>BACKLOG</div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
+            <div style={{ fontSize: 9, opacity: 0.5, letterSpacing: "0.1em" }}>BACKLOG</div>
+            {tasksLoading && <span style={{ fontSize: 8, opacity: 0.35, color: "#e8a820" }}>loading…</span>}
+            {!tasksLoading && !tasksError && (
+              <span style={{ fontSize: 8, opacity: 0.3 }}>{backlogTasks.length} task{backlogTasks.length !== 1 ? "s" : ""}</span>
+            )}
+          </div>
           <div style={{ fontSize: 9, opacity: 0.3, marginBottom: 12 }}>Drag → schedule · Right-click → hide</div>
 
-          {backlogTasks.length === 0 && hiddenTasks.length === 0 && (
+          {tasksError && (
+            <div style={{ fontSize: 10, color: "#f43f5e", opacity: 0.7, background: "rgba(244,63,94,0.08)",
+              borderRadius: 4, padding: "6px 8px", marginBottom: 8, lineHeight: 1.4 }}>
+              ⚠ Could not load tasks.<br />
+              <span style={{ opacity: 0.6 }}>Check API connection.</span>
+            </div>
+          )}
+
+          {!tasksLoading && !tasksError && backlogTasks.length === 0 && hiddenTasks.length === 0 && (
             <div style={{ fontSize: 10, opacity: 0.25, fontStyle: "italic", textAlign: "center", marginTop: 20 }}>
               All clear
             </div>
@@ -703,10 +873,10 @@ export function CalendarPage() {
 
           {backlogTasks.map((task) => (
             <div key={task.id} draggable
-              onDragStart={(e) => onDragStart(e, task.id)}
+              onDragStart={(e) => onDragStart(e, String(task.id))}
               onContextMenu={(e) => {
                 e.preventDefault();
-                setCtxMenu({ x: e.clientX, y: e.clientY, taskId: task.id });
+                setCtxMenu({ x: e.clientX, y: e.clientY, taskId: String(task.id) });
               }}
               style={{ background: "rgba(0,0,0,0.2)", padding: "8px 10px", borderRadius: 4,
                 marginBottom: 7, fontSize: 11, borderLeft: "3px solid #e8a820",
@@ -744,7 +914,7 @@ export function CalendarPage() {
                         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {task.title}
                       </span>
-                      <button onClick={() => unhideOne(task.id)}
+                      <button onClick={() => unhideOne(String(task.id))}
                         title="Restore"
                         style={{ background: "none", border: "none",
                           color: "rgba(255,255,255,0.3)", cursor: "pointer", padding: 2, flexShrink: 0 }}>
@@ -766,7 +936,8 @@ export function CalendarPage() {
         </div>
 
         {/* ── Calendar grid ── */}
-        <div style={{ flex: 1, overflowY: "auto", background: "#162a1c" }}>
+        <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", background: "#162a1c" }}>
+          {/* Sticky date header */}
           <div style={{ background: "#1e3629", position: "sticky", top: 0, zIndex: 50,
             borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
             <div style={{ display: "flex" }}>
@@ -774,7 +945,8 @@ export function CalendarPage() {
               {dates.map((d) => (
                 <div key={d} style={{ flex: 1, padding: "10px 10px 4px", textAlign: "center",
                   borderLeft: "1px solid rgba(255,255,255,0.05)" }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#e8a820" }}>
+                  <div style={{ fontSize: 11, fontWeight: 700,
+                    color: d === new Date().toISOString().split("T")[0] ? "#e8a820" : "rgba(255,255,255,0.6)" }}>
                     {new Date(d + "T12:00:00").toLocaleDateString("en-US",
                       { weekday: "short", month: "short", day: "numeric" }).toUpperCase()}
                   </div>
