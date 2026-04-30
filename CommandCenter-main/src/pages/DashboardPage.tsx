@@ -3,8 +3,6 @@ import { dashboardApi, gamificationApi } from "@/lib/api";
 import { GameScoreboard } from "@/components/dashboard/GameScoreboard";
 import { NextUpPanel } from "@/components/dashboard/NextUpPanel";
 import { HabitRow } from "@/components/habits/HabitRow";
-import { QuickAdd } from "@/components/todos/QuickAdd";
-import { TaskCard } from "@/components/todos/TaskCard";
 import { useUIStore, useTimerStore } from "@/store";
 import { Loader2 } from "lucide-react";
 import { todayStr } from "@/lib/utils";
@@ -13,7 +11,6 @@ export function DashboardPage() {
   const { setActivePage } = useUIStore();
   const { activeTimer }   = useTimerStore();
   const today = todayStr();
-  const hour  = new Date().getHours();
 
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard"],
@@ -51,19 +48,21 @@ export function DashboardPage() {
     hitting_streak:  0,
   };
 
-  const tasksTodayRaw = data?.today_tasks ?? [];
-  const overdueT      = data?.overdue_tasks ?? [];
-  const habits        = data?.today_habits ?? [];
-  const projects      = data?.active_projects ?? [];
+  const overdueT = data?.overdue_tasks ?? [];
+  const habits   = data?.today_habits ?? [];
+  const projects = data?.active_projects ?? [];
 
-  // All non-done tasks (today + overdue) for NextUpPanel prioritisation
-  const allPending = [...tasksTodayRaw, ...overdueT];
+  // All non-done tasks (today + overdue) for NextUpPanel
+  const allPending = [...(data?.today_tasks ?? []), ...overdueT];
 
   return (
     <div>
       {/* TOP BAR */}
-      <div className="top-bar" style={{ flexDirection:"row", alignItems:"center",
-        justifyContent:"center", padding:"8px 24px", position:"relative", gap:14 }}>
+      <div className="top-bar" style={{
+        flexDirection:"row", alignItems:"center",
+        justifyContent:"center", padding:"8px 24px",
+        position:"relative", gap:14,
+      }}>
         <span style={{ color:"#e8a820", fontSize:9, letterSpacing:5, opacity:0.6 }}>&#9733; &#9733; &#9733;</span>
         <div style={{ display:"flex", alignItems:"baseline", gap:8, lineHeight:1 }}>
           <span style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:900,
@@ -74,8 +73,8 @@ export function DashboardPage() {
         </div>
         <span style={{ color:"#e8a820", fontSize:9, letterSpacing:5, opacity:0.6 }}>&#9733; &#9733; &#9733;</span>
         <div style={{ position:"absolute", right:24, top:"50%", transform:"translateY(-50%)", textAlign:"right" }}>
-          <div style={{ fontSize:8, fontWeight:600, letterSpacing:"0.15em", textTransform:"uppercase",
-            color:"rgba(255,255,255,0.35)", marginBottom:2 }}>Today's completion</div>
+          <div style={{ fontSize:8, fontWeight:600, letterSpacing:"0.15em",
+            textTransform:"uppercase", color:"rgba(255,255,255,0.35)", marginBottom:2 }}>Today's completion</div>
           <div style={{ display:"flex", alignItems:"center", gap:6, justifyContent:"flex-end" }}>
             <div className="panel" style={{ width:50, height:32 }}>
               <span className="panel-num" style={{ fontSize:18,
@@ -91,73 +90,63 @@ export function DashboardPage() {
 
       <div className="stripe" />
 
-      {/* MAIN GRID: Scoreboard LEFT · NextUpPanel RIGHT — same 1fr 1fr as before */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", borderBottom:"3px solid #1e3629" }}>
+      {/*
+        MAIN CONTENT
+        Outer wrapper gives us one continuous left+right border so the
+        vertical centre divider runs cleanly from the gold stripe to the
+        bottom of the page without gaps between grid sections.
+      */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr" }}>
 
-        {/* LEFT: Game Scoreboard */}
-        <div style={{ borderRight:"3px solid #1e3629" }}>
-          <GameScoreboard stats={scoreboardStats} history={gamHistory} />
-        </div>
+        {/* ── LEFT COLUMN ───────────────────────────────────────── */}
+        <div style={{ borderRight:"3px solid #1e3629", display:"flex", flexDirection:"column" }}>
 
-        {/* RIGHT: Next Up (replaces Today's Tasks in this box) */}
-        <div style={{ display:"flex", flexDirection:"column" }}>
-          <NextUpPanel tasks={allPending} />
-        </div>
-
-      </div>
-
-      <div className="stripe-thin" />
-      <div className="stripe-3" />
-
-      {/* BOTTOM ROW: Habits · Projects · Quick-add + task list */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr" }}>
-
-        {/* Habits */}
-        <div style={{ borderRight:"3px solid #1e3629" }}>
-          <div className="bottom-label" style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-            <span>Today's Habits</span>
-            <button className="panel-header-link" onClick={() => setActivePage("habits")} style={{ fontSize:9 }}>Manage &#8594;</button>
+          {/* Scoreboard (top) */}
+          <div style={{ borderBottom:"3px solid #1e3629" }}>
+            <GameScoreboard stats={scoreboardStats} history={gamHistory} />
           </div>
-          {habits.length === 0
-            ? <p style={{ padding:"12px 14px", fontFamily:"'IM Fell English',Georgia,serif",
-                fontStyle:"italic", fontSize:11, color:"rgba(245,240,224,0.2)" }}>No habits configured</p>
-            : habits.slice(0,6).map(h => <HabitRow key={h.id} habit={h} todayStr={today} />)}
-        </div>
 
-        {/* Projects */}
-        <div style={{ borderRight:"3px solid #1e3629" }}>
-          <div className="bottom-label" style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-            <span>Active Projects</span>
-            <button className="panel-header-link" onClick={() => setActivePage("projects")} style={{ fontSize:9 }}>All &#8594;</button>
-          </div>
-          {projects.length === 0
-            ? <p style={{ padding:"12px 14px", fontFamily:"'IM Fell English',Georgia,serif",
-                fontStyle:"italic", fontSize:11, color:"rgba(245,240,224,0.2)" }}>No active projects</p>
-            : projects.map(p => (
-              <div key={p.id} className="proj-row" onClick={() => setActivePage("projects")}>
-                <div className="proj-name-line">
-                  <span className="proj-name">{p.title}</span>
-                  <span className="proj-pct">{p.completion_percentage}%</span>
-                </div>
-                <div className="proj-track"><div className="proj-fill" style={{ width:`${p.completion_percentage}%` }} /></div>
-                <div style={{ fontSize:9, fontWeight:600, letterSpacing:"0.1em",
-                  textTransform:"uppercase", color:"rgba(245,240,224,0.25)", marginTop:3 }}>{p.task_count} tasks</div>
-              </div>
-            ))}
-        </div>
-
-        {/* Quick-add + today tasks */}
-        <div style={{ display:"flex", flexDirection:"column" }}>
-          <div className="bottom-label" style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-            <span>Today's Tasks</span>
-            <button className="panel-header-link" onClick={() => setActivePage("todos")} style={{ fontSize:9 }}>View All &#8594;</button>
-          </div>
-          <QuickAdd defaultStatus="today" />
-          <div style={{ flex:1, overflowY:"auto", maxHeight:180 }}>
-            {tasksTodayRaw.length === 0
+          {/* Habits (bottom-left) */}
+          <div style={{ flex:1 }}>
+            <div className="bottom-label" style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <span>Today's Habits</span>
+              <button className="panel-header-link" onClick={() => setActivePage("habits")} style={{ fontSize:9 }}>Manage &#8594;</button>
+            </div>
+            {habits.length === 0
               ? <p style={{ padding:"12px 14px", fontFamily:"'IM Fell English',Georgia,serif",
-                  fontStyle:"italic", fontSize:11, color:"rgba(245,240,224,0.2)" }}>All clear</p>
-              : tasksTodayRaw.slice(0,5).map(t => <TaskCard key={t.id} task={t} />)}
+                  fontStyle:"italic", fontSize:11, color:"rgba(245,240,224,0.2)" }}>No habits configured</p>
+              : habits.slice(0,6).map(h => <HabitRow key={h.id} habit={h} todayStr={today} />)}
+          </div>
+        </div>
+
+        {/* ── RIGHT COLUMN ──────────────────────────────────────── */}
+        <div style={{ display:"flex", flexDirection:"column" }}>
+
+          {/* Next Up panel (top) */}
+          <div style={{ borderBottom:"3px solid #1e3629" }}>
+            <NextUpPanel tasks={allPending} />
+          </div>
+
+          {/* Projects (bottom-right) */}
+          <div style={{ flex:1 }}>
+            <div className="bottom-label" style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <span>Active Projects</span>
+              <button className="panel-header-link" onClick={() => setActivePage("projects")} style={{ fontSize:9 }}>All &#8594;</button>
+            </div>
+            {projects.length === 0
+              ? <p style={{ padding:"12px 14px", fontFamily:"'IM Fell English',Georgia,serif",
+                  fontStyle:"italic", fontSize:11, color:"rgba(245,240,224,0.2)" }}>No active projects</p>
+              : projects.map(p => (
+                <div key={p.id} className="proj-row" onClick={() => setActivePage("projects")}>
+                  <div className="proj-name-line">
+                    <span className="proj-name">{p.title}</span>
+                    <span className="proj-pct">{p.completion_percentage}%</span>
+                  </div>
+                  <div className="proj-track"><div className="proj-fill" style={{ width:`${p.completion_percentage}%` }} /></div>
+                  <div style={{ fontSize:9, fontWeight:600, letterSpacing:"0.1em",
+                    textTransform:"uppercase", color:"rgba(245,240,224,0.25)", marginTop:3 }}>{p.task_count} tasks</div>
+                </div>
+              ))}
           </div>
         </div>
 
