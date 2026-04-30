@@ -38,7 +38,7 @@ app.add_middleware(
 # NOTE: datetime.now() respects the TZ environment variable (set to America/Chicago in DO).
 # datetime.utcnow() always returns UTC regardless of TZ — never use it here.
 
-# ─── Auth ────────────────────────────────────────────────────
+# ─── Auth ─────────────────────────────────────────────
 from models import User
 
 @app.post("/api/auth/register", response_model=UserResponse)
@@ -61,7 +61,7 @@ async def login(data: UserLogin, session: Session = Depends(db.get_session)):
     token = create_access_token(user.id)
     return {"access_token": token, "token_type": "bearer"}
 
-# ─── Tasks ────────────────────────────────────────────────────
+# ─── Tasks ─────────────────────────────────────────────
 @app.get("/api/tasks/", response_model=List[TaskResponse])
 async def list_tasks(
     status: Optional[str] = None,
@@ -170,7 +170,7 @@ async def reorder_tasks(
     session.commit()
     return {"ok": True}
 
-# ─── Projects ──────────────────────────────────────────────────
+# ─── Projects ────────────────────────────────────────────
 @app.get("/api/projects/", response_model=List[ProjectResponse])
 async def list_projects(
     session: Session = Depends(db.get_session),
@@ -233,7 +233,7 @@ async def delete_project(
     session.commit()
     return {"ok": True}
 
-# ─── Time Blocks ─────────────────────────────────────────────────
+# ─── Time Blocks ─────────────────────────────────────────
 @app.get("/api/time-blocks/", response_model=List[TimeBlockResponse])
 async def list_time_blocks(
     date: Optional[str] = None,
@@ -275,7 +275,7 @@ async def delete_time_block(
     session.commit()
     return {"ok": True}
 
-# ─── Habits ────────────────────────────────────────────────────
+# ─── Habits ────────────────────────────────────────────
 
 def _serialize_habit(data_dict: dict) -> dict:
     """Convert custom_days list to CSV string for storage."""
@@ -347,13 +347,45 @@ async def complete_habit(
     habit = session.execute(select(Habit).where(Habit.id == habit_id)).scalar()
     if not habit or habit.user_id != user.id:
         raise HTTPException(status_code=404)
-    completion = HabitCompletion(
-        habit_id=habit_id,
-        completed_date=datetime.fromisoformat(data["completed_date"]).date(),
-        note=data.get("note"),
-    )
-    session.add(completion)
-    session.commit()
+    completed_date = datetime.fromisoformat(data["completed_date"]).date()
+    # Idempotent — don’t create a duplicate completion for the same day
+    existing = session.execute(
+        select(HabitCompletion).where(
+            HabitCompletion.habit_id == habit_id,
+            HabitCompletion.completed_date == completed_date,
+        )
+    ).scalar()
+    if not existing:
+        completion = HabitCompletion(
+            habit_id=habit_id,
+            completed_date=completed_date,
+            note=data.get("note"),
+        )
+        session.add(completion)
+        session.commit()
+    return {"ok": True}
+
+@app.delete("/api/habits/{habit_id}/complete/{date_str}")
+async def uncomplete_habit(
+    habit_id: str,
+    date_str: str,
+    session: Session = Depends(db.get_session),
+    user: User = Depends(get_current_user),
+):
+    """Remove today’s completion so the user can toggle a habit off."""
+    habit = session.execute(select(Habit).where(Habit.id == habit_id)).scalar()
+    if not habit or habit.user_id != user.id:
+        raise HTTPException(status_code=404)
+    target_date = date.fromisoformat(date_str)
+    completion = session.execute(
+        select(HabitCompletion).where(
+            HabitCompletion.habit_id == habit_id,
+            HabitCompletion.completed_date == target_date,
+        )
+    ).scalar()
+    if completion:
+        session.delete(completion)
+        session.commit()
     return {"ok": True}
 
 @app.get("/api/habits/{habit_id}/streak")
@@ -365,27 +397,22 @@ async def get_habit_streak(
     habit = session.execute(select(Habit).where(Habit.id == habit_id)).scalar()
     if not habit or habit.user_id != user.id:
         raise HTTPException(status_code=404)
-    
     completions = session.execute(
         select(HabitCompletion).where(HabitCompletion.habit_id == habit_id)
         .order_by(HabitCompletion.completed_date.desc())
     ).scalars().all()
-    
     if not completions:
         return {"habit_id": habit_id, "streak": 0}
-    
     streak = 0
     today = datetime.now().date()  # respects TZ=America/Chicago
     for i, comp in enumerate(completions):
-        expected_date = today - timedelta(days=i)
-        if comp.completed_date == expected_date:
+        if comp.completed_date == today - timedelta(days=i):
             streak += 1
         else:
             break
-    
     return {"habit_id": habit_id, "streak": streak}
 
-# ─── Time Entries ───────────────────────────────────────────────
+# ─── Time Entries ─────────────────────────────────────────
 @app.get("/api/time-entries/active", response_model=Optional[TimeEntryResponse])
 async def get_active_timer(
     session: Session = Depends(db.get_session),
@@ -404,13 +431,11 @@ async def start_timer(
     session: Session = Depends(db.get_session),
     user: User = Depends(get_current_user),
 ):
-    # Stop any active timer
     session.execute(
         db.update(TimeEntry)
         .where((TimeEntry.user_id == user.id) & (TimeEntry.ended_at.is_(None)))
-        .values(ended_at=datetime.now())  # respects TZ=America/Chicago
+        .values(ended_at=datetime.now())
     )
-    
     entry = TimeEntry(
         user_id=user.id,
         task_id=data.task_id,
@@ -438,7 +463,7 @@ async def stop_timer(
     session.refresh(entry)
     return entry
 
-# ─── Dashboard ───────────────────────────────────────────────────
+# ─── Dashboard ──────────────────────────────────────────
 @app.get("/api/dashboard/", response_model=DashboardSummary)
 async def get_dashboard(
     session: Session = Depends(db.get_session),
@@ -447,14 +472,12 @@ async def get_dashboard(
     now = datetime.now()  # respects TZ=America/Chicago
     today = now.date()
     today_start = datetime(today.year, today.month, today.day)
-    
     today_tasks = session.execute(
         select(Task).where(
             (Task.user_id == user.id) &
             (Task.status.in_(["today", "in_progress"]))
         )
     ).scalars().all()
-    
     completed_today = session.execute(
         select(Task).where(
             (Task.user_id == user.id) &
@@ -462,21 +485,17 @@ async def get_dashboard(
             (Task.completed_at >= today_start)
         )
     ).scalars().all()
-    
     time_entries = session.execute(
         select(TimeEntry).where(
             (TimeEntry.user_id == user.id) &
             (TimeEntry.started_at >= today_start)
         )
     ).scalars().all()
-    
     total_seconds = 0
     for entry in time_entries:
-        end = entry.ended_at or datetime.now()  # respects TZ=America/Chicago
+        end = entry.ended_at or datetime.now()
         total_seconds += int((end - entry.started_at).total_seconds())
-    
     focus_score_today = sum(t.focus_score for t in completed_today if t.focus_score)
-    
     return DashboardSummary(
         tasks_today=len(today_tasks),
         completed_today=len(completed_today),
@@ -485,139 +504,73 @@ async def get_dashboard(
         streak_days=0,
     )
 
-# ─── Tags & Categories ──────────────────────────────────────────────
+# ─── Tags & Categories ─────────────────────────────────────
 @app.get("/api/tags/", response_model=List[TagResponse])
-async def list_tags(
-    session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
-):
-    tags = session.execute(
-        select(Tag).where(Tag.user_id == user.id)
-    ).scalars().all()
-    return tags
+async def list_tags(session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
+    return session.execute(select(Tag).where(Tag.user_id == user.id)).scalars().all()
 
 @app.post("/api/tags/", response_model=TagResponse)
-async def create_tag(
-    data: TagCreate,
-    session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
-):
+async def create_tag(data: TagCreate, session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
     tag = Tag(**data.dict(), user_id=user.id)
-    session.add(tag)
-    session.commit()
-    session.refresh(tag)
+    session.add(tag); session.commit(); session.refresh(tag)
     return tag
 
 @app.get("/api/categories/", response_model=List[CategoryResponse])
-async def list_categories(
-    session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
-):
-    categories = session.execute(
-        select(Category).where(Category.user_id == user.id)
-    ).scalars().all()
-    return categories
+async def list_categories(session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
+    return session.execute(select(Category).where(Category.user_id == user.id)).scalars().all()
 
 @app.post("/api/categories/", response_model=CategoryResponse)
-async def create_category(
-    data: CategoryCreate,
-    session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
-):
+async def create_category(data: CategoryCreate, session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
     category = Category(**data.dict(), user_id=user.id)
-    session.add(category)
-    session.commit()
-    session.refresh(category)
+    session.add(category); session.commit(); session.refresh(category)
     return category
 
-# ─── Notes ────────────────────────────────────────────────────
+# ─── Notes ────────────────────────────────────────────
 @app.get("/api/notes/", response_model=List[NoteResponse])
-async def list_notes(
-    session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
-):
-    notes = session.execute(
-        select(Note).where(Note.user_id == user.id).order_by(Note.created_at.desc())
-    ).scalars().all()
-    return notes
+async def list_notes(session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
+    return session.execute(select(Note).where(Note.user_id == user.id).order_by(Note.created_at.desc())).scalars().all()
 
 @app.post("/api/notes/", response_model=NoteResponse)
-async def create_note(
-    data: NoteCreate,
-    session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
-):
+async def create_note(data: NoteCreate, session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
     note = Note(**data.dict(), user_id=user.id)
-    session.add(note)
-    session.commit()
-    session.refresh(note)
+    session.add(note); session.commit(); session.refresh(note)
     return note
 
-# ─── CRM ────────────────────────────────────────────────────
+# ─── CRM ────────────────────────────────────────────
 @app.get("/api/crm/", response_model=List[CRMPersonResponse])
-async def list_crm(
-    session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
-):
-    people = session.execute(
-        select(CRMPerson).where(CRMPerson.user_id == user.id).order_by(CRMPerson.created_at.desc())
-    ).scalars().all()
-    return people
+async def list_crm(session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
+    return session.execute(select(CRMPerson).where(CRMPerson.user_id == user.id).order_by(CRMPerson.created_at.desc())).scalars().all()
 
 @app.post("/api/crm/", response_model=CRMPersonResponse)
-async def create_crm(
-    data: CRMPersonCreate,
-    session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
-):
+async def create_crm(data: CRMPersonCreate, session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
     person = CRMPerson(**data.dict(), user_id=user.id)
-    session.add(person)
-    session.commit()
-    session.refresh(person)
+    session.add(person); session.commit(); session.refresh(person)
     return person
 
-# ─── Braindump ───────────────────────────────────────────────────
+# ─── Braindump ─────────────────────────────────────────
 @app.get("/api/braindump/", response_model=List[BraindumpEntryResponse])
-async def list_braindump(
-    session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
-):
-    entries = session.execute(
-        select(BraindumpEntry).where(BraindumpEntry.user_id == user.id).order_by(BraindumpEntry.created_at.desc())
-    ).scalars().all()
-    return entries
+async def list_braindump(session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
+    return session.execute(select(BraindumpEntry).where(BraindumpEntry.user_id == user.id).order_by(BraindumpEntry.created_at.desc())).scalars().all()
 
 @app.post("/api/braindump/", response_model=BraindumpEntryResponse)
-async def create_braindump(
-    data: BraindumpEntryCreate,
-    session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
-):
+async def create_braindump(data: BraindumpEntryCreate, session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
     entry = BraindumpEntry(**data.dict(), user_id=user.id)
-    session.add(entry)
-    session.commit()
-    session.refresh(entry)
+    session.add(entry); session.commit(); session.refresh(entry)
     return entry
 
 @app.post("/api/braindump/{entry_id}/process")
-async def process_braindump(
-    entry_id: str,
-    session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
-):
+async def process_braindump(entry_id: str, session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
     entry = session.execute(select(BraindumpEntry).where(BraindumpEntry.id == entry_id)).scalar()
     if not entry or entry.user_id != user.id:
         raise HTTPException(status_code=404)
     entry.processed = True
-    session.commit()
-    session.refresh(entry)
+    session.commit(); session.refresh(entry)
     return entry
 
-# ─── Startup ────────────────────────────────────────────────────
+# ─── Startup ──────────────────────────────────────────
 @app.on_event("startup")
 async def startup():
     db.init_db()
-    # Migrate habits table: rename title→name if needed, add new columns
     migrations = [
         "ALTER TABLE habits RENAME COLUMN title TO name",
         "ALTER TABLE habits ADD COLUMN IF NOT EXISTS icon VARCHAR(100)",
@@ -632,7 +585,7 @@ async def startup():
                 conn.execute(text(sql))
                 conn.commit()
             except Exception:
-                pass  # already migrated — safe to ignore
+                pass
     print("✓ Database initialized and migrated")
 
 if __name__ == "__main__":

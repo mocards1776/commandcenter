@@ -12,12 +12,10 @@ interface Props {
   isEven: boolean;
 }
 
-// CDT-safe date string from a Date object
 function toCDT(d: Date): string {
   return d.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
 }
 
-// Current streak: consecutive completed days going back from today
 function calcStreak(completions: { completed_date: string }[], today: string): number {
   const dates = new Set(completions.map(c => c.completed_date));
   let streak = 0;
@@ -31,7 +29,6 @@ function calcStreak(completions: { completed_date: string }[], today: string): n
   return streak;
 }
 
-// Best ever consecutive-day streak
 function calcBest(completions: { completed_date: string }[]): number {
   if (!completions.length) return 0;
   const sorted = [...completions.map(c => c.completed_date)].sort();
@@ -46,11 +43,8 @@ function calcBest(completions: { completed_date: string }[]): number {
   return best;
 }
 
-// Monthly completion % (days completed / days elapsed so far this month)
 function calcMonthPct(completions: { completed_date: string }[]): number {
-  // Use CDT for month boundary
-  const cdtStr = new Date().toLocaleString("en-US", { timeZone: "America/Chicago" });
-  const cdtNow = new Date(cdtStr);
+  const cdtNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
   const y = cdtNow.getFullYear();
   const m = String(cdtNow.getMonth() + 1).padStart(2, "0");
   const dayElapsed = cdtNow.getDate();
@@ -70,8 +64,13 @@ export function HabitRow({ habit, todayStr, last7, isEven }: Props) {
   const best = calcBest(habit.completions);
   const mthPct = calcMonthPct(habit.completions);
 
+  const streakColor = streak >= 7 ? "#f4c842" : streak >= 3 ? "#e8a820" : streak > 0 ? "rgba(232,168,32,0.7)" : "rgba(240,236,224,0.22)";
+  const bestColor = best >= 14 ? "#f4c842" : best >= 5 ? "#e8a820" : "rgba(240,236,224,0.4)";
+  const mthColor = mthPct >= 80 ? "#6dcf6d" : mthPct >= 50 ? "#e8a820" : "rgba(240,236,224,0.35)";
+
   const completeMut = useMutation({
-    mutationFn: () => habitsApi.complete(habit.id, todayStr),
+    // habitsApi.complete expects (id, { completed_date, note? })
+    mutationFn: () => habitsApi.complete(habit.id, { completed_date: todayStr }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["habits"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
@@ -80,6 +79,7 @@ export function HabitRow({ habit, todayStr, last7, isEven }: Props) {
   });
 
   const uncompleteMut = useMutation({
+    // habitsApi.uncomplete expects (id, dateStr)
     mutationFn: () => habitsApi.uncomplete(habit.id, todayStr),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["habits"] }),
   });
@@ -89,11 +89,6 @@ export function HabitRow({ habit, todayStr, last7, isEven }: Props) {
     if (completeMut.isPending || uncompleteMut.isPending) return;
     isDoneToday ? uncompleteMut.mutate() : completeMut.mutate();
   };
-
-  // Color for streak number
-  const streakColor = streak >= 7 ? "#f4c842" : streak >= 3 ? "#e8a820" : streak > 0 ? "rgba(232,168,32,0.7)" : "rgba(240,236,224,0.22)";
-  const bestColor = best >= 14 ? "#f4c842" : best >= 5 ? "#e8a820" : "rgba(240,236,224,0.4)";
-  const mthColor = mthPct >= 80 ? "#6dcf6d" : mthPct >= 50 ? "#e8a820" : "rgba(240,236,224,0.35)";
 
   const rowBase = isEven ? "rgba(0,0,0,0.12)" : "rgba(0,0,0,0.04)";
 
@@ -111,7 +106,7 @@ export function HabitRow({ habit, todayStr, last7, isEven }: Props) {
         onMouseEnter={e => (e.currentTarget.style.background = "rgba(232,168,32,0.035)")}
         onMouseLeave={e => (e.currentTarget.style.background = rowBase)}
       >
-        {/* ── HABIT NAME col (like PHILADELPHIA / BOSTON) ── */}
+        {/* ── HABIT NAME (like PHILADELPHIA / BOSTON) ── */}
         <div
           style={{
             width: 190,
@@ -127,9 +122,7 @@ export function HabitRow({ habit, todayStr, last7, isEven }: Props) {
           onClick={() => setModalOpen(true)}
           title="Edit habit"
         >
-          {habit.icon && (
-            <span style={{ fontSize: 20, flexShrink: 0, lineHeight: 1 }}>{habit.icon}</span>
-          )}
+          {habit.icon && <span style={{ fontSize: 20, flexShrink: 0, lineHeight: 1 }}>{habit.icon}</span>}
           <span style={{
             fontFamily: "'Oswald', Arial, sans-serif",
             fontWeight: 700,
@@ -146,12 +139,12 @@ export function HabitRow({ habit, todayStr, last7, isEven }: Props) {
           </span>
         </div>
 
-        {/* ── 7-DAY CELLS (innings) ── */}
+        {/* ── 7-DAY CELLS ── */}
         <div style={{ display: "flex", flex: 1 }}>
           {last7.map((dateStr, i) => {
             const isToday = dateStr === todayStr;
             const done = doneSet.has(dateStr);
-            const missed = dateStr < todayStr && !done; // past day, not completed
+            const missed = dateStr < todayStr && !done;
 
             return (
               <div
@@ -159,7 +152,7 @@ export function HabitRow({ habit, todayStr, last7, isEven }: Props) {
                 onClick={isToday ? handleTodayClick : undefined}
                 title={
                   isToday
-                    ? isDoneToday ? "Tap to mark incomplete" : "Tap to complete"
+                    ? (isDoneToday ? "Tap to mark incomplete" : "Tap to complete")
                     : done ? `Completed ${dateStr}` : missed ? `Missed ${dateStr}` : ""
                 }
                 style={{
@@ -169,9 +162,7 @@ export function HabitRow({ habit, todayStr, last7, isEven }: Props) {
                   justifyContent: "center",
                   borderLeft: i > 0 ? "2px solid #0a1e12" : "none",
                   background: done
-                    ? isToday
-                      ? "rgba(232,168,32,0.18)"
-                      : "rgba(232,168,32,0.09)"
+                    ? (isToday ? "rgba(232,168,32,0.18)" : "rgba(232,168,32,0.09)")
                     : missed
                     ? "rgba(160,30,30,0.08)"
                     : isToday
@@ -181,11 +172,9 @@ export function HabitRow({ habit, todayStr, last7, isEven }: Props) {
                   outline: isToday ? "2px solid rgba(232,168,32,0.2)" : "none",
                   outlineOffset: "-2px",
                   transition: "background 0.12s",
-                  position: "relative",
                 }}
               >
                 {done ? (
-                  // ✓ checkmark
                   <span style={{
                     fontFamily: "'Oswald', Arial, sans-serif",
                     fontSize: isToday ? 26 : 22,
@@ -196,9 +185,7 @@ export function HabitRow({ habit, todayStr, last7, isEven }: Props) {
                     userSelect: "none",
                   }}>✓</span>
                 ) : missed ? (
-                  // ✗ missed
                   <span style={{
-                    fontFamily: "'Oswald', Arial, sans-serif",
                     fontSize: 20,
                     fontWeight: 700,
                     color: "rgba(195,55,55,0.4)",
@@ -206,7 +193,6 @@ export function HabitRow({ habit, todayStr, last7, isEven }: Props) {
                     userSelect: "none",
                   }}>✗</span>
                 ) : isToday ? (
-                  // today, not yet done — pulsing empty ring
                   <span style={{
                     display: "inline-block",
                     width: 20,
@@ -216,7 +202,6 @@ export function HabitRow({ habit, todayStr, last7, isEven }: Props) {
                     animation: "pulse-ring 2s ease-in-out infinite",
                   }} />
                 ) : (
-                  // future or irrelevant
                   <span style={{ fontSize: 10, color: "rgba(240,236,224,0.1)" }}>—</span>
                 )}
               </div>
@@ -224,20 +209,14 @@ export function HabitRow({ habit, todayStr, last7, isEven }: Props) {
           })}
         </div>
 
-        {/* ── WHITE DIVIDER (like in the scoreboard photo) ── */}
-        <div style={{
-          width: 3,
-          flexShrink: 0,
-          background: "#dedad0",
-          margin: "0 3px",
-          opacity: 0.85,
-        }} />
+        {/* ── WHITE DIVIDER ── */}
+        <div style={{ width: 3, flexShrink: 0, background: "#dedad0", margin: "0 3px", opacity: 0.85 }} />
 
-        {/* ── STAT BOXES: Current Streak | Best Streak | Monthly % ── */}
+        {/* ── STAT BOXES ── */}
         {[
-          { val: streak,           color: streakColor },
-          { val: best,             color: bestColor   },
-          { val: `${mthPct}%`,     color: mthColor    },
+          { val: streak,        color: streakColor },
+          { val: best,          color: bestColor   },
+          { val: `${mthPct}%`,  color: mthColor    },
         ].map(({ val, color }, idx2) => (
           <div
             key={idx2}
