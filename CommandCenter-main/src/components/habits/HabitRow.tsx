@@ -8,12 +8,20 @@ import toast from "react-hot-toast";
 interface Props {
   habit: Habit;
   todayStr: string;
-  last7?: string[];   // optional — not needed in dashboard compact view
-  isEven?: boolean;   // optional — defaults to false
+  last7?: string[];
+  isEven?: boolean;
 }
 
 function toCDT(d: Date): string {
   return d.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+}
+
+function fmtTime(hour?: number | null, minute?: number | null): string {
+  if (hour == null) return "—";
+  const h12 = hour % 12 || 12;
+  const ampm = hour < 12 ? "A" : "P";
+  if (!minute) return `${h12}${ampm}`;
+  return `${h12}:${String(minute).padStart(2, "0")}${ampm}`;
 }
 
 function calcStreak(completions: { completed_date: string }[], today: string): number {
@@ -53,6 +61,22 @@ function calcMonthPct(completions: { completed_date: string }[]): number {
   return Math.round((count / dayElapsed) * 100);
 }
 
+// Matches the .panel class from the global dashboard CSS
+function slot(overrides?: React.CSSProperties): React.CSSProperties {
+  return {
+    background: "rgba(0,0,0,0.45)",
+    border: "1.5px solid rgba(240,236,224,0.08)",
+    borderRadius: 5,
+    boxShadow: "inset 0 2px 8px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.03)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "column" as const,
+    flexShrink: 0,
+    ...overrides,
+  };
+}
+
 export function HabitRow({ habit, todayStr, last7 = [], isEven = false }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const qc = useQueryClient();
@@ -65,8 +89,11 @@ export function HabitRow({ habit, todayStr, last7 = [], isEven = false }: Props)
   const mthPct = calcMonthPct(habit.completions);
 
   const streakColor = streak >= 7 ? "#f4c842" : streak >= 3 ? "#e8a820" : streak > 0 ? "rgba(232,168,32,0.7)" : "rgba(240,236,224,0.22)";
-  const bestColor = best >= 14 ? "#f4c842" : best >= 5 ? "#e8a820" : "rgba(240,236,224,0.4)";
-  const mthColor = mthPct >= 80 ? "#6dcf6d" : mthPct >= 50 ? "#e8a820" : "rgba(240,236,224,0.35)";
+  const bestColor   = best   >= 14 ? "#f4c842" : best   >= 5  ? "#e8a820" : "rgba(240,236,224,0.4)";
+  const mthColor    = mthPct >= 80 ? "#6dcf6d" : mthPct >= 50 ? "#e8a820" : "rgba(240,236,224,0.35)";
+
+  const timeStr = fmtTime(habit.time_hour, habit.time_minute);
+  const hasTime = habit.time_hour != null;
 
   const completeMut = useMutation({
     mutationFn: () => habitsApi.complete(habit.id, { completed_date: todayStr }),
@@ -88,184 +115,180 @@ export function HabitRow({ habit, todayStr, last7 = [], isEven = false }: Props)
     isDoneToday ? uncompleteMut.mutate() : completeMut.mutate();
   };
 
-  const rowBase = isEven ? "rgba(0,0,0,0.12)" : "rgba(0,0,0,0.04)";
+  const rowBg = isEven ? "rgba(0,0,0,0.12)" : "rgba(0,0,0,0.04)";
 
   return (
     <>
       <div
         style={{
           display: "flex",
-          alignItems: "stretch",
+          alignItems: "center",
           borderBottom: "2px solid #0a1e12",
-          background: rowBase,
-          minHeight: 58,
+          background: rowBg,
+          minHeight: 64,
+          padding: "6px 10px",
+          gap: 6,
           transition: "background 0.12s",
         }}
-        onMouseEnter={e => (e.currentTarget.style.background = "rgba(232,168,32,0.035)")}
-        onMouseLeave={e => (e.currentTarget.style.background = rowBase)}
+        onMouseEnter={e => (e.currentTarget.style.background = "rgba(232,168,32,0.04)")}
+        onMouseLeave={e => (e.currentTarget.style.background = rowBg)}
       >
-        {/* ── HABIT NAME ── */}
-        <div
-          style={{
-            width: 190,
-            flexShrink: 0,
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "0 10px 0 12px",
-            borderRight: "2px solid #0a1e12",
-            cursor: "pointer",
-            userSelect: "none",
-          }}
-          onClick={() => setModalOpen(true)}
-          title="Edit habit"
-        >
-          {habit.icon && <span style={{ fontSize: 20, flexShrink: 0, lineHeight: 1 }}>{habit.icon}</span>}
+
+        {/* ── P column: TIME SLOT ── */}
+        <div style={slot({ width: 44, height: 50 })}>
           <span style={{
             fontFamily: "'Oswald', Arial, sans-serif",
             fontWeight: 700,
-            fontSize: 14,
-            letterSpacing: "0.08em",
+            fontSize: hasTime ? 12 : 18,
+            letterSpacing: "0.04em",
+            lineHeight: 1.1,
+            textAlign: "center",
+            color: hasTime ? "rgba(232,168,32,0.9)" : "rgba(240,236,224,0.15)",
+          }}>{timeStr}</span>
+        </div>
+
+        {/* ── HABIT NAME ── */}
+        <div
+          onClick={() => setModalOpen(true)}
+          title="Edit habit"
+          style={{
+            width: 162,
+            flexShrink: 0,
+            display: "flex",
+            alignItems: "center",
+            gap: 7,
+            cursor: "pointer",
+            userSelect: "none",
+            padding: "0 4px",
+          }}
+        >
+          {habit.icon && (
+            <span style={{ fontSize: 18, flexShrink: 0, lineHeight: 1 }}>{habit.icon}</span>
+          )}
+          <span style={{
+            fontFamily: "'Oswald', Arial, sans-serif",
+            fontWeight: 700,
+            fontSize: 13,
+            letterSpacing: "0.10em",
             textTransform: "uppercase",
-            color: isDoneToday ? "#f0ece0" : "rgba(240,236,224,0.65)",
+            color: isDoneToday ? "#f0ece0" : "rgba(240,236,224,0.6)",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
-            lineHeight: 1.15,
+            lineHeight: 1.2,
           }}>
             {habit.name}
           </span>
         </div>
 
-        {/* ── 7-DAY CELLS (only rendered when last7 is provided) ── */}
-        {last7.length > 0 && (
-          <div style={{ display: "flex", flex: 1 }}>
-            {last7.map((dateStr, i) => {
-              const isToday = dateStr === todayStr;
-              const done = doneSet.has(dateStr);
-              const missed = dateStr < todayStr && !done;
+        {/* ── DAY SLOTS (7-day full view) or TODAY slot (dashboard compact) ── */}
+        {last7.length > 0 ? (
+          <div style={{ display: "flex", flex: 1, gap: 4 }}>
+            {last7.map(dateStr => {
+              const isToday  = dateStr === todayStr;
+              const done     = doneSet.has(dateStr);
+              const missed   = dateStr < todayStr && !done;
 
               return (
                 <div
                   key={dateStr}
                   onClick={isToday ? handleTodayClick : undefined}
                   title={
-                    isToday
-                      ? (isDoneToday ? "Tap to mark incomplete" : "Tap to complete")
-                      : done ? `Completed ${dateStr}` : missed ? `Missed ${dateStr}` : ""
+                    isToday   ? (isDoneToday ? "Mark incomplete" : "Mark complete")
+                    : done    ? `Done ✓ ${dateStr}`
+                    : missed  ? `Missed ${dateStr}`
+                    : undefined
                   }
-                  style={{
+                  style={slot({
                     flex: 1,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    borderLeft: i > 0 ? "2px solid #0a1e12" : "none",
-                    background: done
-                      ? (isToday ? "rgba(232,168,32,0.18)" : "rgba(232,168,32,0.09)")
-                      : missed
-                      ? "rgba(160,30,30,0.08)"
-                      : isToday
-                      ? "rgba(232,168,32,0.04)"
-                      : "transparent",
+                    height: 50,
                     cursor: isToday ? "pointer" : "default",
-                    outline: isToday ? "2px solid rgba(232,168,32,0.2)" : "none",
-                    outlineOffset: "-2px",
-                    transition: "background 0.12s",
-                  }}
+                    background: done
+                      ? isToday ? "rgba(232,168,32,0.22)" : "rgba(232,168,32,0.10)"
+                      : missed  ? "rgba(150,25,25,0.14)"
+                      : isToday ? "rgba(232,168,32,0.06)"
+                      : "rgba(0,0,0,0.45)",
+                    border: isToday
+                      ? `1.5px solid rgba(232,168,32,${isDoneToday ? "0.5" : "0.28"})`
+                      : "1.5px solid rgba(240,236,224,0.07)",
+                    boxShadow: done && isToday
+                      ? "inset 0 2px 8px rgba(0,0,0,0.35), 0 0 12px rgba(232,168,32,0.18)"
+                      : "inset 0 2px 8px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.03)",
+                  })}
                 >
                   {done ? (
                     <span style={{
                       fontFamily: "'Oswald', Arial, sans-serif",
-                      fontSize: isToday ? 26 : 22,
+                      fontSize: isToday ? 26 : 20,
                       fontWeight: 900,
-                      color: isToday ? "#f4c842" : "#c8962a",
-                      textShadow: isToday ? "0 0 10px rgba(244,200,66,0.5)" : "none",
                       lineHeight: 1,
                       userSelect: "none",
+                      color: isToday ? "#f4c842" : "#c8962a",
+                      textShadow: isToday ? "0 0 14px rgba(244,200,66,0.6)" : "none",
                     }}>✓</span>
                   ) : missed ? (
-                    <span style={{
-                      fontSize: 20,
-                      fontWeight: 700,
-                      color: "rgba(195,55,55,0.4)",
-                      lineHeight: 1,
-                      userSelect: "none",
-                    }}>✗</span>
+                    <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1, userSelect: "none", color: "rgba(200,50,50,0.45)" }}>✗</span>
                   ) : isToday ? (
                     <span style={{
                       display: "inline-block",
-                      width: 20,
-                      height: 20,
+                      width: 15,
+                      height: 15,
                       borderRadius: "50%",
-                      border: "2px solid rgba(232,168,32,0.35)",
+                      border: "2px solid rgba(232,168,32,0.42)",
                       animation: "pulse-ring 2s ease-in-out infinite",
                     }} />
                   ) : (
-                    <span style={{ fontSize: 10, color: "rgba(240,236,224,0.1)" }}>—</span>
+                    <span style={{ fontSize: 10, color: "rgba(240,236,224,0.07)" }}>—</span>
                   )}
                 </div>
               );
             })}
           </div>
-        )}
-
-        {/* TODAY toggle button — shown in dashboard compact view (no last7) */}
-        {last7.length === 0 && (
+        ) : (
+          /* Dashboard compact: single TODAY slot */
           <div
             onClick={handleTodayClick}
-            style={{
-              flex: 1,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-              borderLeft: "2px solid #0a1e12",
-              background: isDoneToday ? "rgba(232,168,32,0.12)" : "transparent",
-              transition: "background 0.12s",
-            }}
             title={isDoneToday ? "Mark incomplete" : "Mark complete"}
+            style={slot({
+              flex: 1,
+              height: 50,
+              cursor: "pointer",
+              background: isDoneToday ? "rgba(232,168,32,0.22)" : "rgba(0,0,0,0.45)",
+              border: `1.5px solid rgba(232,168,32,${isDoneToday ? "0.5" : "0.18"})`,
+              boxShadow: isDoneToday
+                ? "inset 0 2px 8px rgba(0,0,0,0.35), 0 0 12px rgba(232,168,32,0.18)"
+                : "inset 0 2px 8px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.03)",
+            })}
           >
             {isDoneToday ? (
-              <span style={{ fontFamily: "'Oswald',Arial,sans-serif", fontSize: 22, fontWeight: 900, color: "#f4c842", userSelect: "none" }}>✓</span>
+              <span style={{ fontFamily: "'Oswald',Arial,sans-serif", fontSize: 24, fontWeight: 900, color: "#f4c842", userSelect: "none", textShadow: "0 0 12px rgba(244,200,66,0.5)" }}>✓</span>
             ) : (
-              <span style={{ display: "inline-block", width: 18, height: 18, borderRadius: "50%", border: "2px solid rgba(232,168,32,0.3)" }} />
+              <span style={{ display: "inline-block", width: 15, height: 15, borderRadius: "50%", border: "2px solid rgba(232,168,32,0.35)", animation: "pulse-ring 2s ease-in-out infinite" }} />
             )}
           </div>
         )}
 
-        {/* ── WHITE DIVIDER ── */}
-        <div style={{ width: 3, flexShrink: 0, background: "#dedad0", margin: "0 3px", opacity: 0.85 }} />
+        {/* ── WHITE DIVIDER (matches scoreboard's R|H|E bar) ── */}
+        <div style={{ width: 3, height: 48, flexShrink: 0, background: "#dedad0", borderRadius: 1, opacity: 0.88 }} />
 
-        {/* ── STAT BOXES ── */}
+        {/* ── STAT SLOTS: streak / best / month% ── */}
         {[
           { val: streak,        color: streakColor },
           { val: best,          color: bestColor   },
           { val: `${mthPct}%`,  color: mthColor    },
-        ].map(({ val, color }, idx2) => (
-          <div
-            key={idx2}
-            style={{
-              width: 58,
-              flexShrink: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              borderLeft: "2px solid #0a1e12",
-            }}
-          >
+        ].map(({ val, color }, i) => (
+          <div key={i} style={slot({ width: 54, height: 50 })}>
             <span style={{
               fontFamily: "'Oswald', Arial, sans-serif",
               fontWeight: 900,
               fontSize: typeof val === "string"
-                ? (parseInt(val) >= 100 ? 13 : 15)
-                : (val >= 100 ? 13 : val === 0 ? 14 : 18),
+                ? (parseInt(val) >= 100 ? 12 : 14)
+                : (val >= 100 ? 12 : val === 0 ? 14 : 20),
               color,
               letterSpacing: "0.02em",
               lineHeight: 1,
               userSelect: "none",
-            }}>
-              {val}
-            </span>
+            }}>{val}</span>
           </div>
         ))}
       </div>

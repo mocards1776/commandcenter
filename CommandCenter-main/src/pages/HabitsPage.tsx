@@ -19,7 +19,6 @@ export function getLast7(): string[] {
 }
 
 export function dayLabel(dateStr: string): string {
-  // Parse as local noon to avoid any DST off-by-one
   const d = new Date(dateStr + "T12:00:00");
   return d.toLocaleDateString("en-US", { weekday: "short", timeZone: "America/Chicago" }).toUpperCase();
 }
@@ -34,9 +33,14 @@ export function HabitsPage() {
     queryFn: () => habitsApi.list(),
   });
 
-  const done = habits?.filter(h => h.completions.some((c: any) => c.completed_date === today)).length ?? 0;
+  const done  = habits?.filter(h => h.completions.some((c: any) => c.completed_date === today)).length ?? 0;
   const total = habits?.length ?? 0;
-  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  const pct   = total > 0 ? Math.round((done / total) * 100) : 0;
+
+  // Header geometry must match HabitRow exactly:
+  // padding: 6px 10px  |  gap: 6px
+  // cols: 44px (time) · 162px (name) · flex day cells (gap 4px inside) · 3px divider · 3x 54px stats
+  const hdrPad: React.CSSProperties = { padding: "5px 10px", gap: 6 };
 
   return (
     <div style={{ padding: "16px 12px", fontFamily: "'Oswald', Arial, sans-serif" }}>
@@ -47,16 +51,14 @@ export function HabitsPage() {
         overflow: "hidden",
       }}>
 
-        {/* ── SCOREBOARD TITLE ── */}
+        {/* ── TITLE ── */}
         <div style={{
           textAlign: "center",
           padding: "20px 16px 12px",
           borderBottom: "3px solid #0a1e12",
           background: "rgba(0,0,0,0.25)",
         }}>
-          <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: "0.28em", color: "#f0ece0", textTransform: "uppercase", lineHeight: 1 }}>
-            HABITS
-          </div>
+          <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: "0.28em", color: "#f0ece0", textTransform: "uppercase", lineHeight: 1 }}>HABITS</div>
           <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.18em", color: "rgba(240,236,224,0.3)", marginTop: 5 }}>
             {done}/{total} ENLISTED TODAY &nbsp;·&nbsp; {pct}%
           </div>
@@ -75,20 +77,42 @@ export function HabitsPage() {
           </div>
         )}
 
-        {/* ── COLUMN HEADERS ── */}
+        {/* ── COLUMN HEADERS ──
+             Must mirror HabitRow layout exactly so columns align.
+        */}
         <div style={{
           display: "flex",
-          alignItems: "stretch",
+          alignItems: "center",
           borderBottom: "3px solid #0a1e12",
           background: "rgba(0,0,0,0.4)",
-          minHeight: 40,
+          minHeight: 38,
+          ...hdrPad,
         }}>
-          {/* Name col spacer */}
-          <div style={{ width: 190, flexShrink: 0, borderRight: "2px solid #0a1e12" }} />
+          {/* TIME / P column (44px) */}
+          <div style={{
+            width: 44,
+            flexShrink: 0,
+            textAlign: "center",
+            fontSize: 8,
+            fontWeight: 700,
+            letterSpacing: "0.18em",
+            color: "rgba(240,236,224,0.35)",
+          }}>P</div>
 
-          {/* Day headers */}
-          <div style={{ display: "flex", flex: 1 }}>
-            {last7.map((dateStr, i) => {
+          {/* Habit name header (162px) */}
+          <div style={{
+            width: 162,
+            flexShrink: 0,
+            paddingLeft: 11,
+            fontSize: 8,
+            fontWeight: 700,
+            letterSpacing: "0.18em",
+            color: "rgba(240,236,224,0.35)",
+          }}>HABIT</div>
+
+          {/* Day headers — flex 1, inner gap 4px */}
+          <div style={{ display: "flex", flex: 1, gap: 4 }}>
+            {last7.map(dateStr => {
               const isToday = dateStr === today;
               return (
                 <div key={dateStr} style={{
@@ -97,18 +121,14 @@ export function HabitsPage() {
                   flexDirection: "column",
                   alignItems: "center",
                   justifyContent: "center",
-                  borderLeft: i > 0 ? "2px solid #0a1e12" : "none",
-                  background: isToday ? "rgba(232,168,32,0.09)" : "transparent",
-                  padding: "6px 2px",
+                  padding: "4px 2px",
                 }}>
                   <span style={{
                     fontSize: 9,
                     fontWeight: 700,
                     letterSpacing: "0.14em",
                     color: isToday ? "#e8a820" : "rgba(240,236,224,0.38)",
-                  }}>
-                    {dayLabel(dateStr)}
-                  </span>
+                  }}>{dayLabel(dateStr)}</span>
                   {isToday && (
                     <span style={{ fontSize: 7, letterSpacing: "0.1em", color: "rgba(232,168,32,0.5)", marginTop: 2 }}>TODAY</span>
                   )}
@@ -117,28 +137,21 @@ export function HabitsPage() {
             })}
           </div>
 
-          {/* White divider */}
-          <div style={{ width: 3, background: "#dedad0", flexShrink: 0, margin: "0 3px", opacity: 0.88 }} />
+          {/* White divider placeholder (3px) */}
+          <div style={{ width: 3, flexShrink: 0 }} />
 
-          {/* Stat headers */}
-          {(["🔥 STK", "⭐ BST", "📅 MTH"] as const).map((label, i) => (
+          {/* Stat headers (54px each) */}
+          {(["\uD83D\uDD25 STK", "\u2B50 BST", "\uD83D\uDCC5 MTH"] as const).map(label => (
             <div key={label} style={{
-              width: 58,
+              width: 54,
               flexShrink: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              borderLeft: i > 0 ? "2px solid #0a1e12" : "none",
               fontSize: 8,
               fontWeight: 700,
               letterSpacing: "0.12em",
               color: "rgba(240,236,224,0.38)",
               textAlign: "center",
               lineHeight: 1.3,
-              padding: "4px 2px",
-            }}>
-              {label}
-            </div>
+            }}>{label}</div>
           ))}
         </div>
 
@@ -150,9 +163,7 @@ export function HabitsPage() {
         ) : total === 0 ? (
           <div style={{ padding: "52px 16px", textAlign: "center" }}>
             <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.2em", color: "rgba(240,236,224,0.18)" }}>NO HABITS ENLISTED</p>
-            <p style={{ fontFamily: "'IM Fell English',Georgia,serif", fontStyle: "italic", fontSize: 11, marginTop: 8, color: "rgba(240,236,224,0.1)" }}>
-              Discipline is the soul of an army
-            </p>
+            <p style={{ fontFamily: "'IM Fell English',Georgia,serif", fontStyle: "italic", fontSize: 11, marginTop: 8, color: "rgba(240,236,224,0.1)" }}>Discipline is the soul of an army</p>
           </div>
         ) : (
           habits?.map((h, idx) => (
@@ -160,7 +171,7 @@ export function HabitsPage() {
           ))
         )}
 
-        {/* ── FOOTER TOOLBAR ── */}
+        {/* ── FOOTER ── */}
         <div style={{
           display: "flex",
           alignItems: "center",
