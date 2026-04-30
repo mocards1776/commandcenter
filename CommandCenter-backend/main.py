@@ -167,7 +167,12 @@ async def list_tasks(
 ):
     query = select(Task)
     if status:
-        query = query.where(Task.status == status)
+        # Support comma-separated status values, e.g. "today,in_progress"
+        statuses = [s.strip() for s in status.split(",") if s.strip()]
+        if len(statuses) == 1:
+            query = query.where(Task.status == statuses[0])
+        else:
+            query = query.where(Task.status.in_(statuses))
     if search:
         query = query.where(Task.title.ilike(f"%{search}%"))
     tasks = session.execute(query.order_by(Task.created_at.desc())).scalars().all()
@@ -210,6 +215,10 @@ async def update_task(task_id: str, data: TaskUpdate, session: Session = Depends
         updates["tag_ids"] = tags_to_str(updates["tag_ids"])
     for key, value in updates.items():
         setattr(task, key, value)
+    # Auto-set completed_at when status is changed to "done" via PATCH
+    # (the /complete endpoint already handles this; PATCH did not)
+    if updates.get("status") == "done" and not task.completed_at:
+        task.completed_at = datetime.utcnow()
     task.focus_score = calc_focus_score(task.importance, task.difficulty)
     session.commit()
     session.refresh(task)
@@ -566,7 +575,9 @@ async def get_dashboard(session: Session = Depends(db.get_session)):
             ],
         })
 
-    today_tasks_serialized = [TaskResponse.from_orm(t).dict() for t in today_tasks]
+    # Include completed tasks in the dashboard task list so they show as done
+    all_today_tasks = list(today_tasks) + list(completed_today)
+    today_tasks_serialized = [TaskResponse.from_orm(t).dict() for t in all_today_tasks]
     overdue_tasks_serialized = [TaskResponse.from_orm(t).dict() for t in overdue_tasks]
 
     return DashboardSummary(
