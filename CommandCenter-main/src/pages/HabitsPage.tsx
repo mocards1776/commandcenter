@@ -32,15 +32,55 @@ function useLiveClock() {
   return now;
 }
 
+function readBool(key: string, def: boolean): boolean {
+  try { const v = localStorage.getItem(key); return v === null ? def : v === "true"; } catch { return def; }
+}
+function writeBool(key: string, val: boolean) {
+  try { localStorage.setItem(key, String(val)); } catch {}
+}
+
 export function HabitsPage() {
   const [newOpen, setNewOpen] = useState(false);
   const today = todayStr();
   const last7 = getLast7();
   const now = useLiveClock();
 
+  // ── Persistent filter state ──────────────────────────────────────────
+  const [hideCompleted, setHideCompleted] = useState(() => readBool("habits_hideCompleted", false));
+  const [hideFuture,    setHideFuture]    = useState(() => readBool("habits_hideFuture",    false));
+
+  function toggleHideCompleted() {
+    setHideCompleted(v => { writeBool("habits_hideCompleted", !v); return !v; });
+  }
+  function toggleHideFuture() {
+    setHideFuture(v => { writeBool("habits_hideFuture", !v); return !v; });
+  }
+
   const { data: habits, isLoading } = useQuery({
     queryKey: ["habits"],
     queryFn: () => habitsApi.list(),
+  });
+
+  // Current CDT time components for "hide future" logic
+  const nowCDT = new Date(now.toLocaleString("en-US", { timeZone: "America/Chicago" }));
+  const nowHour   = nowCDT.getHours();
+  const nowMinute = nowCDT.getMinutes();
+
+  // Apply filters
+  const visibleHabits = (habits ?? []).filter(h => {
+    if (hideCompleted) {
+      const doneToday = h.completions.some((c: any) => c.completed_date === today);
+      if (doneToday) return false;
+    }
+    if (hideFuture) {
+      const hh = h.time_hour   != null ? Number(h.time_hour)   : null;
+      const mm = h.time_minute != null ? Number(h.time_minute) : 0;
+      if (hh !== null) {
+        const isLater = hh > nowHour || (hh === nowHour && mm > nowMinute);
+        if (isLater) return false;
+      }
+    }
+    return true;
   });
 
   const done  = habits?.filter(h => h.completions.some((c: any) => c.completed_date === today)).length ?? 0;
@@ -65,10 +105,26 @@ export function HabitsPage() {
 
   const hdrPad: React.CSSProperties = { padding: "5px 10px", gap: 6 };
 
+  // ── Checkbox style helpers ───────────────────────────────────────────
+  const cbWrap: React.CSSProperties = {
+    display: "flex", alignItems: "center", gap: 5, cursor: "pointer",
+    userSelect: "none" as const,
+  };
+  const cbBox = (checked: boolean): React.CSSProperties => ({
+    width: 13, height: 13, border: `1.5px solid ${checked ? "#e8a820" : "rgba(240,236,224,0.3)"}`,
+    background: checked ? "rgba(232,168,32,0.18)" : "transparent",
+    borderRadius: 2, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+    transition: "all 0.15s",
+  });
+  const cbLabel: React.CSSProperties = {
+    fontFamily: "'Oswald',Arial,sans-serif", fontSize: 9, fontWeight: 600,
+    letterSpacing: "0.14em", color: "rgba(240,236,224,0.5)", textTransform: "uppercase" as const,
+  };
+
   return (
     <div style={{ fontFamily: "'Oswald', Arial, sans-serif" }}>
 
-      {/* ── COMMAND CENTER HEADER (mirrors DashboardPage) ── */}
+      {/* ── COMMAND CENTER HEADER ── */}
       <div className="top-bar" style={{
         flexDirection: "row",
         alignItems: "center",
@@ -120,13 +176,37 @@ export function HabitsPage() {
           {/* ── TITLE ── */}
           <div style={{
             textAlign: "center",
-            padding: "20px 16px 12px",
+            padding: "20px 16px 10px",
             borderBottom: "3px solid #0a1e12",
             background: "rgba(0,0,0,0.25)",
           }}>
             <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: "0.28em", color: "#f0ece0", textTransform: "uppercase", lineHeight: 1 }}>HABITS</div>
             <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.18em", color: "rgba(240,236,224,0.3)", marginTop: 5 }}>
               {done}/{total} ENLISTED TODAY &nbsp;·&nbsp; {pct}%
+            </div>
+
+            {/* ── FILTER CHECKBOXES ── */}
+            <div style={{ display: "flex", justifyContent: "center", gap: 18, marginTop: 10 }}>
+              <div style={cbWrap} onClick={toggleHideCompleted} role="checkbox" aria-checked={hideCompleted}>
+                <div style={cbBox(hideCompleted)}>
+                  {hideCompleted && (
+                    <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+                      <path d="M1.5 4.5L3.5 6.5L7.5 2.5" stroke="#e8a820" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  )}
+                </div>
+                <span style={cbLabel}>Hide Completed</span>
+              </div>
+              <div style={cbWrap} onClick={toggleHideFuture} role="checkbox" aria-checked={hideFuture}>
+                <div style={cbBox(hideFuture)}>
+                  {hideFuture && (
+                    <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+                      <path d="M1.5 4.5L3.5 6.5L7.5 2.5" stroke="#e8a820" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  )}
+                </div>
+                <span style={cbLabel}>Hide Future</span>
+              </div>
             </div>
           </div>
 
@@ -181,8 +261,13 @@ export function HabitsPage() {
               <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.2em", color: "rgba(240,236,224,0.18)" }}>NO HABITS ENLISTED</p>
               <p style={{ fontFamily: "'IM Fell English',Georgia,serif", fontStyle: "italic", fontSize: 11, marginTop: 8, color: "rgba(240,236,224,0.1)" }}>Discipline is the soul of an army</p>
             </div>
+          ) : visibleHabits.length === 0 ? (
+            <div style={{ padding: "32px 16px", textAlign: "center" }}>
+              <p style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.18em", color: "rgba(240,236,224,0.18)" }}>ALL FILTERED OUT</p>
+              <p style={{ fontFamily: "'IM Fell English',Georgia,serif", fontStyle: "italic", fontSize: 10, marginTop: 6, color: "rgba(240,236,224,0.1)" }}>Adjust filters above to see more</p>
+            </div>
           ) : (
-            habits?.map((h, idx) => (
+            visibleHabits.map((h, idx) => (
               <HabitRow key={h.id} habit={h} todayStr={today} last7={last7} isEven={idx % 2 === 0} />
             ))
           )}
