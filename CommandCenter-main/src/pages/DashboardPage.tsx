@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { dashboardApi, gamificationApi } from "@/lib/api";
 import { GameScoreboard } from "@/components/dashboard/GameScoreboard";
 import { TaskCard } from "@/components/todos/TaskCard";
+import { NextUpPanel } from "@/components/dashboard/NextUpPanel";
 import { HabitRow } from "@/components/habits/HabitRow";
 import { QuickAdd } from "@/components/todos/QuickAdd";
 import { useUIStore, useTimerStore } from "@/store";
@@ -21,8 +22,6 @@ export function DashboardPage() {
     refetchInterval: 60_000,
   });
 
-  // Fetch last 30 days of gamification history for WK AVG / BEST columns.
-  // Fails silently if the endpoint doesn't exist yet.
   const { data: gamHistory } = useQuery({
     queryKey: ["gamification-history"],
     queryFn: () => gamificationApi.history(30),
@@ -64,6 +63,9 @@ export function DashboardPage() {
   const habits = data?.today_habits ?? [];
   const projects = data?.active_projects ?? [];
 
+  // All non-done tasks (today + overdue) for the NextUpPanel
+  const allPending = [...tasksTodayRaw, ...overdueT];
+
   return (
     <div>
       {/* TOP BAR */}
@@ -88,29 +90,35 @@ export function DashboardPage() {
 
       <div className="stripe" />
 
-      {/* MAIN GRID: Scoreboard left, Tasks right */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderBottom: "3px solid #1e3629" }}>
+      {/* MAIN GRID: Scoreboard left · Tasks center · Next Up right */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", borderBottom: "3px solid #1e3629" }}>
 
-        {/* LEFT: Scoreboard */}
+        {/* LEFT: Game Scoreboard */}
         <div style={{ borderRight: "3px solid #1e3629" }}>
           <GameScoreboard stats={scoreboardStats} history={gamHistory} />
         </div>
 
-        {/* RIGHT: Today's Tasks */}
-        <div style={{ display: "flex", flexDirection: "column" }}>
+        {/* CENTER: Today's Tasks (quick-add + scrollable list) */}
+        <div style={{ display: "flex", flexDirection: "column", borderRight: "3px solid #1e3629" }}>
           <div className="panel-header">
             <span className="panel-header-title">&#9876; Today's Tasks</span>
             <button className="panel-header-link" onClick={() => setActivePage("todos")}>View All &#8594;</button>
           </div>
           <QuickAdd defaultStatus="today" />
-          <div style={{ flex: 1, overflowY: "auto", maxHeight: 280 }}>
+          <div style={{ flex: 1, overflowY: "auto", maxHeight: 260 }}>
             {tasksToday.length === 0 ? (
               <div style={{ padding: "24px 16px", textAlign: "center" }}>
                 <p style={{ fontFamily: "'IM Fell English',Georgia,serif", fontStyle: "italic", fontSize: 11, color: "rgba(245,240,224,0.2)" }}>All clear &#8212; no orders today</p>
               </div>
-            ) : tasksToday.slice(0, 8).map(t => <TaskCard key={t.id} task={t} />)}
+            ) : tasksToday.slice(0, 7).map(t => <TaskCard key={t.id} task={t} />)}
           </div>
         </div>
+
+        {/* RIGHT: Next Up panel */}
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <NextUpPanel tasks={allPending} />
+        </div>
+
       </div>
 
       <div className="stripe-thin" />

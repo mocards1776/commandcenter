@@ -99,6 +99,18 @@ body {
 .panel-num.empty { color: rgba(255,255,255,0.12); }
 .panel-sub { font-size: 8px; color: rgba(255,255,255,0.3); letter-spacing: 0.1em; text-transform: uppercase; margin-top: 2px; text-align: center; }
 
+/* ── Flip panel animation (countdown digits) ── */
+@keyframes flipdown {
+  0%   { transform: perspective(200px) rotateX(0deg);   opacity: 1; }
+  40%  { transform: perspective(200px) rotateX(90deg);  opacity: 0; }
+  60%  { transform: perspective(200px) rotateX(-90deg); opacity: 0; }
+  100% { transform: perspective(200px) rotateX(0deg);   opacity: 1; }
+}
+.flip-panel {
+  animation: flipdown 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-style: preserve-3d;
+}
+
 /* ── Section headers (task/habit/project panels) ── */
 .panel-header {
   background: #1e3629;
@@ -261,7 +273,6 @@ input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepi
   to   { opacity: 1; transform: scale(1); }
 }
 
-/* Task name label at top */
 .task-ctx-label {
   font-size: 9px;
   font-weight: 600;
@@ -277,14 +288,12 @@ input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepi
   pointer-events: none;
 }
 
-/* Separator */
 .task-ctx-sep {
   height: 1px;
   background: rgba(255,255,255,0.07);
   margin: 3px 0;
 }
 
-/* Menu item */
 .task-ctx-item {
   display: flex;
   align-items: center;
@@ -302,7 +311,6 @@ input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepi
   transition: background 0.07s, color 0.07s;
 }
 
-/* Highlighted state (keyboard focus / hover) */
 .task-ctx-item[data-highlighted] {
   background: rgba(232,168,32,0.1);
   color: #e8a820;
@@ -311,7 +319,6 @@ input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepi
   opacity: 1;
 }
 
-/* Danger variant (Delete) */
 .task-ctx-item--danger {
   color: rgba(217,64,64,0.65);
 }
@@ -320,7 +327,6 @@ input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepi
   color: #d94040;
 }
 
-/* Icon inside item */
 .task-ctx-icon {
   flex-shrink: 0;
   opacity: 0.55;
