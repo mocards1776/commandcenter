@@ -1,10 +1,11 @@
-from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi import FastAPI, Depends, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
 import os
 import json
+import httpx
 from typing import Optional, List
 
 import db
@@ -72,6 +73,66 @@ def tags_to_str(tag_ids) -> str:
 
 def calc_focus_score(importance: int, difficulty: int) -> int:
     return importance * difficulty
+
+# ─── Telegram Bot ────────────────────────────────────────────────────
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_BOT_USERNAME = os.getenv("TELEGRAM_BOT_USERNAME", "RUWT_bot")
+PUBLIC_BACKEND_URL = os.getenv("PUBLIC_BACKEND_URL", "")
+
+async def telegram_send_message(chat_id: int, text: str):
+    """Send a reply back to a Telegram chat."""
+    if not TELEGRAM_BOT_TOKEN:
+        return
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        await client.post(url, json={"chat_id": chat_id, "text": text})
+
+def parse_telegram_task(text: str) -> dict:
+    """
+    Parse a Telegram message into task fields.
+
+    Supported formats (all case-insensitive prefixes):
+      /task Buy milk
+      /task today Call Mike          → status=today
+      /task !Finish taxes            → priority=high, importance=5
+      Buy milk                       → plain text, no command needed
+    """
+    raw = text.strip()
+
+    if raw.lower().startswith("/task "):
+        raw = raw[6:].strip()
+    elif raw.lower() == "/task":
+        raw = ""
+
+    if not raw:
+        raise ValueError("Usage: /task Your task title here")
+
+    priority = "medium"
+    status = "inbox"
+    importance = 3
+    difficulty = 3
+
+    if raw.startswith("!"):
+        priority = "high"
+        importance = 5
+        raw = raw[1:].strip()
+
+    lower = raw.lower()
+    if lower.startswith("today "):
+        status = "today"
+        raw = raw[6:].strip()
+
+    if not raw:
+        raise ValueError("Task title cannot be empty after prefix")
+
+    return {
+        "title": raw,
+        "status": status,
+        "priority": priority,
+        "importance": importance,
+        "difficulty": difficulty,
+        "notes": "Created via Telegram bot",
+    }
 
 # ─── Auth ────────────────────────────────────────────────────────────
 from sqlalchemy import select
@@ -652,11 +713,95 @@ async def process_braindump(entry_id: str, session: Session = Depends(db.get_ses
     session.refresh(entry)
     return entry
 
+# ─── Telegram Integration ─────────────────────────────────────────────
+@app.post("/integrations/telegram/webhook")
+async def telegram_webhook(request: Request, session: Session = Depends(db.get_session)):
+    """
+    Telegram bot webhook. Register this URL with Telegram via /integrations/telegram/set-webhook.
+    Supported message formats:
+      /task Buy milk
+      /task today Call Mike      → status=today
+      /task !Finish taxes        → priority=high
+      Buy milk                   → plain text also works
+    """
+    payload = await request.json()
+    message = payload.get("message") or payload.get("edited_message")
+    if not message:
+        return {"ok": True}
+
+    chat_id = message.get("chat", {}).get("id")
+    text = (message.get("text") or "").strip()
+
+    if not chat_id or not text:
+        return {"ok": True}
+
+    # Handle /start and /help
+    if text.lower() in ("/start", "/help"):
+        help_msg = (
+            "CommandCenter Bot\n\n"
+            "Send any message to create a task, or use:\n"
+            "/task Buy milk\n"
+            "/task today Call Mike  (adds to Today)\n"
+            "/task !Finish taxes    (high priority)\n\n"
+            "Plain text also creates a task."
+        )
+        await telegram_send_message(chat_id, help_msg)
+        return {"ok": True}
+
+    # Ignore other slash commands we don't handle
+    if text.startswith("/") and not text.lower().startswith("/task"):
+        return {"ok": True}
+
+    try:
+        task_fields = parse_telegram_task(text)
+    except ValueError as exc:
+        await telegram_send_message(chat_id, str(exc))
+        return {"ok": True}
+
+    task_fields["tag_ids"] = ""
+    task_fields["focus_score"] = calc_focus_score(
+        task_fields.pop("importance", 3),
+        task_fields.pop("difficulty", 3),
+    )
+    task = Task(**task_fields)
+    session.add(task)
+    session.commit()
+    session.refresh(task)
+
+    reply = (
+        f"Task added: {task.title}\n"
+        f"Status: {task.status}  Priority: {task.priority}"
+    )
+    await telegram_send_message(chat_id, reply)
+    return {"ok": True}
+
+
+@app.get("/integrations/telegram/set-webhook")
+async def set_telegram_webhook():
+    """
+    Register the webhook URL with Telegram. Call once after deploying.
+    Requires TELEGRAM_BOT_TOKEN and PUBLIC_BACKEND_URL env vars to be set.
+    """
+    if not TELEGRAM_BOT_TOKEN:
+        raise HTTPException(status_code=500, detail="TELEGRAM_BOT_TOKEN env var not set")
+    if not PUBLIC_BACKEND_URL:
+        raise HTTPException(status_code=500, detail="PUBLIC_BACKEND_URL env var not set")
+
+    webhook_url = f"{PUBLIC_BACKEND_URL.rstrip('/')}/integrations/telegram/webhook"
+    api_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setWebhook"
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.post(api_url, json={"url": webhook_url})
+        result = resp.json()
+
+    return {"webhook_url": webhook_url, "telegram_response": result}
+
+
 # Startup
 @app.on_event("startup")
 async def startup():
     db.init_db()
-    print("✓ Database initialized")
+    print("\u2713 Database initialized")
 
 if __name__ == "__main__":
     import uvicorn
