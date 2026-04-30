@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+from sqlalchemy import select, text
 from datetime import datetime, timedelta, date
 import os
 from typing import Optional, List
@@ -10,7 +11,7 @@ from models import Task, Project, Habit, HabitCompletion, TimeEntry, Note, CRMPe
 from schemas import (
     TaskCreate, TaskUpdate, TaskResponse,
     ProjectCreate, ProjectUpdate, ProjectResponse,
-    HabitCreate, HabitUpdate, HabitResponse,
+    HabitCreate, HabitUpdate, HabitResponse, HabitCompletionResponse,
     TimeEntryCreate, TimeEntryResponse,
     NoteCreate, NoteUpdate, NoteResponse,
     CRMPersonCreate, CRMPersonUpdate, CRMPersonResponse,
@@ -34,8 +35,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ─── Auth ────────────────────────────────────────────────────────────
-from sqlalchemy import select
+# ─── Auth ────────────────────────────────────────────────────
 from models import User
 
 @app.post("/api/auth/register", response_model=UserResponse)
@@ -58,7 +58,7 @@ async def login(data: UserLogin, session: Session = Depends(db.get_session)):
     token = create_access_token(user.id)
     return {"access_token": token, "token_type": "bearer"}
 
-# ─── Tasks ────────────────────────────────────────────────────────────
+# ─── Tasks ────────────────────────────────────────────────────
 @app.get("/api/tasks/", response_model=List[TaskResponse])
 async def list_tasks(
     status: Optional[str] = None,
@@ -167,7 +167,7 @@ async def reorder_tasks(
     session.commit()
     return {"ok": True}
 
-# ─── Projects ────────────────────────────────────────────────────────
+# ─── Projects ──────────────────────────────────────────────────
 @app.get("/api/projects/", response_model=List[ProjectResponse])
 async def list_projects(
     session: Session = Depends(db.get_session),
@@ -230,7 +230,7 @@ async def delete_project(
     session.commit()
     return {"ok": True}
 
-# ─── Time Blocks ─────────────────────────────────────────────────────
+# ─── Time Blocks ─────────────────────────────────────────────────
 @app.get("/api/time-blocks/", response_model=List[TimeBlockResponse])
 async def list_time_blocks(
     date: Optional[str] = None,
@@ -272,7 +272,15 @@ async def delete_time_block(
     session.commit()
     return {"ok": True}
 
-# ─── Habits ──────────────────────────────────────────────────────────
+# ─── Habits ────────────────────────────────────────────────────
+
+def _serialize_habit(data_dict: dict) -> dict:
+    """Convert custom_days list to CSV string for storage."""
+    if "custom_days" in data_dict:
+        cd = data_dict["custom_days"]
+        data_dict["custom_days"] = ",".join(str(d) for d in cd) if cd else None
+    return data_dict
+
 @app.get("/api/habits/", response_model=List[HabitResponse])
 async def list_habits(
     session: Session = Depends(db.get_session),
@@ -289,11 +297,42 @@ async def create_habit(
     session: Session = Depends(db.get_session),
     user: User = Depends(get_current_user),
 ):
-    habit = Habit(**data.dict(), user_id=user.id)
+    payload = _serialize_habit(data.dict())
+    habit = Habit(**payload, user_id=user.id)
     session.add(habit)
     session.commit()
     session.refresh(habit)
     return habit
+
+@app.patch("/api/habits/{habit_id}", response_model=HabitResponse)
+async def update_habit(
+    habit_id: str,
+    data: HabitUpdate,
+    session: Session = Depends(db.get_session),
+    user: User = Depends(get_current_user),
+):
+    habit = session.execute(select(Habit).where(Habit.id == habit_id)).scalar()
+    if not habit or habit.user_id != user.id:
+        raise HTTPException(status_code=404)
+    updates = _serialize_habit(data.dict(exclude_unset=True))
+    for key, value in updates.items():
+        setattr(habit, key, value)
+    session.commit()
+    session.refresh(habit)
+    return habit
+
+@app.delete("/api/habits/{habit_id}")
+async def delete_habit(
+    habit_id: str,
+    session: Session = Depends(db.get_session),
+    user: User = Depends(get_current_user),
+):
+    habit = session.execute(select(Habit).where(Habit.id == habit_id)).scalar()
+    if not habit or habit.user_id != user.id:
+        raise HTTPException(status_code=404)
+    session.delete(habit)
+    session.commit()
+    return {"ok": True}
 
 @app.post("/api/habits/{habit_id}/complete")
 async def complete_habit(
@@ -343,7 +382,7 @@ async def get_habit_streak(
     
     return {"habit_id": habit_id, "streak": streak}
 
-# ─── Time Entries ────────────────────────────────────────────────────
+# ─── Time Entries ───────────────────────────────────────────────
 @app.get("/api/time-entries/active", response_model=Optional[TimeEntryResponse])
 async def get_active_timer(
     session: Session = Depends(db.get_session),
@@ -396,7 +435,7 @@ async def stop_timer(
     session.refresh(entry)
     return entry
 
-# ─── Dashboard ───────────────────────────────────────────────────────
+# ─── Dashboard ───────────────────────────────────────────────────
 @app.get("/api/dashboard/", response_model=DashboardSummary)
 async def get_dashboard(
     session: Session = Depends(db.get_session),
@@ -404,7 +443,6 @@ async def get_dashboard(
 ):
     today = datetime.utcnow().date()
     
-    # Today's tasks
     today_tasks = session.execute(
         select(Task).where(
             (Task.user_id == user.id) &
@@ -412,7 +450,6 @@ async def get_dashboard(
         )
     ).scalars().all()
     
-    # Completed today
     completed_today = session.execute(
         select(Task).where(
             (Task.user_id == user.id) &
@@ -421,7 +458,6 @@ async def get_dashboard(
         )
     ).scalars().all()
     
-    # Time tracked today
     time_entries = session.execute(
         select(TimeEntry).where(
             (TimeEntry.user_id == user.id) &
@@ -441,7 +477,7 @@ async def get_dashboard(
         completed_today=len(completed_today),
         focus_score_today=focus_score_today,
         time_tracked_seconds=total_seconds,
-        streak_days=0,  # compute from habits
+        streak_days=0,
     )
 
 # ─── Tags & Categories ──────────────────────────────────────────────
@@ -489,7 +525,7 @@ async def create_category(
     session.refresh(category)
     return category
 
-# ─── Notes ──────────────────────────────────────────────────────────
+# ─── Notes ────────────────────────────────────────────────────
 @app.get("/api/notes/", response_model=List[NoteResponse])
 async def list_notes(
     session: Session = Depends(db.get_session),
@@ -512,7 +548,7 @@ async def create_note(
     session.refresh(note)
     return note
 
-# ─── CRM ────────────────────────────────────────────────────────────
+# ─── CRM ────────────────────────────────────────────────────
 @app.get("/api/crm/", response_model=List[CRMPersonResponse])
 async def list_crm(
     session: Session = Depends(db.get_session),
@@ -535,7 +571,7 @@ async def create_crm(
     session.refresh(person)
     return person
 
-# ─── Braindump ──────────────────────────────────────────────────────
+# ─── Braindump ───────────────────────────────────────────────────
 @app.get("/api/braindump/", response_model=List[BraindumpEntryResponse])
 async def list_braindump(
     session: Session = Depends(db.get_session),
@@ -572,11 +608,27 @@ async def process_braindump(
     session.refresh(entry)
     return entry
 
-# Startup
+# ─── Startup ────────────────────────────────────────────────────
 @app.on_event("startup")
 async def startup():
     db.init_db()
-    print("✓ Database initialized")
+    # Migrate habits table: rename title→name if needed, add new columns
+    migrations = [
+        "ALTER TABLE habits RENAME COLUMN title TO name",
+        "ALTER TABLE habits ADD COLUMN IF NOT EXISTS icon VARCHAR(100)",
+        "ALTER TABLE habits ADD COLUMN IF NOT EXISTS custom_days VARCHAR(100)",
+        "ALTER TABLE habits ADD COLUMN IF NOT EXISTS target_minutes INTEGER",
+        "ALTER TABLE habits ADD COLUMN IF NOT EXISTS time_hour INTEGER",
+        "ALTER TABLE habits ADD COLUMN IF NOT EXISTS time_minute INTEGER DEFAULT 0",
+    ]
+    with db.engine.connect() as conn:
+        for sql in migrations:
+            try:
+                conn.execute(text(sql))
+                conn.commit()
+            except Exception:
+                pass  # already migrated — safe to ignore
+    print("✓ Database initialized and migrated")
 
 if __name__ == "__main__":
     import uvicorn
