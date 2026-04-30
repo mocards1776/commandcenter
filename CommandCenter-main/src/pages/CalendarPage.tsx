@@ -4,6 +4,8 @@ import {
   List,
   Maximize2,
   Minimize2,
+  LogIn,
+  LogOut,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
@@ -32,11 +34,52 @@ const GC_TOKEN_KEY        = "gcal_access_token";
 const GC_EXPIRY_KEY       = "gcal_token_expiry";
 const GC_SELECTED_CALS_KEY = "gcal_selected_calendar_ids";
 
+// Google OAuth constants
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
+const GCAL_SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
+
 function getStoredToken(): string | null {
-  const token  = localStorage.getItem(GC_TOKEN_KEY);
-  const expiry = localStorage.getItem(GC_EXPIRY_KEY);
-  if (!token || !expiry || Date.now() > parseInt(expiry)) return null;
-  return token;
+  try {
+    const token  = localStorage.getItem(GC_TOKEN_KEY);
+    const expiry = localStorage.getItem(GC_EXPIRY_KEY);
+    if (!token || !expiry || Date.now() > parseInt(expiry)) return null;
+    return token;
+  } catch {
+    return null;
+  }
+}
+
+function storeToken(token: string, expiresIn: number) {
+  try {
+    localStorage.setItem(GC_TOKEN_KEY, token);
+    localStorage.setItem(GC_EXPIRY_KEY, String(Date.now() + expiresIn * 1000));
+  } catch (e) {
+    console.error("localStorage unavailable", e);
+  }
+}
+
+function clearToken() {
+  try {
+    localStorage.removeItem(GC_TOKEN_KEY);
+    localStorage.removeItem(GC_EXPIRY_KEY);
+  } catch { /* ignore */ }
+}
+
+function connectGoogleCalendar() {
+  if (!GOOGLE_CLIENT_ID) {
+    alert("VITE_GOOGLE_CLIENT_ID is not set. Add it to your Vercel environment variables.");
+    return;
+  }
+  const redirectUri = window.location.origin + window.location.pathname;
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: redirectUri,
+    response_type: "token",
+    scope: GCAL_SCOPE,
+    include_granted_scopes: "true",
+    prompt: "consent",
+  });
+  window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }
 
 function addDays(dateStr: string, n: number): string {
@@ -120,7 +163,6 @@ function DayColumn({
   const [pickerBlockId, setPickerBlockId] = useState<string | null>(null);
   const START_HOUR = 5;
 
-  // Prepare gcal events for this date
   const gcalForDay = useMemo(() => {
     return gcalEvents
       .filter((e) => {
@@ -138,7 +180,6 @@ function DayColumn({
       });
   }, [gcalEvents, date]);
 
-  // Prepare local blocks for this date
   const localForDay = useMemo(() => {
     return localBlocks
       .filter((b) => {
@@ -158,7 +199,6 @@ function DayColumn({
 
   const gcalLayout   = computeLayout(gcalForDay);
   const localLayout  = computeLayout(localForDay);
-
   const totalH = HOURS.length * zoom;
 
   return (
@@ -166,7 +206,6 @@ function DayColumn({
       style={{ flex: 1, borderLeft: "1px solid rgba(255,255,255,0.03)", position: "relative", height: totalH }}
       onDragOver={(e) => e.preventDefault()}
     >
-      {/* Hour grid lines */}
       {HOURS.map((h) => (
         <div
           key={h}
@@ -176,7 +215,6 @@ function DayColumn({
         />
       ))}
 
-      {/* Google Calendar events */}
       {gcalLayout.map((ev) => {
         const top    = ((ev.startMin - START_HOUR * 60) / 60) * zoom;
         const height = Math.max(((ev.endMin - ev.startMin) / 60) * zoom, 18);
@@ -211,7 +249,6 @@ function DayColumn({
         );
       })}
 
-      {/* Local time blocks */}
       {localLayout.map((block) => {
         const top    = ((block.startMin - START_HOUR * 60) / 60) * zoom;
         const height = Math.max(((block.endMin - block.startMin) / 60) * zoom, 18);
@@ -264,8 +301,12 @@ export function CalendarPage() {
   const [calendars, setCalendars]   = useState<GoogleCalendar[]>([]);
   const [zoom, setZoom]             = useState(80);
   const [selectedCalendarIds, setSelectedCalendarIds] = useState<string[]>(() => {
-    const saved = localStorage.getItem(GC_SELECTED_CALS_KEY);
-    return saved ? JSON.parse(saved) : ["primary"];
+    try {
+      const saved = localStorage.getItem(GC_SELECTED_CALS_KEY);
+      return saved ? JSON.parse(saved) : ["primary"];
+    } catch {
+      return ["primary"];
+    }
   });
   const [gcalEvents, setGcalEvents] = useState<GCalEvent[]>([]);
   const [gcalLoading, setGcalLoading] = useState(false);
@@ -279,8 +320,31 @@ export function CalendarPage() {
     return [selectedDate, addDays(selectedDate, 1), addDays(selectedDate, 2)];
   }, [selectedDate, viewMode]);
 
+  // ── Handle OAuth redirect: extract token from URL hash ──────────────────
   useEffect(() => {
-    localStorage.setItem(GC_SELECTED_CALS_KEY, JSON.stringify(selectedCalendarIds));
+    const hash = window.location.hash;
+    if (hash && hash.includes("access_token")) {
+      const params = new URLSearchParams(hash.slice(1));
+      const token     = params.get("access_token");
+      const expiresIn = parseInt(params.get("expires_in") || "3600", 10);
+      const errorMsg  = params.get("error");
+
+      if (errorMsg) {
+        toast.error(`Google auth error: ${errorMsg}`);
+      } else if (token) {
+        storeToken(token, expiresIn);
+        setGcalToken(token);
+        toast.success("Google Calendar connected!");
+      }
+      // Clean up the hash from the URL
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(GC_SELECTED_CALS_KEY, JSON.stringify(selectedCalendarIds));
+    } catch { /* ignore */ }
   }, [selectedCalendarIds]);
 
   const fetchCalendars = useCallback(async (token: string) => {
@@ -288,6 +352,15 @@ export function CalendarPage() {
       const res = await fetch("https://www.googleapis.com/calendar/v3/users/me/calendarList", {
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (!res.ok) {
+        if (res.status === 401) {
+          // Token expired — clear it
+          clearToken();
+          setGcalToken(null);
+          toast.error("Google Calendar session expired. Please reconnect.");
+        }
+        return;
+      }
       const data = await res.json();
       setCalendars(data.items ?? []);
     } catch (e) { console.error(e); }
@@ -305,6 +378,14 @@ export function CalendarPage() {
             `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events?timeMin=${start}&timeMax=${end}&singleEvents=true&orderBy=startTime`,
             { headers: { Authorization: `Bearer ${token}` } }
           );
+          if (!res.ok) {
+            if (res.status === 401) {
+              clearToken();
+              setGcalToken(null);
+              toast.error("Google Calendar session expired. Please reconnect.");
+            }
+            return [];
+          }
           const data = await res.json();
           return (data.items ?? []).map((item: any) => ({ ...item, calendar_id: calId }));
         })
@@ -320,7 +401,15 @@ export function CalendarPage() {
     }
   }, [gcalToken, selectedCalendarIds, fetchGcalEvents, fetchCalendars]);
 
-  // ── Backlog: today + inbox + in_progress tasks (no time assigned) ──────────
+  const handleDisconnect = () => {
+    clearToken();
+    setGcalToken(null);
+    setCalendars([]);
+    setGcalEvents([]);
+    toast.success("Google Calendar disconnected.");
+  };
+
+  // ── Backlog ────────────────────────────────────────────────────────────────
   const apiBase = import.meta.env.VITE_API_BASE_URL || "";
   const { data: tasks = [] } = useQuery<Task[]>({
     queryKey: ["tasks-backlog-calendar"],
@@ -346,7 +435,6 @@ export function CalendarPage() {
     },
   });
 
-  // ── Color update mutation ──────────────────────────────────────────────────
   const colorMutation = useMutation({
     mutationFn: ({ id, color }: { id: string; color: string }) =>
       axios.patch(`${apiBase}/api/time-blocks/${id}/`, { color }),
@@ -357,7 +445,6 @@ export function CalendarPage() {
     onError: () => toast.error("Failed to update color"),
   });
 
-  // ── Drag-to-schedule ───────────────────────────────────────────────────────
   const onDragStart = (e: React.DragEvent, taskId: string) => {
     e.dataTransfer.setData("taskId", taskId);
   };
@@ -415,34 +502,69 @@ export function CalendarPage() {
               <Maximize2 size={12} />
             </button>
           </div>
-          {gcalToken && (
-            <div style={{ position: "relative" }}>
-              <button onClick={() => setShowCalendarList(!showCalendarList)}
-                style={{ background: "#1e3629", border: "1px solid #e8a820", color: "#e8a820",
-                  padding: "4px 10px", borderRadius: 4, fontSize: 11, cursor: "pointer",
-                  display: "flex", alignItems: "center", gap: 4 }}>
-                <List size={12} /> {selectedCalendarIds.length} CALS
-              </button>
-              {showCalendarList && (
-                <div style={{ position: "absolute", top: 35, right: 0, background: "#1e3629",
-                  border: "1px solid #e8a820", zIndex: 100, width: 220, padding: 8, borderRadius: 4 }}>
-                  {calendars.map((cal) => (
-                    <label key={cal.id} style={{ display: "flex", alignItems: "center",
-                      gap: 8, padding: "4px 0", fontSize: 12, cursor: "pointer" }}>
-                      <input type="checkbox" checked={selectedCalendarIds.includes(cal.id)}
-                        onChange={() =>
-                          setSelectedCalendarIds((prev) =>
-                            prev.includes(cal.id) ? prev.filter((x) => x !== cal.id) : [...prev, cal.id]
-                          )}
-                      />
-                      <span style={{ textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
-                        {cal.summary}
-                      </span>
-                    </label>
-                  ))}
-                </div>
+
+          {/* ── Google Calendar connect / disconnect ── */}
+          {!gcalToken ? (
+            <button
+              onClick={connectGoogleCalendar}
+              title={!GOOGLE_CLIENT_ID ? "VITE_GOOGLE_CLIENT_ID not set" : "Connect Google Calendar"}
+              style={{
+                background: GOOGLE_CLIENT_ID ? "#4285f4" : "rgba(255,255,255,0.1)",
+                border: "none", color: "#fff",
+                padding: "4px 10px", borderRadius: 4, fontSize: 11, cursor: "pointer",
+                display: "flex", alignItems: "center", gap: 4,
+                opacity: GOOGLE_CLIENT_ID ? 1 : 0.5,
+              }}
+            >
+              <LogIn size={12} /> CONNECT GCAL
+            </button>
+          ) : (
+            <>
+              {gcalLoading && (
+                <span style={{ fontSize: 9, opacity: 0.4, color: "#4285f4" }}>loading…</span>
               )}
-            </div>
+              <div style={{ position: "relative" }}>
+                <button onClick={() => setShowCalendarList(!showCalendarList)}
+                  style={{ background: "#1e3629", border: "1px solid #4285f4", color: "#4285f4",
+                    padding: "4px 10px", borderRadius: 4, fontSize: 11, cursor: "pointer",
+                    display: "flex", alignItems: "center", gap: 4 }}>
+                  <List size={12} /> {selectedCalendarIds.length} CALS
+                </button>
+                {showCalendarList && (
+                  <div style={{ position: "absolute", top: 35, right: 0, background: "#1e3629",
+                    border: "1px solid #4285f4", zIndex: 100, width: 220, padding: 8, borderRadius: 4 }}>
+                    {calendars.length === 0 && (
+                      <div style={{ fontSize: 10, opacity: 0.5, padding: "4px 0" }}>No calendars found</div>
+                    )}
+                    {calendars.map((cal) => (
+                      <label key={cal.id} style={{ display: "flex", alignItems: "center",
+                        gap: 8, padding: "4px 0", fontSize: 12, cursor: "pointer" }}>
+                        <input type="checkbox" checked={selectedCalendarIds.includes(cal.id)}
+                          onChange={() =>
+                            setSelectedCalendarIds((prev) =>
+                              prev.includes(cal.id) ? prev.filter((x) => x !== cal.id) : [...prev, cal.id]
+                            )}
+                        />
+                        <span style={{ textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
+                          {cal.summary}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={handleDisconnect}
+                title="Disconnect Google Calendar"
+                style={{
+                  background: "rgba(255,255,255,0.08)", border: "none", color: "rgba(255,255,255,0.5)",
+                  padding: "4px 8px", borderRadius: 4, fontSize: 11, cursor: "pointer",
+                  display: "flex", alignItems: "center", gap: 4,
+                }}
+              >
+                <LogOut size={12} />
+              </button>
+            </>
           )}
         </div>
       </div>
