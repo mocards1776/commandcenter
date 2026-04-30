@@ -95,10 +95,15 @@ class Habit(Base):
     id = Column(String(36), primary_key=True, default=gen_id)
     user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
     
-    title = Column(String(255), nullable=False)
+    name = Column(String(255), nullable=False)       # was "title" — migrated via startup ALTER
     description = Column(Text, nullable=True)
+    icon = Column(String(100), nullable=True)
     color = Column(String(50), nullable=True)
-    frequency = Column(String(50), default="daily")  # daily, weekly, etc
+    frequency = Column(String(50), default="daily")  # daily, weekdays, weekends, weekly, custom
+    custom_days = Column(String(100), nullable=True)  # CSV of day ints e.g. "1,2,3,4,5"
+    target_minutes = Column(Integer, nullable=True)
+    time_hour = Column(Integer, nullable=True)
+    time_minute = Column(Integer, nullable=True, default=0)
     
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
