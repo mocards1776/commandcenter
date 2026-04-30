@@ -6,7 +6,7 @@ import type {
   TimeEntry, Note, CRMPerson,
   TimeBlock, BraindumpEntry,
   DashboardSummary, Tag, Category,
-  FavoriteSportsTeam,
+  FavoriteSportsTeam, GamificationStats,
 } from "@/types";
 
 const api = axios.create({
@@ -23,12 +23,20 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// ─── Dashboard ────────────────────────────────────────────────
+// ─── Dashboard ────────────────────────────────────────────
 export const dashboardApi = {
   get: () => api.get<DashboardSummary>("/dashboard/").then(r => r.data),
 };
 
-// ─── Tasks ────────────────────────────────────────────────────
+// ─── Gamification ─────────────────────────────────────────
+export const gamificationApi = {
+  // Returns array of daily gamification rows, newest last.
+  // Backend endpoint: GET /gamification/?limit=N  (FastAPI list pattern)
+  history: (limit = 30) =>
+    api.get<GamificationStats[]>("/gamification/", { params: { limit } }).then(r => r.data),
+};
+
+// ─── Tasks ─────────────────────────────────────────────
 export const tasksApi = {
   list: (params?: Record<string, any>) =>
     api.get<Task[]>("/tasks/", { params }).then(r => r.data),
@@ -44,7 +52,7 @@ export const tasksApi = {
   reorder: (ids: string[]) => api.post("/tasks/reorder", ids),
 };
 
-// ─── Projects ────────────────────────────────────────────────
+// ─── Projects ────────────────────────────────────────────
 export const projectsApi = {
   list: (params?: Record<string, any>) =>
     api.get<ProjectSummary[]>("/projects/", { params }).then(r => r.data),
@@ -55,7 +63,7 @@ export const projectsApi = {
   delete: (id: string) => api.delete(`/projects/${id}`),
 };
 
-// ─── Habits ──────────────────────────────────────────────────
+// ─── Habits ────────────────────────────────────────────
 export const habitsApi = {
   list: (params?: Record<string, any>) =>
     api.get<Habit[]>("/habits/", { params }).then(r => r.data),
@@ -72,7 +80,7 @@ export const habitsApi = {
     api.get<{ habit_id: string; streak: number }>(`/habits/${id}/streak`).then(r => r.data),
 };
 
-// ─── Time Entries ────────────────────────────────────────────
+// ─── Time Entries ─────────────────────────────────────────
 export const timersApi = {
   active: () =>
     api.get<TimeEntry | null>("/time-entries/active").then(r => r.data),
@@ -84,7 +92,7 @@ export const timersApi = {
     api.get<TimeEntry[]>("/time-entries/", { params }).then(r => r.data),
 };
 
-// ─── Braindump ────────────────────────────────────────────────
+// ─── Braindump ───────────────────────────────────────────
 export const braindumpApi = {
   list: () => api.get<BraindumpEntry[]>("/braindump/").then(r => r.data),
   create: (raw_text: string) =>
@@ -93,7 +101,7 @@ export const braindumpApi = {
     api.post<BraindumpEntry>(`/braindump/${id}/process`).then(r => r.data),
 };
 
-// ─── Notes ───────────────────────────────────────────────────
+// ─── Notes ─────────────────────────────────────────────
 export const notesApi = {
   list: (params?: Record<string, any>) =>
     api.get<Note[]>("/notes/", { params }).then(r => r.data),
@@ -103,7 +111,7 @@ export const notesApi = {
   delete: (id: string) => api.delete(`/notes/${id}`),
 };
 
-// ─── CRM ─────────────────────────────────────────────────────
+// ─── CRM ───────────────────────────────────────────────
 export const crmApi = {
   list: (params?: Record<string, any>) =>
     api.get<CRMPerson[]>("/crm/", { params }).then(r => r.data),
@@ -116,7 +124,7 @@ export const crmApi = {
     api.post<CRMPerson>(`/crm/${id}/contacted`).then(r => r.data),
 };
 
-// ─── Tags ─────────────────────────────────────────────────────
+// ─── Tags ─────────────────────────────────────────────────
 export const tagsApi = {
   list: () => api.get<Tag[]>("/tags/").then(r => r.data),
   create: (data: { name: string; color: string }) =>
@@ -124,7 +132,7 @@ export const tagsApi = {
   delete: (id: string) => api.delete(`/tags/${id}`),
 };
 
-// ─── Categories ───────────────────────────────────────────────
+// ─── Categories ───────────────────────────────────────────
 export const categoriesApi = {
   list: () => api.get<Category[]>("/categories/").then(r => r.data),
   create: (data: { name: string; color: string; icon?: string }) =>
@@ -132,7 +140,7 @@ export const categoriesApi = {
   delete: (id: string) => api.delete(`/categories/${id}`),
 };
 
-// ─── Sports ──────────────────────────────────────────────────
+// ─── Sports ────────────────────────────────────────────
 export const sportsApi = {
   favorites: () =>
     api.get<FavoriteSportsTeam[]>("/sports/favorites/").then(r => r.data),
