@@ -1,14 +1,66 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { projectsApi } from "@/lib/api";
-import { Loader2, ArrowLeft, Trash2, Plus, ChevronRight, CheckCircle2, Circle } from "lucide-react";
-import type { ProjectSummary, Task } from "@/types";
+import { projectsApi, tasksApi } from "@/lib/api";
+import { Loader2, ArrowLeft, Trash2, Plus, ChevronRight, CheckCircle2, Circle, Clock, Calendar, ListChecks } from "lucide-react";
+import type { ProjectSummary, Task, Project } from "@/types";
 import { toast } from "react-hot-toast";
 
+function Countdown({ targetDate }: { targetDate: string }) {
+  const [timeLeft, setTimeLeft] = useState("");
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = new Date().getTime();
+      const target = new Date(targetDate).getTime();
+      const diff = target - now;
+
+      if (diff <= 0) {
+        setTimeLeft("DUE NOW");
+        clearInterval(timer);
+        return;
+      }
+
+      const d = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      
+      if (d > 0) setTimeLeft(`${d}d ${h}h`);
+      else if (h > 0) setTimeLeft(`${h}h ${m}m`);
+      else setTimeLeft(`${m}m remaining`);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [targetDate]);
+
+  return <span>{timeLeft}</span>;
+}
+
 function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
-  const { data: p, isLoading } = useQuery({
+  const [showAddTask, setShowAddTask] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const qc = useQueryClient();
+
+  const { data: p, isLoading } = useQuery<Project>({
     queryKey: ["project", id],
     queryFn: () => projectsApi.get(id)
+  });
+
+  const addTaskMut = useMutation({
+    mutationFn: (title: string) => tasksApi.create({
+      title,
+      project_id: id,
+      status: "today",
+      priority: "medium",
+      importance: 3,
+      difficulty: 3,
+      tag_ids: [],
+      show_in_daily: true
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["project", id] });
+      setNewTaskTitle("");
+      setShowAddTask(false);
+      toast.success("Task added to campaign");
+    }
   });
 
   if (isLoading || !p) {
@@ -19,7 +71,6 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
     );
   }
 
-  // Scoreboard calculation (tasks + subtasks)
   const allTasks = p.tasks || [];
   const completedCount = allTasks.reduce((acc, t) => {
     const taskDone = t.status === "done" ? 1 : 0;
@@ -27,11 +78,14 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
     return acc + taskDone + subtasksDone;
   }, 0);
   
-  const totalCount = allTasks.reduce((acc, t) => {
-    return acc + 1 + (t.subtasks || []).length;
-  }, 0);
-
+  const totalCount = allTasks.reduce((acc, t) => acc + 1 + (t.subtasks || []).length, 0);
+  const remainingCount = totalCount - completedCount;
   const pct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+
+  // Format Due Date / Time
+  const due = p.due_date ? new Date(p.due_date) : null;
+  const dueStr = due ? due.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : "-";
+  const timeStr = due ? due.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : "-";
 
   return (
     <div className="sb-shell" style={{minHeight:"100vh"}}>
@@ -39,20 +93,73 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
         <button onClick={onBack} style={{background:"none", border:"none", cursor:"pointer", color:"#e8a820", display:"flex", alignItems:"center", gap:8}}>
           <ArrowLeft size={16} /> ALL CAMPAIGNS
         </button>
-        <div className="top-title">{p.title}</div>
-        <div style={{width:80, textAlign:"right", color:"#e8a820", fontWeight:700}}>{pct}%</div>
+        <div className="top-title">{p.title.toUpperCase()}</div>
+        
+        {/* Scoreboard Headers */}
+        <div style={{display:"flex", gap:20, marginLeft:40}}>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:9, opacity:0.5}}>DUE DATE</div>
+            <div style={{color:"#e8a820", fontWeight:700, fontSize:14}}>{dueStr}</div>
+          </div>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:9, opacity:0.5}}>DUE TIME</div>
+            <div style={{color:"#e8a820", fontWeight:700, fontSize:14}}>{timeStr}</div>
+          </div>
+          <div style={{textAlign:"center", minWidth:100}}>
+            <div style={{fontSize:9, opacity:0.5}}>COUNTDOWN</div>
+            <div style={{color:"#d94040", fontWeight:700, fontSize:14}}>
+              {p.due_date ? <Countdown targetDate={p.due_date} /> : "-"}
+            </div>
+          </div>
+          <div style={{width:2, background:"rgba(255,255,255,0.1)", margin:"5px 0"}} />
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:9, opacity:0.5}}>TASKS</div>
+            <div style={{fontWeight:700, fontSize:14}}>{totalCount}</div>
+          </div>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:9, opacity:0.5}}>DONE</div>
+            <div style={{color:"#e8a820", fontWeight:700, fontSize:14}}>{completedCount}</div>
+          </div>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:9, opacity:0.5}}>LEFT</div>
+            <div style={{color:"#fff", fontWeight:700, fontSize:14}}>{remainingCount}</div>
+          </div>
+        </div>
       </div>
       <div className="stripe" />
 
       <div style={{padding:"20px"}}>
+        <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:15}}>
+          <div className="sb-header-label">CAMPAIGN OBJECTIVES</div>
+          <button 
+            onClick={() => setShowAddTask(true)}
+            style={{background:"transparent", border:"1px solid #e8a820", color:"#e8a820", padding:"4px 10px", borderRadius:4, fontSize:12, cursor:"pointer", display:"flex", alignItems:"center", gap:5}}
+          >
+            <Plus size={14} /> ADD TASK
+          </button>
+        </div>
+
+        {showAddTask && (
+          <div className="sb-row" style={{background:"#1e3629", padding:12, marginBottom:15, border:"1px solid #e8a820"}}>
+            <input 
+              autoFocus
+              style={{background:"transparent", border:"none", width:"100%", color:"#fff", outline:"none", fontSize:14}}
+              placeholder="ENTER NEW TASK TITLE..."
+              value={newTaskTitle}
+              onChange={e => setNewTaskTitle(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && addTaskMut.mutate(newTaskTitle)}
+            />
+          </div>
+        )}
+
         <div className="sb-header" style={{gridTemplateColumns: "1fr 100px 100px"}}>
-          <div className="sb-col-head" style={{textAlign:"left", paddingLeft:16}}>TASK / OBJECTIVE</div>
+          <div className="sb-col-head" style={{textAlign:"left", paddingLeft:16}}>OBJECTIVE</div>
           <div className="sb-col-head">STATUS</div>
-          <div className="sb-col-head">STATS</div>
+          <div className="sb-col-head">SUBTASKS</div>
         </div>
 
         {allTasks.length === 0 ? (
-          <div style={{padding:40, textAlign:"center", color:"rgba(255,255,255,0.3)"}}>No tasks in this campaign.</div>
+          <div style={{padding:40, textAlign:"center", color:"rgba(255,255,255,0.3)"}}>No tasks assigned to this campaign.</div>
         ) : (
           allTasks.map((t: Task) => (
             <div key={t.id} style={{marginBottom:10}}>
@@ -61,25 +168,11 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
                   {t.status === "done" ? <CheckCircle2 size={16} color="#e8a820" /> : <Circle size={16} color="rgba(255,255,255,0.2)" />}
                   <span style={{fontWeight:600, fontSize:14, color: t.status === "done" ? "rgba(255,255,255,0.4)" : "#fff"}}>{t.title}</span>
                 </div>
-                <div style={{display:"flex", alignItems:"center", justifyContent:"center"}}>
-                  <div style={{fontSize:10, padding:"2px 8px", background:"rgba(255,255,255,0.05)", borderRadius:4, textTransform:"uppercase"}}>{t.status}</div>
-                </div>
-                <div style={{display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700, color:"#e8a820"}}>
+                <div style={{textAlign:"center", fontSize:10, textTransform:"uppercase", opacity:0.6}}>{t.status}</div>
+                <div style={{textAlign:"center", fontWeight:700, color:"#e8a820"}}>
                   {t.subtasks?.length ? `${t.subtasks.filter(s => s.status === "done").length}/${t.subtasks.length}` : "-"}
                 </div>
               </div>
-              
-              {/* Subtasks */}
-              {t.subtasks?.map(sub => (
-                <div key={sub.id} className="sb-row" style={{display:"grid", gridTemplateColumns: "1fr 100px 100px", background:"rgba(30,54,41,0.4)", padding:"8px 0", marginLeft:20, borderLeft:"1px solid rgba(232,168,32,0.2)"}}>
-                  <div style={{paddingLeft:16, display:"flex", alignItems:"center", gap:8, opacity:0.8}}>
-                    {sub.status === "done" ? <CheckCircle2 size={12} color="#e8a820" /> : <Circle size={12} color="rgba(255,255,255,0.2)" />}
-                    <span style={{fontSize:13}}>{sub.title}</span>
-                  </div>
-                  <div style={{textAlign:"center", fontSize:9, opacity:0.5}}>{sub.status}</div>
-                  <div style={{textAlign:"center", fontSize:12}}>-</div>
-                </div>
-              ))}
             </div>
           ))
         )}
@@ -94,7 +187,7 @@ export function ProjectsPage() {
   const [showNew, setShowNew] = useState(false);
   const qc = useQueryClient();
 
-  const { data: projects = [], isLoading } = useQuery({
+  const { data: projects = [], isLoading } = useQuery<ProjectSummary[]>({
     queryKey: ["projects"],
     queryFn: () => projectsApi.list()
   });
@@ -115,14 +208,6 @@ export function ProjectsPage() {
       setShowNew(false);
       setSelectedId(p.id);
       toast.success("Campaign created!");
-    }
-  });
-
-  const deleteMut = useMutation({
-    mutationFn: (id: string) => projectsApi.delete(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["projects"] });
-      toast.success("Campaign deleted");
     }
   });
 
@@ -160,33 +245,22 @@ export function ProjectsPage() {
           </div>
         )}
 
-        {isLoading ? (
-          <div style={{display:"flex", justifyContent:"center", padding:40}}><Loader2 className="animate-spin" /></div>
-        ) : projects.length === 0 ? (
-          <div style={{textAlign:"center", padding:40, opacity:0.3}}>NO ACTIVE CAMPAIGNS</div>
-        ) : (
-          <div style={{display:"grid", gap:12}}>
-            {projects.map((p: ProjectSummary) => (
-              <div 
-                key={p.id} 
-                className="sb-row highlight" 
-                onClick={() => setSelectedId(p.id)}
-                style={{background:"#1e3629", cursor:"pointer", padding:"16px 20px", display:"flex", justifyContent:"space-between", alignItems:"center"}}
-              >
-                <div>
-                  <div style={{fontSize:18, fontWeight:700, letterSpacing:"0.05em"}}>{p.title.toUpperCase()}</div>
-                  <div style={{fontSize:11, opacity:0.6, marginTop:4}}>{p.task_count || 0} OBJECTIVES / {p.completion_percentage || 0}% COMPLETE</div>
-                </div>
-                <div style={{display:"flex", alignItems:"center", gap:15}}>
-                  <div style={{width:100, height:8, background:"rgba(0,0,0,0.3)", borderRadius:4, overflow:"hidden"}}>
-                    <div style={{width:`${p.completion_percentage}%`, height:"100%", background:"#e8a820"}} />
-                  </div>
-                  <ChevronRight size={20} color="#e8a820" />
-                </div>
+        <div style={{display:"grid", gap:12}}>
+          {projects.map((p: ProjectSummary) => (
+            <div 
+              key={p.id} 
+              className="sb-row highlight" 
+              onClick={() => setSelectedId(p.id)}
+              style={{background:"#1e3629", cursor:"pointer", padding:"16px 20px", display:"flex", justifyContent:"space-between", alignItems:"center"}}
+            >
+              <div>
+                <div style={{fontSize:18, fontWeight:700, letterSpacing:"0.05em"}}>{p.title.toUpperCase()}</div>
+                <div style={{fontSize:11, opacity:0.6, marginTop:4}}>{p.task_count || 0} OBJECTIVES / {p.completion_percentage || 0}% COMPLETE</div>
               </div>
-            ))}
-          </div>
-        )}
+              <ChevronRight size={20} color="#e8a820" />
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
