@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field, validator
 from datetime import datetime, date
 from typing import Optional, List, Any
+import json
 
 # ─── Auth ────────────────────────────────────────────────────────────
 class UserCreate(BaseModel):
@@ -70,7 +71,6 @@ class TaskResponse(BaseModel):
     category_id: Optional[str] = None
     tag_ids: List[str] = []
     show_in_daily: bool = True
-    # Fields the frontend expects with safe defaults
     actual_time_minutes: int = 0
     sort_order: int = 0
     subtasks: List[Any] = []
@@ -80,7 +80,6 @@ class TaskResponse(BaseModel):
 
     @validator("tag_ids", pre=True, always=True)
     def parse_tag_ids(cls, v):
-        # DB stores tag_ids as a CSV string or JSON-ish; normalize to list
         if v is None:
             return []
         if isinstance(v, list):
@@ -89,14 +88,11 @@ class TaskResponse(BaseModel):
             s = v.strip()
             if not s:
                 return []
-            # Handle JSON array string like '["id1","id2"]'
             if s.startswith("["):
-                import json
                 try:
                     return json.loads(s)
                 except Exception:
                     pass
-            # Handle CSV
             return [i.strip() for i in s.split(",") if i.strip()]
         return []
 
@@ -136,27 +132,75 @@ class ProjectResponse(BaseModel):
         from_attributes = True
 
 # ─── Habits ──────────────────────────────────────────────────────────
+class HabitCompletionResponse(BaseModel):
+    id: str
+    habit_id: str
+    completed_date: date
+    note: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
 class HabitCreate(BaseModel):
-    title: str
+    name: str
     description: Optional[str] = None
-    color: Optional[str] = None
+    color: Optional[str] = "#e8a820"
     frequency: str = "daily"
+    icon: Optional[str] = "🔥"
+    custom_days: Optional[List[int]] = None
+    target_minutes: Optional[int] = None
+    time_hour: Optional[int] = None
+    time_minute: Optional[int] = None
+    sort_order: int = 0
+    is_active: bool = True
 
 class HabitUpdate(BaseModel):
-    title: Optional[str] = None
+    name: Optional[str] = None
     description: Optional[str] = None
     color: Optional[str] = None
     frequency: Optional[str] = None
+    icon: Optional[str] = None
+    custom_days: Optional[List[int]] = None
+    target_minutes: Optional[int] = None
+    time_hour: Optional[int] = None
+    time_minute: Optional[int] = None
+    sort_order: Optional[int] = None
+    is_active: Optional[bool] = None
 
 class HabitResponse(BaseModel):
     id: str
-    title: str
+    name: str
     description: Optional[str] = None
     color: Optional[str] = None
     frequency: str
+    icon: Optional[str] = None
+    custom_days: Optional[List[int]] = None
+    target_minutes: Optional[int] = None
+    time_hour: Optional[int] = None
+    time_minute: Optional[int] = None
+    sort_order: int = 0
+    is_active: bool = True
+    completions: List[HabitCompletionResponse] = []
     created_at: datetime
     updated_at: datetime
-    
+
+    @validator("custom_days", pre=True, always=True)
+    def parse_custom_days(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, list):
+            return v
+        if isinstance(v, str):
+            s = v.strip()
+            if not s:
+                return None
+            try:
+                return json.loads(s)
+            except Exception:
+                return None
+        return None
+
     class Config:
         from_attributes = True
 
@@ -302,7 +346,6 @@ class DashboardSummary(BaseModel):
     focus_score_today: int
     time_tracked_seconds: int
     streak_days: int
-    # Fields the frontend reads — populated so the dashboard refreshes after task creation
     today_tasks: List[Any] = []
     overdue_tasks: List[Any] = []
     today_habits: List[Any] = []

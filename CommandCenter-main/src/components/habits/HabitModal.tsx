@@ -4,10 +4,21 @@ import { habitsApi } from "@/lib/api";
 import { X, Trash2 } from "lucide-react";
 import type { Habit } from "@/types";
 import toast from "react-hot-toast";
+
 const ICONS = ["🔥","💪","📖","🧘","🚿","🏃","💧","🥗","😴","🎯","⭐","🇺🇸","☀️","🏋️","✍️","🎵"];
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const INP: React.CSSProperties = {width:"100%",padding:"7px 10px",fontSize:12};
 const SHEAD = (t:string) => <div style={{fontSize:9,fontWeight:600,letterSpacing:"0.18em",textTransform:"uppercase",color:"rgba(232,168,32,0.6)",marginBottom:4}}>{t}</div>;
+
+const HOURS = Array.from({length:24},(_,i)=>i);
+const MINUTES = [0,5,10,15,20,25,30,35,40,45,50,55];
+
+function fmtTime(h:number,m:number):string{
+  const ampm=h<12?"AM":"PM";
+  const h12=h%12===0?12:h%12;
+  return `${h12}:${String(m).padStart(2,"0")} ${ampm}`;
+}
+
 interface Props { open:boolean; onClose:()=>void; habit?:Habit|null; }
 export function HabitModal({ open, onClose, habit }: Props) {
   const qc = useQueryClient();
@@ -19,21 +30,37 @@ export function HabitModal({ open, onClose, habit }: Props) {
   const [frequency,setFrequency]=useState<string>(habit?.frequency??"daily");
   const [customDays,setCustomDays]=useState<number[]>(habit?.custom_days??[1,2,3,4,5]);
   const [targetMinutes,setTargetMinutes]=useState(habit?.target_minutes?.toString()??"");
-  const [importance,setImportance]=useState(habit?.importance??3);
-  const [difficulty,setDifficulty]=useState(habit?.difficulty??2);
+  const [timeHour,setTimeHour]=useState<number|null>(habit?.time_hour??null);
+  const [timeMinute,setTimeMinute]=useState<number>(habit?.time_minute??0);
+
   useEffect(()=>{
     if(!open)return;
     setName(habit?.name??""); setDescription(habit?.description??""); setIcon(habit?.icon??"🔥");
     setColor(habit?.color??"#e8a820"); setFrequency(habit?.frequency??"daily");
     setCustomDays(habit?.custom_days??[1,2,3,4,5]); setTargetMinutes(habit?.target_minutes?.toString()??"");
-    setImportance(habit?.importance??3); setDifficulty(habit?.difficulty??2);
+    setTimeHour(habit?.time_hour??null); setTimeMinute(habit?.time_minute??0);
   },[open,habit?.id]);
+
   const inv = () => { qc.invalidateQueries({queryKey:["habits"]}); qc.invalidateQueries({queryKey:["dashboard"]}); };
-  const payload = () => ({ name:name.trim(), description:description.trim()||undefined, icon, color, frequency:frequency as any, custom_days:frequency==="custom"?customDays:undefined, target_minutes:targetMinutes?parseInt(targetMinutes):undefined, importance, difficulty });
+
+  const payload = () => ({
+    name: name.trim(),
+    description: description.trim()||undefined,
+    icon,
+    color,
+    frequency: frequency as any,
+    custom_days: frequency==="custom" ? customDays : undefined,
+    target_minutes: targetMinutes ? parseInt(targetMinutes) : undefined,
+    time_hour: timeHour !== null ? timeHour : undefined,
+    time_minute: timeHour !== null ? timeMinute : undefined,
+  });
+
   const createMut = useMutation({ mutationFn:()=>habitsApi.create(payload()), onSuccess:()=>{inv();toast.success("Habit enlisted!");onClose();} });
   const updateMut = useMutation({ mutationFn:()=>habitsApi.update(habit!.id,payload()), onSuccess:()=>{inv();toast.success("Habit updated!");onClose();} });
   const deleteMut = useMutation({ mutationFn:()=>habitsApi.delete(habit!.id), onSuccess:()=>{inv();toast.success("Habit removed");onClose();} });
+
   const toggleDay = (d:number) => setCustomDays(p=>p.includes(d)?p.filter(x=>x!==d):[...p,d].sort());
+
   if(!open)return null;
   return (
     <div className="modal-backdrop" onClick={e=>e.target===e.currentTarget&&onClose()}>
@@ -74,6 +101,34 @@ export function HabitModal({ open, onClose, habit }: Props) {
               </div>
             </div>
           )}
+          {/* Time of day */}
+          <div>
+            {SHEAD("Time of Day")}
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <select
+                value={timeHour !== null ? timeHour : ""}
+                onChange={e=>setTimeHour(e.target.value===""?null:parseInt(e.target.value))}
+                style={{...INP,flex:1}}
+              >
+                <option value="">— no time —</option>
+                {HOURS.map(h=><option key={h} value={h}>{h===0?"12 AM":h<12?`${h} AM`:h===12?"12 PM":`${h-12} PM`}</option>)}
+              </select>
+              {timeHour !== null && (
+                <select
+                  value={timeMinute}
+                  onChange={e=>setTimeMinute(parseInt(e.target.value))}
+                  style={{...INP,width:90,flex:"none"}}
+                >
+                  {MINUTES.map(m=><option key={m} value={m}>{String(m).padStart(2,"0")}</option>)}
+                </select>
+              )}
+              {timeHour !== null && (
+                <span style={{fontFamily:"'Oswald',Arial,sans-serif",fontSize:11,color:"#e8a820",letterSpacing:"0.08em",whiteSpace:"nowrap"}}>
+                  {fmtTime(timeHour,timeMinute)}
+                </span>
+              )}
+            </div>
+          </div>
           {/* Description + target */}
           <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:10,alignItems:"start"}}>
             <div style={{display:"flex",flexDirection:"column",gap:4}}>
@@ -83,21 +138,6 @@ export function HabitModal({ open, onClose, habit }: Props) {
             <div style={{display:"flex",flexDirection:"column",gap:4,minWidth:90}}>
               {SHEAD("Target (min)")}
               <input type="number" value={targetMinutes} onChange={e=>setTargetMinutes(e.target.value)} placeholder="e.g. 30" min="1" style={{...INP}}/>
-            </div>
-          </div>
-          {/* Importance / Difficulty */}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            <div>
-              {SHEAD("Importance")}
-              <div style={{display:"flex",gap:3,marginTop:4}}>
-                {[1,2,3,4,5].map(n=><button key={n} type="button" className="star-btn" style={{color:n<=importance?"#e8a820":"rgba(245,240,224,0.15)"}} onClick={()=>setImportance(n)}>★</button>)}
-              </div>
-            </div>
-            <div>
-              {SHEAD("Difficulty")}
-              <div style={{display:"flex",gap:3,marginTop:4}}>
-                {[1,2,3,4,5].map(n=><button key={n} type="button" className="star-btn" style={{color:n<=difficulty?"#d94040":"rgba(245,240,224,0.15)"}} onClick={()=>setDifficulty(n)}>★</button>)}
-              </div>
             </div>
           </div>
           {/* Color */}
@@ -113,8 +153,8 @@ export function HabitModal({ open, onClose, habit }: Props) {
           {isEdit&&habit&&(
             <div style={{background:"rgba(0,0,0,0.25)",border:"1px solid #1e3629",padding:"10px 12px"}}>
               {SHEAD("Stats")}
-              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginTop:6}}>
-                {[{l:"Total completions",v:habit.completions.length},{l:"Focus score",v:`${importance*(6-difficulty)}`},{l:"Streak",v:`${habit.completions.length}🔥`}].map(({l,v})=>(
+              <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8,marginTop:6}}>
+                {[{l:"Total completions",v:habit.completions.length},{l:"Streak",v:`${habit.completions.length}🔥`}].map(({l,v})=>(
                   <div key={l} style={{textAlign:"center"}}>
                     <div style={{fontFamily:"'Oswald',Arial,sans-serif",fontSize:9,fontWeight:600,letterSpacing:"0.12em",textTransform:"uppercase",color:"rgba(245,240,224,0.3)",marginBottom:3}}>{l}</div>
                     <div className="panel panel-sm" style={{margin:"0 auto"}}><span className="panel-num gold" style={{fontSize:16}}>{v}</span></div>

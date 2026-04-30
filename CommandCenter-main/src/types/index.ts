@@ -118,8 +118,8 @@ export interface Habit {
   frequency: HabitFrequency;
   custom_days?: number[];
   target_minutes?: number;
-  importance: number;
-  difficulty: number;
+  time_hour?: number;
+  time_minute?: number;
   color: string;
   icon?: string;
   sort_order: number;
