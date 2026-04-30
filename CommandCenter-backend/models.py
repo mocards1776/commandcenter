@@ -66,7 +66,7 @@ class Task(Base):
     
     user = relationship("User", back_populates="tasks")
     project = relationship("Project", back_populates="tasks")
-    subtasks = relationship("Task", remote_side=[id], cascade="all, delete-orphan", single_parent=True)
+    subtasks = relationship("Task", remote_side=[id], cascade="all, delete-orphan", single_parent=True, lazy="noload")
     category = relationship("Category")
     
     @property
