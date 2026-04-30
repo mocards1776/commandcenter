@@ -218,9 +218,22 @@ const FIELD: React.CSSProperties = {display:"flex",flexDirection:"column",gap:4}
 const INP: React.CSSProperties = {width:"100%",padding:"9px 10px",fontSize:14};
 const SHEAD = (text:string) => <div style={{fontSize:11,fontWeight:600,letterSpacing:"0.18em",textTransform:"uppercase",color:"rgba(232,168,32,0.6)",marginBottom:4}}>{text}</div>;
 
-interface Props { open:boolean; onClose:()=>void; task?:Task|null; projectId?:string; parentId?:string; defaultStatus?:TaskStatus; }
+interface Props {
+  open: boolean;
+  onClose: () => void;
+  task?: Task | null;
+  projectId?: string;
+  parentId?: string;
+  defaultStatus?: TaskStatus;
+  /** Pre-fill title from NLP parsing (QuickAdd) */
+  initialTitle?: string;
+  /** Pre-fill due date "YYYY-MM-DD" from NLP parsing */
+  initialDueDate?: string;
+  /** Pre-fill due time "HH:MM" 24h from NLP parsing */
+  initialDueTime?: string;
+}
 
-export function TaskModal({ open, onClose, task, projectId, parentId, defaultStatus }: Props) {
+export function TaskModal({ open, onClose, task, projectId, parentId, defaultStatus, initialTitle, initialDueDate, initialDueTime }: Props) {
   const qc = useQueryClient();
   const isEdit = !!task;
   const { isRunning, activeTimer, elapsedSeconds, start, stop } = useActiveTimer();
@@ -228,13 +241,14 @@ export function TaskModal({ open, onClose, task, projectId, parentId, defaultSta
   const { triggerCelebration } = useCelebrationStore();
   const isThisRunning = isRunning && activeTimer?.task_id === task?.id;
 
-  const [title,setTitle]             = useState(task?.title??"");
+  const [title,setTitle]             = useState(task?.title ?? initialTitle ?? "");
   const [description,setDescription] = useState(task?.description??"");
   const [notes,setNotes]             = useState(task?.notes??"");
   const [status,setStatus]           = useState<TaskStatus>(task?.status??defaultStatus??"today");
   const [importance,setImportanceRaw]= useState(task?.importance??3);
   const [difficulty,setDifficulty]   = useState(task?.difficulty??3);
-  const [dueDate,setDueDate]         = useState(task?.due_date??todayISO());
+  const [dueDate,setDueDate]         = useState(task?.due_date ?? initialDueDate ?? todayISO());
+  const [dueTime,setDueTime]         = useState(task?.due_date ? task.due_date.includes("T") ? task.due_date.slice(11,16) : "" : initialDueTime ?? "");
   const [timeEst,setTimeEst]         = useState(task?.time_estimate_minutes?.toString()??"");
   const [selProject,setSelProject]   = useState(task?.project_id??projectId??"");
   const [selCategory,setSelCategory] = useState(task?.category_id??"");
@@ -259,15 +273,21 @@ export function TaskModal({ open, onClose, task, projectId, parentId, defaultSta
 
   useEffect(()=>{
     if(!open) return;
-    setTitle(task?.title??""); setDescription(task?.description??""); setNotes(task?.notes??"");
+    setTitle(task?.title ?? initialTitle ?? "");
+    setDescription(task?.description??"");
+    setNotes(task?.notes??"");
     setStatus(task?.status??defaultStatus??"today");
-    setImportanceRaw(task?.importance??3); setDifficulty(task?.difficulty??3);
-    setDueDate(task?.due_date??todayISO());
+    setImportanceRaw(task?.importance??3);
+    setDifficulty(task?.difficulty??3);
+    setDueDate(task?.due_date ?? initialDueDate ?? todayISO());
+    // Parse time out of task due_date if present, else use initialDueTime
+    setDueTime(task?.due_date ? (task.due_date.includes("T") ? task.due_date.slice(11,16) : "") : (initialDueTime ?? ""));
     setTimeEst(task?.time_estimate_minutes?.toString()??"");
-    setSelProject(task?.project_id??projectId??""); setSelCategory(task?.category_id??"");
+    setSelProject(task?.project_id??projectId??"");
+    setSelCategory(task?.category_id??"");
     setSelTagIds(task?.tag_ids??[]);
     setPendingSubtasks([]); setAddingDraft(false);
-  },[open,task?.id]);
+  },[open, task?.id, initialTitle, initialDueDate, initialDueTime]);
 
   const { data:projects=[]   } = useQuery({ queryKey:["projects"],   queryFn:()=>projectsApi.list() });
   const { data:categories=[] } = useQuery({ queryKey:["categories"], queryFn:categoriesApi.list });
@@ -294,7 +314,30 @@ export function TaskModal({ open, onClose, task, projectId, parentId, defaultSta
     return cat;
   };
 
-  const payload = () => ({ title:title.trim(), description:description.trim()||undefined, notes:notes.trim()||undefined, status, priority, importance, difficulty, due_date:dueDate||undefined, time_estimate_minutes:timeEst?parseInt(timeEst):undefined, project_id:selProject||undefined, category_id:selCategory||undefined, tag_ids:selTagIds, show_in_daily:true });
+  const payload = () => {
+    // Combine date + time into a single due_date ISO string
+    let due_date: string | undefined;
+    if (dueDate && dueTime) {
+      due_date = `${dueDate}T${dueTime}:00`;
+    } else if (dueDate) {
+      due_date = dueDate;
+    }
+    return {
+      title: title.trim(),
+      description: description.trim() || undefined,
+      notes: notes.trim() || undefined,
+      status,
+      priority,
+      importance,
+      difficulty,
+      due_date,
+      time_estimate_minutes: timeEst ? parseInt(timeEst) : undefined,
+      project_id: selProject || undefined,
+      category_id: selCategory || undefined,
+      tag_ids: selTagIds,
+      show_in_daily: true,
+    };
+  };
 
   const createMut = useMutation({
     mutationFn: async () => {
@@ -347,10 +390,11 @@ export function TaskModal({ open, onClose, task, projectId, parentId, defaultSta
           {/* Body */}
           <div style={{flex:1,overflowY:"auto",padding:"14px 16px",display:"flex",flexDirection:"column",gap:14}}>
 
-            {/* Status / Due / Time */}
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+            {/* Status / Due Date / Due Time / Est */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:10}}>
               <div style={FIELD}>{SHEAD("Status")}<select value={status} onChange={e=>setStatus(e.target.value as TaskStatus)} style={INP}>{[["inbox","📥 Inbox"],["today","📌 Today"],["in_progress","⚡ Active"],["waiting","⏳ Waiting"],["done","✅ Done"],["cancelled","🚫 Cancelled"]].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
               <div style={FIELD}>{SHEAD("Due Date")}<input type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)} style={INP}/></div>
+              <div style={FIELD}>{SHEAD("Due Time")}<input type="time" value={dueTime} onChange={e=>setDueTime(e.target.value)} style={INP} placeholder="--:--"/></div>
               <div style={FIELD}>{SHEAD("Est. (min)")}<input type="number" value={timeEst} onChange={e=>setTimeEst(e.target.value)} placeholder="e.g. 45" min="1" style={INP}/></div>
             </div>
 
