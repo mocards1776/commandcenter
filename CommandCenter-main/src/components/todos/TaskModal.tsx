@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import type React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { tasksApi, projectsApi, categoriesApi, tagsApi } from "@/lib/api";
 import { useActiveTimer } from "@/hooks/useTimer";
