@@ -9,6 +9,7 @@ export function useActiveTimer() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startedAtMsRef = useRef<number | null>(startedAtMs);
   const qc = useQueryClient();
+  const autoStoppedRef = useRef(false);
 
   // Keep ref in sync so interval callback always has fresh value
   useEffect(() => { startedAtMsRef.current = startedAtMs; }, [startedAtMs]);
@@ -36,9 +37,29 @@ export function useActiveTimer() {
     refetchInterval: 60_000,
   });
 
+  // ─── Auto-stop: poll active task every 8s; stop if it's been completed ───
+  const stopRef = useRef<() => void>(() => {});
+
+  useQuery({
+    queryKey: ["active-task-watch", activeTimer?.task_id],
+    queryFn: async () => {
+      if (!activeTimer?.task_id) return null;
+      const task = await tasksApi.get(activeTimer.task_id);
+      if (task.status === "done" && !autoStoppedRef.current) {
+        autoStoppedRef.current = true;
+        stopRef.current();
+        toast.success("✅ Task completed — timer stopped");
+      }
+      return task;
+    },
+    refetchInterval: 8_000,
+    enabled: !!activeTimer?.task_id,
+  });
+
   useEffect(() => {
     if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
     if (!activeTimer || !startedAtMs) { setElapsed(0); return; }
+    autoStoppedRef.current = false; // reset on new timer
     tick(); // immediate first tick
     intervalRef.current = setInterval(tick, 1000);
     return () => { if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; } };
@@ -73,11 +94,28 @@ export function useActiveTimer() {
     onError: () => toast.error("Failed to stop timer"),
   });
 
+  // Keep stopRef current so the auto-stop watcher can call it
+  stopRef.current = () => stopMutation.mutate();
+
+  // Complete task + stop timer in one action (used by FocusMode)
+  const completeAndStop = useCallback(async () => {
+    if (!activeTask) return;
+    try {
+      await tasksApi.complete(activeTask.id);
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    } catch {}
+    if (activeTimer) {
+      stopMutation.mutate();
+    }
+  }, [activeTask, activeTimer, stopMutation, qc]);
+
   return {
     activeTimer, activeTask, elapsedSeconds,
     isRunning: !!activeTimer,
     start: (data?: { task_id?: string }) => startMutation.mutate(data ?? {}),
     stop: () => stopMutation.mutate(),
+    completeAndStop,
     isStarting: startMutation.isPending,
     isStopping: stopMutation.isPending,
   };
