@@ -236,3 +236,95 @@ input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepi
 .star-btn:hover { transform:scale(1.3); }
 
 :focus-visible { outline:1px solid rgba(232,168,32,0.5); outline-offset:2px; }
+
+/* ══════════════════════════════════════════════════════════
+   TASK CONTEXT MENU — Radix ContextMenu, Fenway aesthetic
+   ══════════════════════════════════════════════════════════ */
+.task-ctx-menu {
+  min-width: 210px;
+  background: #1a3325;
+  border: 1px solid rgba(232,168,32,0.22);
+  border-radius: 3px;
+  box-shadow:
+    0 2px 8px rgba(0,0,0,0.5),
+    0 12px 40px rgba(0,0,0,0.55),
+    inset 0 1px 0 rgba(255,255,255,0.03);
+  padding: 4px;
+  z-index: 9999;
+  font-family: 'Oswald', 'Arial Narrow', Arial, sans-serif;
+  animation: ctxin 0.11s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: var(--radix-context-menu-content-transform-origin);
+}
+
+@keyframes ctxin {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* Task name label at top */
+.task-ctx-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(245,240,224,0.28);
+  padding: 6px 10px 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 210px;
+  display: block;
+  pointer-events: none;
+}
+
+/* Separator */
+.task-ctx-sep {
+  height: 1px;
+  background: rgba(255,255,255,0.07);
+  margin: 3px 0;
+}
+
+/* Menu item */
+.task-ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(245,240,224,0.7);
+  border-radius: 2px;
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+  transition: background 0.07s, color 0.07s;
+}
+
+/* Highlighted state (keyboard focus / hover) */
+.task-ctx-item[data-highlighted] {
+  background: rgba(232,168,32,0.1);
+  color: #e8a820;
+}
+.task-ctx-item[data-highlighted] .task-ctx-icon {
+  opacity: 1;
+}
+
+/* Danger variant (Delete) */
+.task-ctx-item--danger {
+  color: rgba(217,64,64,0.65);
+}
+.task-ctx-item--danger[data-highlighted] {
+  background: rgba(217,64,64,0.1);
+  color: #d94040;
+}
+
+/* Icon inside item */
+.task-ctx-icon {
+  flex-shrink: 0;
+  opacity: 0.55;
+  transition: opacity 0.07s;
+}
+.task-ctx-icon--gold { color: #e8a820; opacity: 0.85; }
+.task-ctx-icon--red  { color: #d94040; opacity: 0.85; }
