@@ -8,8 +8,8 @@ import toast from "react-hot-toast";
 interface Props {
   habit: Habit;
   todayStr: string;
-  last7: string[];
-  isEven: boolean;
+  last7?: string[];   // optional — not needed in dashboard compact view
+  isEven?: boolean;   // optional — defaults to false
 }
 
 function toCDT(d: Date): string {
@@ -53,7 +53,7 @@ function calcMonthPct(completions: { completed_date: string }[]): number {
   return Math.round((count / dayElapsed) * 100);
 }
 
-export function HabitRow({ habit, todayStr, last7, isEven }: Props) {
+export function HabitRow({ habit, todayStr, last7 = [], isEven = false }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const qc = useQueryClient();
 
@@ -69,7 +69,6 @@ export function HabitRow({ habit, todayStr, last7, isEven }: Props) {
   const mthColor = mthPct >= 80 ? "#6dcf6d" : mthPct >= 50 ? "#e8a820" : "rgba(240,236,224,0.35)";
 
   const completeMut = useMutation({
-    // habitsApi.complete expects (id, { completed_date, note? })
     mutationFn: () => habitsApi.complete(habit.id, { completed_date: todayStr }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["habits"] });
@@ -79,7 +78,6 @@ export function HabitRow({ habit, todayStr, last7, isEven }: Props) {
   });
 
   const uncompleteMut = useMutation({
-    // habitsApi.uncomplete expects (id, dateStr)
     mutationFn: () => habitsApi.uncomplete(habit.id, todayStr),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["habits"] }),
   });
@@ -106,7 +104,7 @@ export function HabitRow({ habit, todayStr, last7, isEven }: Props) {
         onMouseEnter={e => (e.currentTarget.style.background = "rgba(232,168,32,0.035)")}
         onMouseLeave={e => (e.currentTarget.style.background = rowBase)}
       >
-        {/* ── HABIT NAME (like PHILADELPHIA / BOSTON) ── */}
+        {/* ── HABIT NAME ── */}
         <div
           style={{
             width: 190,
@@ -139,75 +137,101 @@ export function HabitRow({ habit, todayStr, last7, isEven }: Props) {
           </span>
         </div>
 
-        {/* ── 7-DAY CELLS ── */}
-        <div style={{ display: "flex", flex: 1 }}>
-          {last7.map((dateStr, i) => {
-            const isToday = dateStr === todayStr;
-            const done = doneSet.has(dateStr);
-            const missed = dateStr < todayStr && !done;
+        {/* ── 7-DAY CELLS (only rendered when last7 is provided) ── */}
+        {last7.length > 0 && (
+          <div style={{ display: "flex", flex: 1 }}>
+            {last7.map((dateStr, i) => {
+              const isToday = dateStr === todayStr;
+              const done = doneSet.has(dateStr);
+              const missed = dateStr < todayStr && !done;
 
-            return (
-              <div
-                key={dateStr}
-                onClick={isToday ? handleTodayClick : undefined}
-                title={
-                  isToday
-                    ? (isDoneToday ? "Tap to mark incomplete" : "Tap to complete")
-                    : done ? `Completed ${dateStr}` : missed ? `Missed ${dateStr}` : ""
-                }
-                style={{
-                  flex: 1,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderLeft: i > 0 ? "2px solid #0a1e12" : "none",
-                  background: done
-                    ? (isToday ? "rgba(232,168,32,0.18)" : "rgba(232,168,32,0.09)")
-                    : missed
-                    ? "rgba(160,30,30,0.08)"
-                    : isToday
-                    ? "rgba(232,168,32,0.04)"
-                    : "transparent",
-                  cursor: isToday ? "pointer" : "default",
-                  outline: isToday ? "2px solid rgba(232,168,32,0.2)" : "none",
-                  outlineOffset: "-2px",
-                  transition: "background 0.12s",
-                }}
-              >
-                {done ? (
-                  <span style={{
-                    fontFamily: "'Oswald', Arial, sans-serif",
-                    fontSize: isToday ? 26 : 22,
-                    fontWeight: 900,
-                    color: isToday ? "#f4c842" : "#c8962a",
-                    textShadow: isToday ? "0 0 10px rgba(244,200,66,0.5)" : "none",
-                    lineHeight: 1,
-                    userSelect: "none",
-                  }}>✓</span>
-                ) : missed ? (
-                  <span style={{
-                    fontSize: 20,
-                    fontWeight: 700,
-                    color: "rgba(195,55,55,0.4)",
-                    lineHeight: 1,
-                    userSelect: "none",
-                  }}>✗</span>
-                ) : isToday ? (
-                  <span style={{
-                    display: "inline-block",
-                    width: 20,
-                    height: 20,
-                    borderRadius: "50%",
-                    border: "2px solid rgba(232,168,32,0.35)",
-                    animation: "pulse-ring 2s ease-in-out infinite",
-                  }} />
-                ) : (
-                  <span style={{ fontSize: 10, color: "rgba(240,236,224,0.1)" }}>—</span>
-                )}
-              </div>
-            );
-          })}
-        </div>
+              return (
+                <div
+                  key={dateStr}
+                  onClick={isToday ? handleTodayClick : undefined}
+                  title={
+                    isToday
+                      ? (isDoneToday ? "Tap to mark incomplete" : "Tap to complete")
+                      : done ? `Completed ${dateStr}` : missed ? `Missed ${dateStr}` : ""
+                  }
+                  style={{
+                    flex: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderLeft: i > 0 ? "2px solid #0a1e12" : "none",
+                    background: done
+                      ? (isToday ? "rgba(232,168,32,0.18)" : "rgba(232,168,32,0.09)")
+                      : missed
+                      ? "rgba(160,30,30,0.08)"
+                      : isToday
+                      ? "rgba(232,168,32,0.04)"
+                      : "transparent",
+                    cursor: isToday ? "pointer" : "default",
+                    outline: isToday ? "2px solid rgba(232,168,32,0.2)" : "none",
+                    outlineOffset: "-2px",
+                    transition: "background 0.12s",
+                  }}
+                >
+                  {done ? (
+                    <span style={{
+                      fontFamily: "'Oswald', Arial, sans-serif",
+                      fontSize: isToday ? 26 : 22,
+                      fontWeight: 900,
+                      color: isToday ? "#f4c842" : "#c8962a",
+                      textShadow: isToday ? "0 0 10px rgba(244,200,66,0.5)" : "none",
+                      lineHeight: 1,
+                      userSelect: "none",
+                    }}>✓</span>
+                  ) : missed ? (
+                    <span style={{
+                      fontSize: 20,
+                      fontWeight: 700,
+                      color: "rgba(195,55,55,0.4)",
+                      lineHeight: 1,
+                      userSelect: "none",
+                    }}>✗</span>
+                  ) : isToday ? (
+                    <span style={{
+                      display: "inline-block",
+                      width: 20,
+                      height: 20,
+                      borderRadius: "50%",
+                      border: "2px solid rgba(232,168,32,0.35)",
+                      animation: "pulse-ring 2s ease-in-out infinite",
+                    }} />
+                  ) : (
+                    <span style={{ fontSize: 10, color: "rgba(240,236,224,0.1)" }}>—</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* TODAY toggle button — shown in dashboard compact view (no last7) */}
+        {last7.length === 0 && (
+          <div
+            onClick={handleTodayClick}
+            style={{
+              flex: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              borderLeft: "2px solid #0a1e12",
+              background: isDoneToday ? "rgba(232,168,32,0.12)" : "transparent",
+              transition: "background 0.12s",
+            }}
+            title={isDoneToday ? "Mark incomplete" : "Mark complete"}
+          >
+            {isDoneToday ? (
+              <span style={{ fontFamily: "'Oswald',Arial,sans-serif", fontSize: 22, fontWeight: 900, color: "#f4c842", userSelect: "none" }}>✓</span>
+            ) : (
+              <span style={{ display: "inline-block", width: 18, height: 18, borderRadius: "50%", border: "2px solid rgba(232,168,32,0.3)" }} />
+            )}
+          </div>
+        )}
 
         {/* ── WHITE DIVIDER ── */}
         <div style={{ width: 3, flexShrink: 0, background: "#dedad0", margin: "0 3px", opacity: 0.85 }} />
