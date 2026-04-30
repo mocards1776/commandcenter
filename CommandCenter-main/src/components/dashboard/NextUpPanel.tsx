@@ -11,9 +11,9 @@ const ACCENT: Record<string, string> = {
   medium: "rgba(255,255,255,0.3)", low: "rgba(255,255,255,0.12)",
 };
 
-const GC_TOKEN_KEY     = "gcal_access_token";
-const GC_EXPIRY_KEY    = "gcal_token_expiry";
-const GC_SELECTED_KEY  = "gcal_selected_calendar_ids";
+const GC_TOKEN_KEY    = "gcal_access_token";
+const GC_EXPIRY_KEY   = "gcal_token_expiry";
+const GC_SELECTED_KEY = "gcal_selected_calendar_ids";
 
 function getStoredToken(): string | null {
   try {
@@ -31,12 +31,11 @@ function getSelectedCalIds(): string[] {
   } catch { return ["primary"]; }
 }
 
-// Unified next-event shape (works for both GCal events and local TimeBlocks)
 interface NextEvent { title: string; startMs: number; }
 
 // ── Flip panel ──────────────────────────────────────────────────────────────
 function FlipPanel({ value, label }: { value: string; label: string }) {
-  const prevRef   = useRef(value);
+  const prevRef = useRef(value);
   const [shown, setShown]       = useState(value);
   const [flipping, setFlipping] = useState(false);
 
@@ -73,14 +72,14 @@ function EventCountdown({ event }: { event: NextEvent }) {
     return () => clearInterval(id);
   }, []);
 
-  const diffMs   = event.startMs - now;
-  const timeStr  = new Date(event.startMs).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
+  const diffMs  = event.startMs - now;
+  const timeStr = new Date(event.startMs).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
 
   if (diffMs <= 0) {
     return (
-      <div style={{ padding:"12px 14px 14px", display:"flex", alignItems:"center", gap:10 }}>
+      <div style={{ padding:"12px 14px 14px", display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
         <div className="live-dot" />
-        <div>
+        <div style={{ textAlign:"center" }}>
           <div style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:13, fontWeight:700,
             letterSpacing:"0.08em", textTransform:"uppercase", color:"#d94040" }}>IN PROGRESS</div>
           <div style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:10,
@@ -97,8 +96,7 @@ function EventCountdown({ event }: { event: NextEvent }) {
   const mins      = totalMins % 60;
 
   return (
-    <div style={{ padding:"10px 14px 14px" }}>
-      {/* Event name */}
+    <div style={{ padding:"10px 14px 14px", textAlign:"center" }}>
       <div style={{
         fontFamily:"'Oswald',Arial,sans-serif", fontSize:12, fontWeight:700,
         letterSpacing:"0.07em", textTransform:"uppercase", color:"#f5f0e0",
@@ -106,8 +104,7 @@ function EventCountdown({ event }: { event: NextEvent }) {
       }}>
         {event.title}
       </div>
-      {/* Flip clock */}
-      <div style={{ display:"flex", alignItems:"flex-start", gap:5 }}>
+      <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"center", gap:5 }}>
         <FlipPanel value={String(hours).padStart(2,"0")} label="HRS" />
         <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:30, fontWeight:700,
           color:"rgba(232,168,32,0.3)", lineHeight:"52px", userSelect:"none" }}>:</span>
@@ -125,50 +122,76 @@ function EventCountdown({ event }: { event: NextEvent }) {
 // ── Empty slot ───────────────────────────────────────────────────────────────
 function EmptySlot({ text }: { text: string }) {
   return (
-    <div style={{ padding:"12px 14px", fontFamily:"'Oswald',Arial,sans-serif",
-      fontSize:10, color:"rgba(245,240,224,0.15)", letterSpacing:"0.14em",
+    <div style={{ padding:"12px 14px", textAlign:"center",
+      fontFamily:"'Oswald',Arial,sans-serif", fontSize:10,
+      color:"rgba(245,240,224,0.15)", letterSpacing:"0.14em",
       textTransform:"uppercase", fontStyle:"italic" }}>
       &mdash; {text} &mdash;
     </div>
   );
 }
 
-// ── Task row ─────────────────────────────────────────────────────────────────
-function TaskSlot({ task, size, onClick }: { task:Task; size:"lg"|"sm"; onClick:()=>void }) {
+// ── Task row (centered) ───────────────────────────────────────────────────────
+function TaskSlot({ task, size, onClick }: { task: Task; size: "lg" | "sm"; onClick: () => void }) {
   const overdue = isOverdue(task.due_date);
   const accent  = ACCENT[task.priority];
   return (
-    <div onClick={onClick} title="View tasks"
-      style={{ padding: size==="lg" ? "10px 14px 12px" : "7px 14px 9px",
-        borderLeft:`4px solid ${accent}`, cursor:"pointer", transition:"background 0.1s" }}
-      onMouseEnter={e=>(e.currentTarget.style.background="rgba(232,168,32,0.04)")}
-      onMouseLeave={e=>(e.currentTarget.style.background="transparent")}>
-      <div style={{ fontFamily:"'Oswald',Arial,sans-serif",
-        fontSize: size==="lg" ? 14 : 12, fontWeight:700, letterSpacing:"0.06em",
-        textTransform:"uppercase", color:"#f5f0e0",
-        whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
-        lineHeight:1.2, marginBottom:4 }}>
+    <div
+      onClick={onClick}
+      title="View tasks"
+      style={{
+        padding: size === "lg" ? "10px 14px 12px" : "7px 14px 9px",
+        textAlign: "center",
+        cursor: "pointer",
+        transition: "background 0.1s",
+        borderTop: `3px solid ${accent}`,
+      }}
+      onMouseEnter={e => (e.currentTarget.style.background = "rgba(232,168,32,0.04)")}
+      onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+    >
+      <div style={{
+        fontFamily: "'Oswald',Arial,sans-serif",
+        fontSize: size === "lg" ? 14 : 12,
+        fontWeight: 700,
+        letterSpacing: "0.06em",
+        textTransform: "uppercase",
+        color: "#f5f0e0",
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        lineHeight: 1.2,
+        marginBottom: 4,
+      }}>
         {task.title}
       </div>
-      <div style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:9, fontWeight:600,
-        letterSpacing:"0.12em", textTransform:"uppercase",
-        color:"rgba(245,240,224,0.3)", display:"flex", gap:5, flexWrap:"wrap" }}>
-        <span style={{ color:accent }}>{task.priority.toUpperCase()}</span>
-        <span style={{ opacity:0.35 }}>&middot;</span>
-        <span style={{ color: task.focus_score>=20 ? "#d94040" : task.focus_score>=12 ? "#e8a820" : "rgba(245,240,224,0.3)" }}>
+      <div style={{
+        fontFamily: "'Oswald',Arial,sans-serif",
+        fontSize: 9,
+        fontWeight: 600,
+        letterSpacing: "0.12em",
+        textTransform: "uppercase",
+        color: "rgba(245,240,224,0.3)",
+        display: "flex",
+        gap: 5,
+        flexWrap: "wrap",
+        justifyContent: "center",
+      }}>
+        <span style={{ color: accent }}>{task.priority.toUpperCase()}</span>
+        <span style={{ opacity: 0.35 }}>&middot;</span>
+        <span style={{ color: task.focus_score >= 20 ? "#d94040" : task.focus_score >= 12 ? "#e8a820" : "rgba(245,240,224,0.3)" }}>
           FS:{task.focus_score}
         </span>
         {task.time_estimate_minutes && (
-          <><span style={{opacity:0.35}}>&middot;</span>
+          <><span style={{ opacity: 0.35 }}>&middot;</span>
           <span>{task.time_estimate_minutes >= 60
-            ? `${Math.floor(task.time_estimate_minutes/60)}h${task.time_estimate_minutes%60>0?` ${task.time_estimate_minutes%60}m`:""}`
+            ? `${Math.floor(task.time_estimate_minutes / 60)}h${task.time_estimate_minutes % 60 > 0 ? ` ${task.time_estimate_minutes % 60}m` : ""}`
             : `${task.time_estimate_minutes}m`}
           </span></>
         )}
         {task.due_date && (
-          <><span style={{opacity:0.35}}>&middot;</span>
+          <><span style={{ opacity: 0.35 }}>&middot;</span>
           <span style={{ color: overdue ? "#d94040" : "rgba(245,240,224,0.3)" }}>
-            {overdue ? "⚠ ":""}{task.due_date}
+            {overdue ? "⚠ " : ""}{task.due_date}
           </span></>
         )}
       </div>
@@ -177,11 +200,13 @@ function TaskSlot({ task, size, onClick }: { task:Task; size:"lg"|"sm"; onClick:
 }
 
 // ── Section header ───────────────────────────────────────────────────────────
-function SHead({ icon, label }: { icon:string; label:string }) {
+// Uses default panel-header padding (8px 14px) so its border-bottom gold line
+// sits at the same y-position as sb-header's border-bottom on the left panel.
+function SHead({ icon, label }: { icon: string; label: string }) {
   return (
-    <div className="panel-header" style={{ padding:"5px 14px" }}>
-      <span className="panel-header-title" style={{ display:"flex", alignItems:"center", gap:6, fontSize:9 }}>
-        <span style={{ color:"rgba(232,168,32,0.5)", fontSize:10 }}>{icon}</span>{label}
+    <div className="panel-header" style={{ justifyContent: "center" }}>
+      <span className="panel-header-title" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ color: "rgba(232,168,32,0.5)", fontSize: 10 }}>{icon}</span>{label}
       </span>
     </div>
   );
@@ -193,7 +218,6 @@ export function NextUpPanel({ tasks }: { tasks: Task[] }) {
   const apiBase = import.meta.env.VITE_API_BASE_URL || "";
   const today   = new Date().toISOString().split("T")[0];
 
-  // Local time blocks (same query as CalendarPage)
   const { data: localBlocks = [] } = useQuery<TimeBlock[]>({
     queryKey: ["time-blocks-dashboard", today],
     queryFn: () =>
@@ -202,9 +226,8 @@ export function NextUpPanel({ tasks }: { tasks: Task[] }) {
     staleTime: 60_000,
   });
 
-  // Google Calendar events (same token + cal selection as CalendarPage)
-  const gcalToken   = getStoredToken();
-  const calIds      = getSelectedCalIds();
+  const gcalToken = getStoredToken();
+  const calIds    = getSelectedCalIds();
   const { data: gcalEvents = [] } = useQuery<NextEvent[]>({
     queryKey: ["gcal-today-dashboard", today, gcalToken],
     enabled: !!gcalToken,
@@ -227,7 +250,6 @@ export function NextUpPanel({ tasks }: { tasks: Task[] }) {
     },
   });
 
-  // Merge + sort all events; find next upcoming (allow 5min grace)
   const nowMs      = Date.now();
   const localEvts: NextEvent[] = localBlocks.map(b => ({ title: b.title, startMs: new Date(b.start_time).getTime() }));
   const allEvents  = [...localEvts, ...gcalEvents]
@@ -235,25 +257,24 @@ export function NextUpPanel({ tasks }: { tasks: Task[] }) {
     .sort((a, b) => a.startMs - b.startMs);
   const nextEvent  = allEvents[0] ?? null;
 
-  // Sort pending tasks: priority weight → focus_score
-  const pending = tasks.filter(t => t.status !== "done" && t.status !== "cancelled");
-  const sorted  = [...pending].sort((a, b) => {
-    const pw = (PRIORITY_WEIGHT[b.priority]??0) - (PRIORITY_WEIGHT[a.priority]??0);
+  const pending    = tasks.filter(t => t.status !== "done" && t.status !== "cancelled");
+  const sorted     = [...pending].sort((a, b) => {
+    const pw = (PRIORITY_WEIGHT[b.priority] ?? 0) - (PRIORITY_WEIGHT[a.priority] ?? 0);
     return pw !== 0 ? pw : b.focus_score - a.focus_score;
   });
   const nextTask   = sorted[0] ?? null;
   const onDeckTask = sorted[1] ?? null;
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", height:"100%" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
 
-      {/* NEXT TASK */}
+      {/* NEXT TASK — panel-header uses default 8px padding to match sb-header height */}
       <SHead icon="▶" label="Next Task" />
       {nextTask
         ? <TaskSlot task={nextTask} size="lg" onClick={() => setActivePage("todos")} />
         : <EmptySlot text="Clear" />}
 
-      <div style={{ height:1, background:"#1e3629" }} />
+      <div style={{ height: 1, background: "#1e3629" }} />
 
       {/* ON DECK */}
       <SHead icon="⋯" label="On Deck" />
@@ -261,7 +282,7 @@ export function NextUpPanel({ tasks }: { tasks: Task[] }) {
         ? <TaskSlot task={onDeckTask} size="sm" onClick={() => setActivePage("todos")} />
         : <EmptySlot text="Nothing on deck" />}
 
-      <div style={{ height:1, background:"#1e3629" }} />
+      <div style={{ height: 1, background: "#1e3629" }} />
 
       {/* NEXT EVENT */}
       <SHead icon="◷" label="Next Event" />
