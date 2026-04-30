@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, date
+from zoneinfo import ZoneInfo
 import os
 import json
 from typing import Optional, List
@@ -34,6 +35,32 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ─── Timezone Helpers ────────────────────────────────────────────────
+# The server runs UTC; the user is in Central Time (CDT/CST, America/Chicago).
+# Habit completed_date values are sent from the frontend as CDT dates.
+# Task/timer timestamps (started_at, completed_at) are stored as naive UTC datetimes.
+#
+# Always use _today_ct() for date comparisons (due_date, completed_date).
+# Always use _ct_midnight_as_utc() when filtering UTC timestamp columns by "today in CT".
+
+_CT = ZoneInfo("America/Chicago")
+_UTC = ZoneInfo("UTC")
+
+def _today_ct() -> date:
+    """Today's calendar date in Central Time."""
+    return datetime.now(_CT).date()
+
+def _ct_midnight_as_utc() -> datetime:
+    """
+    Naive UTC datetime equivalent to midnight Central Time today.
+    Use this to filter columns like started_at / completed_at that are
+    stored as naive UTC timestamps.
+    e.g.  Task.completed_at >= _ct_midnight_as_utc()
+    """
+    midnight_ct = datetime.now(_CT).replace(hour=0, minute=0, second=0, microsecond=0)
+    return midnight_ct.astimezone(_UTC).replace(tzinfo=None)
+
 
 # ─── Helpers ─────────────────────────────────────────────────────────
 def tags_to_str(tag_ids) -> str:
@@ -87,7 +114,7 @@ async def list_tasks(
 
 @app.get("/tasks/today", response_model=List[TaskResponse])
 async def today_tasks(session: Session = Depends(db.get_session)):
-    today = datetime.utcnow().date()
+    today = _today_ct()  # CDT date — matches due_date values set from the frontend
     query = select(Task).where(
         Task.status.in_(["today", "in_progress"]) |
         ((Task.due_date == today) & (Task.status != "done"))
@@ -306,7 +333,7 @@ async def complete_habit(
     habit = session.execute(select(Habit).where(Habit.id == habit_id)).scalar()
     if not habit:
         raise HTTPException(status_code=404)
-    # Check if already completed today to prevent duplicates
+    # completed_date sent from frontend is already a CDT calendar date string
     completed_date = datetime.fromisoformat(data["completed_date"]).date()
     existing = session.execute(
         select(HabitCompletion).where(
@@ -356,7 +383,7 @@ async def get_habit_streak(habit_id: str, session: Session = Depends(db.get_sess
     if not completions:
         return {"habit_id": habit_id, "streak": 0}
     streak = 0
-    today = datetime.utcnow().date()
+    today = _today_ct()  # CDT date — matches stored CDT completed_date values
     for i, comp in enumerate(completions):
         expected_date = today - timedelta(days=i)
         if comp.completed_date == expected_date:
@@ -401,22 +428,27 @@ async def stop_timer(entry_id: str, data: dict, session: Session = Depends(db.ge
 # ─── Dashboard ───────────────────────────────────────────────────────
 @app.get("/dashboard/", response_model=DashboardSummary)
 async def get_dashboard(session: Session = Depends(db.get_session)):
-    today = datetime.utcnow().date()
+    # Use CDT date for date columns (due_date, completed_date).
+    # Use _ct_midnight_as_utc() for UTC timestamp columns (started_at, completed_at).
+    today = _today_ct()
+    ct_midnight = _ct_midnight_as_utc()
 
     today_tasks = session.execute(
         select(Task).where(Task.status.in_(["today", "in_progress"]))
     ).scalars().all()
 
+    # completed_at is stored as naive UTC — compare against CDT midnight converted to UTC
     completed_today = session.execute(
         select(Task).where(
             (Task.status == "done") &
-            (Task.completed_at >= datetime(today.year, today.month, today.day))
+            (Task.completed_at >= ct_midnight)
         )
     ).scalars().all()
 
+    # started_at is stored as naive UTC — same conversion
     time_entries = session.execute(
         select(TimeEntry).where(
-            TimeEntry.started_at >= datetime(today.year, today.month, today.day)
+            TimeEntry.started_at >= ct_midnight
         )
     ).scalars().all()
 
@@ -427,6 +459,7 @@ async def get_dashboard(session: Session = Depends(db.get_session)):
 
     focus_score_today = sum(t.focus_score for t in completed_today if t.focus_score)
 
+    # due_date is a date column set from the frontend as a CDT date — compare with CDT today
     overdue_tasks = session.execute(
         select(Task).where(
             (Task.due_date != None) &
@@ -452,7 +485,6 @@ async def get_dashboard(session: Session = Depends(db.get_session)):
 
     habits_rows = session.execute(select(Habit)).scalars().all()
     today_habits = []
-    import json as _json
     for h in habits_rows:
         comps = session.execute(
             select(HabitCompletion).where(HabitCompletion.habit_id == h.id)
@@ -624,7 +656,7 @@ async def process_braindump(entry_id: str, session: Session = Depends(db.get_ses
 @app.on_event("startup")
 async def startup():
     db.init_db()
-    print("\u2713 Database initialized")
+    print("✓ Database initialized")
 
 if __name__ == "__main__":
     import uvicorn
