@@ -24,6 +24,46 @@ function Cell({ value, sub, color = "white" }: { value: string | number; sub?: s
   );
 }
 
+// Split HH : MM flip-panel cell for Focus Time
+function FocusTimeCell({ minutes }: { minutes: number }) {
+  const h = Math.min(Math.floor(minutes / 60), 99);
+  const m = minutes % 60;
+  const grayLabel = "rgba(245,240,224,0.35)";
+
+  return (
+    <div className="sb-cell" style={{ padding: "4px 2px" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 3, justifyContent: "center" }}>
+        {/* Hours */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+          <div className="panel"
+            style={{ width: 36, height: 36, boxShadow: "inset 0 3px 6px rgba(0,0,0,0.55), 0 1px 0 rgba(255,255,255,0.04)" }}>
+            <span className="panel-num" style={{ fontSize: 18, letterSpacing: "-0.02em", color: "#e8a820" }}>
+              {String(h).padStart(2, "0")}
+            </span>
+          </div>
+          <span className="panel-sub" style={{ fontSize: 7, letterSpacing: "0.14em" }}>HRS</span>
+        </div>
+        {/* Colon */}
+        <span style={{
+          fontFamily: "'Oswald',Arial,sans-serif", fontSize: 18, fontWeight: 700,
+          color: grayLabel, lineHeight: "30px", userSelect: "none",
+        }}>:</span>
+        {/* Minutes */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+          <div className="panel"
+            style={{ width: 36, height: 36, boxShadow: "inset 0 3px 6px rgba(0,0,0,0.55), 0 1px 0 rgba(255,255,255,0.04)" }}>
+            <span className="panel-num" style={{ fontSize: 18, letterSpacing: "-0.02em", color: "#e8a820" }}>
+              {String(m).padStart(2, "0")}
+            </span>
+          </div>
+          <span className="panel-sub" style={{ fontSize: 7, letterSpacing: "0.14em" }}>MIN</span>
+        </div>
+      </div>
+      <div className="panel-sub" style={{ marginTop: 2 }}>DEEP WORK</div>
+    </div>
+  );
+}
+
 export function GameScoreboard({ stats, history }: Props) {
   const ba = stats?.batting_average ?? 0;
   const hrs = stats?.home_runs ?? 0;
@@ -32,11 +72,7 @@ export function GameScoreboard({ stats, history }: Props) {
   const tasksC = stats?.tasks_completed ?? 0;
   const tasksA = stats?.tasks_attempted ?? 0;
 
-  const h = Math.floor(focus / 60), m = focus % 60;
-  const focusStr = h > 0 ? `${h}h${m > 0 ? `${m}m` : ""}` : m > 0 ? `${m}m` : "0m";
-
   // Compute weekly average (last 7 days) and all-time best from history.
-  // History array is sorted oldest-first; most-recent 7 = last 7 entries.
   const last7 = history && history.length ? history.slice(-7) : [];
   const all   = history && history.length ? history : [];
 
@@ -100,10 +136,10 @@ export function GameScoreboard({ stats, history }: Props) {
         <Cell value={DASH} color="empty" />
       </div>
 
-      {/* Focus Time */}
+      {/* Focus Time — TODAY uses split HH:MM flip panels */}
       <div className="sb-row" style={{ gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr" }}>
         <div className="sb-label">Focus Time</div>
-        <Cell value={focusStr} sub="deep work" color="white" />
+        <FocusTimeCell minutes={focus} />
         <Cell value={fmtFocus(wkFocusMin)} color="empty" />
         <Cell value={fmtFocus(bestFocusMin)} color="empty" />
         <Cell value={DASH} color="empty" />
