@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi import FastAPI, Depends, HTTPException, Query, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import select, text
@@ -38,10 +38,15 @@ app.add_middleware(
 # NOTE: datetime.now() respects the TZ environment variable (set to America/Chicago in DO).
 # datetime.utcnow() always returns UTC regardless of TZ — never use it here.
 
+# All routes live on this router.
+# It is mounted at both "" (root) AND "/api" so the frontend's calls to
+# /dashboard/, /tasks/, etc. resolve, AND old /api/... URLs still work.
+router = APIRouter()
+
 # ─── Auth ─────────────────────────────────────────────
 from models import User
 
-@app.post("/api/auth/register", response_model=UserResponse)
+@router.post("/auth/register", response_model=UserResponse)
 async def register(data: UserCreate, session: Session = Depends(db.get_session)):
     existing = session.execute(select(User).where(User.email == data.email)).scalar()
     if existing:
@@ -53,7 +58,7 @@ async def register(data: UserCreate, session: Session = Depends(db.get_session))
     session.refresh(user)
     return user
 
-@app.post("/api/auth/login")
+@router.post("/auth/login")
 async def login(data: UserLogin, session: Session = Depends(db.get_session)):
     user = session.execute(select(User).where(User.email == data.email)).scalar()
     if not user or not user.check_password(data.password):
@@ -62,7 +67,7 @@ async def login(data: UserLogin, session: Session = Depends(db.get_session)):
     return {"access_token": token, "token_type": "bearer"}
 
 # ─── Tasks ─────────────────────────────────────────────
-@app.get("/api/tasks/", response_model=List[TaskResponse])
+@router.get("/tasks/", response_model=List[TaskResponse])
 async def list_tasks(
     status: Optional[str] = None,
     search: Optional[str] = None,
@@ -77,7 +82,7 @@ async def list_tasks(
     tasks = session.execute(query.order_by(Task.created_at.desc())).scalars().all()
     return tasks
 
-@app.get("/api/tasks/today", response_model=List[TaskResponse])
+@router.get("/tasks/today", response_model=List[TaskResponse])
 async def today_tasks(
     session: Session = Depends(db.get_session),
     user: User = Depends(get_current_user),
@@ -90,7 +95,7 @@ async def today_tasks(
     )
     return session.execute(query.order_by(Task.priority_order)).scalars().all()
 
-@app.post("/api/tasks/", response_model=TaskResponse)
+@router.post("/tasks/", response_model=TaskResponse)
 async def create_task(
     data: TaskCreate,
     session: Session = Depends(db.get_session),
@@ -102,7 +107,7 @@ async def create_task(
     session.refresh(task)
     return task
 
-@app.get("/api/tasks/{task_id}", response_model=TaskResponse)
+@router.get("/tasks/{task_id}", response_model=TaskResponse)
 async def get_task(
     task_id: str,
     session: Session = Depends(db.get_session),
@@ -113,7 +118,7 @@ async def get_task(
         raise HTTPException(status_code=404)
     return task
 
-@app.patch("/api/tasks/{task_id}", response_model=TaskResponse)
+@router.patch("/tasks/{task_id}", response_model=TaskResponse)
 async def update_task(
     task_id: str,
     data: TaskUpdate,
@@ -129,7 +134,7 @@ async def update_task(
     session.refresh(task)
     return task
 
-@app.delete("/api/tasks/{task_id}")
+@router.delete("/tasks/{task_id}")
 async def delete_task(
     task_id: str,
     session: Session = Depends(db.get_session),
@@ -142,7 +147,7 @@ async def delete_task(
     session.commit()
     return {"ok": True}
 
-@app.post("/api/tasks/{task_id}/complete", response_model=TaskResponse)
+@router.post("/tasks/{task_id}/complete", response_model=TaskResponse)
 async def complete_task(
     task_id: str,
     session: Session = Depends(db.get_session),
@@ -157,7 +162,7 @@ async def complete_task(
     session.refresh(task)
     return task
 
-@app.post("/api/tasks/reorder")
+@router.post("/tasks/reorder")
 async def reorder_tasks(
     ids: List[str],
     session: Session = Depends(db.get_session),
@@ -171,7 +176,7 @@ async def reorder_tasks(
     return {"ok": True}
 
 # ─── Projects ────────────────────────────────────────────
-@app.get("/api/projects/", response_model=List[ProjectResponse])
+@router.get("/projects/", response_model=List[ProjectResponse])
 async def list_projects(
     session: Session = Depends(db.get_session),
     user: User = Depends(get_current_user),
@@ -181,7 +186,7 @@ async def list_projects(
     ).scalars().all()
     return projects
 
-@app.post("/api/projects/", response_model=ProjectResponse)
+@router.post("/projects/", response_model=ProjectResponse)
 async def create_project(
     data: ProjectCreate,
     session: Session = Depends(db.get_session),
@@ -193,7 +198,7 @@ async def create_project(
     session.refresh(project)
     return project
 
-@app.get("/api/projects/{project_id}", response_model=ProjectResponse)
+@router.get("/projects/{project_id}", response_model=ProjectResponse)
 async def get_project(
     project_id: str,
     session: Session = Depends(db.get_session),
@@ -204,7 +209,7 @@ async def get_project(
         raise HTTPException(status_code=404)
     return project
 
-@app.patch("/api/projects/{project_id}", response_model=ProjectResponse)
+@router.patch("/projects/{project_id}", response_model=ProjectResponse)
 async def update_project(
     project_id: str,
     data: ProjectUpdate,
@@ -220,7 +225,7 @@ async def update_project(
     session.refresh(project)
     return project
 
-@app.delete("/api/projects/{project_id}")
+@router.delete("/projects/{project_id}")
 async def delete_project(
     project_id: str,
     session: Session = Depends(db.get_session),
@@ -234,7 +239,7 @@ async def delete_project(
     return {"ok": True}
 
 # ─── Time Blocks ─────────────────────────────────────────
-@app.get("/api/time-blocks/", response_model=List[TimeBlockResponse])
+@router.get("/time-blocks/", response_model=List[TimeBlockResponse])
 async def list_time_blocks(
     date: Optional[str] = None,
     session: Session = Depends(db.get_session),
@@ -250,7 +255,7 @@ async def list_time_blocks(
     blocks = session.execute(query.order_by(TimeBlock.start_time)).scalars().all()
     return blocks
 
-@app.post("/api/time-blocks/", response_model=TimeBlockResponse)
+@router.post("/time-blocks/", response_model=TimeBlockResponse)
 async def create_time_block(
     data: TimeBlockCreate,
     session: Session = Depends(db.get_session),
@@ -262,7 +267,7 @@ async def create_time_block(
     session.refresh(block)
     return block
 
-@app.delete("/api/time-blocks/{block_id}")
+@router.delete("/time-blocks/{block_id}")
 async def delete_time_block(
     block_id: str,
     session: Session = Depends(db.get_session),
@@ -284,7 +289,7 @@ def _serialize_habit(data_dict: dict) -> dict:
         data_dict["custom_days"] = ",".join(str(d) for d in cd) if cd else None
     return data_dict
 
-@app.get("/api/habits/", response_model=List[HabitResponse])
+@router.get("/habits/", response_model=List[HabitResponse])
 async def list_habits(
     session: Session = Depends(db.get_session),
     user: User = Depends(get_current_user),
@@ -294,7 +299,7 @@ async def list_habits(
     ).scalars().all()
     return habits
 
-@app.post("/api/habits/", response_model=HabitResponse)
+@router.post("/habits/", response_model=HabitResponse)
 async def create_habit(
     data: HabitCreate,
     session: Session = Depends(db.get_session),
@@ -307,7 +312,7 @@ async def create_habit(
     session.refresh(habit)
     return habit
 
-@app.patch("/api/habits/{habit_id}", response_model=HabitResponse)
+@router.patch("/habits/{habit_id}", response_model=HabitResponse)
 async def update_habit(
     habit_id: str,
     data: HabitUpdate,
@@ -324,7 +329,7 @@ async def update_habit(
     session.refresh(habit)
     return habit
 
-@app.delete("/api/habits/{habit_id}")
+@router.delete("/habits/{habit_id}")
 async def delete_habit(
     habit_id: str,
     session: Session = Depends(db.get_session),
@@ -337,7 +342,7 @@ async def delete_habit(
     session.commit()
     return {"ok": True}
 
-@app.post("/api/habits/{habit_id}/complete")
+@router.post("/habits/{habit_id}/complete")
 async def complete_habit(
     habit_id: str,
     data: dict,
@@ -364,7 +369,7 @@ async def complete_habit(
         session.commit()
     return {"ok": True}
 
-@app.delete("/api/habits/{habit_id}/complete/{date_str}")
+@router.delete("/habits/{habit_id}/complete/{date_str}")
 async def uncomplete_habit(
     habit_id: str,
     date_str: str,
@@ -386,7 +391,7 @@ async def uncomplete_habit(
         session.commit()
     return {"ok": True}
 
-@app.get("/api/habits/{habit_id}/streak")
+@router.get("/habits/{habit_id}/streak")
 async def get_habit_streak(
     habit_id: str,
     session: Session = Depends(db.get_session),
@@ -411,7 +416,7 @@ async def get_habit_streak(
     return {"habit_id": habit_id, "streak": streak}
 
 # ─── Time Entries ─────────────────────────────────────────
-@app.get("/api/time-entries/active", response_model=Optional[TimeEntryResponse])
+@router.get("/time-entries/active", response_model=Optional[TimeEntryResponse])
 async def get_active_timer(
     session: Session = Depends(db.get_session),
     user: User = Depends(get_current_user),
@@ -423,7 +428,7 @@ async def get_active_timer(
     ).scalar()
     return entry
 
-@app.post("/api/time-entries/start", response_model=TimeEntryResponse)
+@router.post("/time-entries/start", response_model=TimeEntryResponse)
 async def start_timer(
     data: TimeEntryCreate,
     session: Session = Depends(db.get_session),
@@ -446,7 +451,7 @@ async def start_timer(
     session.refresh(entry)
     return entry
 
-@app.post("/api/time-entries/{entry_id}/stop", response_model=TimeEntryResponse)
+@router.post("/time-entries/{entry_id}/stop", response_model=TimeEntryResponse)
 async def stop_timer(
     entry_id: str,
     data: dict,
@@ -462,8 +467,7 @@ async def stop_timer(
     return entry
 
 # ─── Dashboard ──────────────────────────────────────────
-# Returns the full shape DashboardPage.tsx expects.
-@app.get("/api/dashboard/")
+@router.get("/dashboard/")
 async def get_dashboard(
     session: Session = Depends(db.get_session),
     user: User = Depends(get_current_user),
@@ -472,7 +476,6 @@ async def get_dashboard(
     today = now.date()
     today_start = datetime(today.year, today.month, today.day)
 
-    # Tasks flagged as today / in-progress
     today_task_rows = session.execute(
         select(Task).where(
             (Task.user_id == user.id) &
@@ -480,7 +483,6 @@ async def get_dashboard(
         ).order_by(Task.priority_order)
     ).scalars().all()
 
-    # Overdue: past due_date, not done
     overdue_rows = session.execute(
         select(Task).where(
             (Task.user_id == user.id) &
@@ -490,7 +492,6 @@ async def get_dashboard(
         ).order_by(Task.due_date)
     ).scalars().all()
 
-    # Completed today
     completed_rows = session.execute(
         select(Task).where(
             (Task.user_id == user.id) &
@@ -499,7 +500,6 @@ async def get_dashboard(
         )
     ).scalars().all()
 
-    # Habits + today completions
     habits_rows = session.execute(
         select(Habit).where(Habit.user_id == user.id).order_by(Habit.created_at.desc())
     ).scalars().all()
@@ -518,7 +518,6 @@ async def get_dashboard(
             "completions": [{"completed_date": str(c.completed_date)} for c in completions],
         })
 
-    # Active projects with completion %
     projects_rows = session.execute(
         select(Project).where(
             (Project.user_id == user.id) &
@@ -540,7 +539,6 @@ async def get_dashboard(
             "completion_percentage": pct,
         })
 
-    # Focus time today
     time_entries = session.execute(
         select(TimeEntry).where(
             (TimeEntry.user_id == user.id) &
@@ -552,12 +550,10 @@ async def get_dashboard(
         for e in time_entries
     )
 
-    # Gamification block
     completed_count = len(completed_rows)
     attempted_count = len(today_task_rows) + completed_count
     batting_avg = round(completed_count / attempted_count, 3) if attempted_count > 0 else 0.0
 
-    # Hitting streak: consecutive days with >= 1 completion
     streak = 0
     check_date = today
     while True:
@@ -625,7 +621,7 @@ async def get_dashboard(
     }
 
 # ─── Gamification history ──────────────────────────────────
-@app.get("/api/gamification/")
+@router.get("/gamification/")
 async def get_gamification_history(
     limit: int = Query(30, ge=1, le=90),
     session: Session = Depends(db.get_session),
@@ -675,60 +671,112 @@ async def get_gamification_history(
     return list(reversed(results))
 
 # ─── Tags & Categories ─────────────────────────────────────
-@app.get("/api/tags/", response_model=List[TagResponse])
+@router.get("/tags/", response_model=List[TagResponse])
 async def list_tags(session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
     return session.execute(select(Tag).where(Tag.user_id == user.id)).scalars().all()
 
-@app.post("/api/tags/", response_model=TagResponse)
+@router.post("/tags/", response_model=TagResponse)
 async def create_tag(data: TagCreate, session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
     tag = Tag(**data.dict(), user_id=user.id)
     session.add(tag); session.commit(); session.refresh(tag)
     return tag
 
-@app.get("/api/categories/", response_model=List[CategoryResponse])
+@router.get("/categories/", response_model=List[CategoryResponse])
 async def list_categories(session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
     return session.execute(select(Category).where(Category.user_id == user.id)).scalars().all()
 
-@app.post("/api/categories/", response_model=CategoryResponse)
+@router.post("/categories/", response_model=CategoryResponse)
 async def create_category(data: CategoryCreate, session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
     category = Category(**data.dict(), user_id=user.id)
     session.add(category); session.commit(); session.refresh(category)
     return category
 
 # ─── Notes ────────────────────────────────────────────
-@app.get("/api/notes/", response_model=List[NoteResponse])
+@router.get("/notes/", response_model=List[NoteResponse])
 async def list_notes(session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
     return session.execute(select(Note).where(Note.user_id == user.id).order_by(Note.created_at.desc())).scalars().all()
 
-@app.post("/api/notes/", response_model=NoteResponse)
+@router.post("/notes/", response_model=NoteResponse)
 async def create_note(data: NoteCreate, session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
     note = Note(**data.dict(), user_id=user.id)
     session.add(note); session.commit(); session.refresh(note)
     return note
 
+@router.patch("/notes/{note_id}", response_model=NoteResponse)
+async def update_note(note_id: str, data: NoteUpdate, session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
+    note = session.execute(select(Note).where(Note.id == note_id)).scalar()
+    if not note or note.user_id != user.id:
+        raise HTTPException(status_code=404)
+    for key, value in data.dict(exclude_unset=True).items():
+        setattr(note, key, value)
+    session.commit(); session.refresh(note)
+    return note
+
+@router.delete("/notes/{note_id}")
+async def delete_note(note_id: str, session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
+    note = session.execute(select(Note).where(Note.id == note_id)).scalar()
+    if not note or note.user_id != user.id:
+        raise HTTPException(status_code=404)
+    session.delete(note); session.commit()
+    return {"ok": True}
+
 # ─── CRM ────────────────────────────────────────────
-@app.get("/api/crm/", response_model=List[CRMPersonResponse])
+@router.get("/crm/", response_model=List[CRMPersonResponse])
 async def list_crm(session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
     return session.execute(select(CRMPerson).where(CRMPerson.user_id == user.id).order_by(CRMPerson.created_at.desc())).scalars().all()
 
-@app.post("/api/crm/", response_model=CRMPersonResponse)
+@router.post("/crm/", response_model=CRMPersonResponse)
 async def create_crm(data: CRMPersonCreate, session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
     person = CRMPerson(**data.dict(), user_id=user.id)
     session.add(person); session.commit(); session.refresh(person)
     return person
 
+@router.get("/crm/{person_id}", response_model=CRMPersonResponse)
+async def get_crm(person_id: str, session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
+    person = session.execute(select(CRMPerson).where(CRMPerson.id == person_id)).scalar()
+    if not person or person.user_id != user.id:
+        raise HTTPException(status_code=404)
+    return person
+
+@router.patch("/crm/{person_id}", response_model=CRMPersonResponse)
+async def update_crm(person_id: str, data: CRMPersonUpdate, session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
+    person = session.execute(select(CRMPerson).where(CRMPerson.id == person_id)).scalar()
+    if not person or person.user_id != user.id:
+        raise HTTPException(status_code=404)
+    for key, value in data.dict(exclude_unset=True).items():
+        setattr(person, key, value)
+    session.commit(); session.refresh(person)
+    return person
+
+@router.delete("/crm/{person_id}")
+async def delete_crm(person_id: str, session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
+    person = session.execute(select(CRMPerson).where(CRMPerson.id == person_id)).scalar()
+    if not person or person.user_id != user.id:
+        raise HTTPException(status_code=404)
+    session.delete(person); session.commit()
+    return {"ok": True}
+
+@router.post("/crm/{person_id}/contacted", response_model=CRMPersonResponse)
+async def mark_contacted(person_id: str, session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
+    person = session.execute(select(CRMPerson).where(CRMPerson.id == person_id)).scalar()
+    if not person or person.user_id != user.id:
+        raise HTTPException(status_code=404)
+    person.last_contacted = datetime.now()
+    session.commit(); session.refresh(person)
+    return person
+
 # ─── Braindump ─────────────────────────────────────────
-@app.get("/api/braindump/", response_model=List[BraindumpEntryResponse])
+@router.get("/braindump/", response_model=List[BraindumpEntryResponse])
 async def list_braindump(session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
     return session.execute(select(BraindumpEntry).where(BraindumpEntry.user_id == user.id).order_by(BraindumpEntry.created_at.desc())).scalars().all()
 
-@app.post("/api/braindump/", response_model=BraindumpEntryResponse)
+@router.post("/braindump/", response_model=BraindumpEntryResponse)
 async def create_braindump(data: BraindumpEntryCreate, session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
     entry = BraindumpEntry(**data.dict(), user_id=user.id)
     session.add(entry); session.commit(); session.refresh(entry)
     return entry
 
-@app.post("/api/braindump/{entry_id}/process")
+@router.post("/braindump/{entry_id}/process")
 async def process_braindump(entry_id: str, session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
     entry = session.execute(select(BraindumpEntry).where(BraindumpEntry.id == entry_id)).scalar()
     if not entry or entry.user_id != user.id:
@@ -741,23 +789,29 @@ async def process_braindump(entry_id: str, session: Session = Depends(db.get_ses
 from models import FavoriteSportsTeam
 from schemas import FavoriteSportsTeamCreate, FavoriteSportsTeamResponse
 
-@app.get("/api/sports/favorites/", response_model=List[FavoriteSportsTeamResponse])
+@router.get("/sports/favorites/", response_model=List[FavoriteSportsTeamResponse])
 async def list_sports_favorites(session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
     return session.execute(select(FavoriteSportsTeam).where(FavoriteSportsTeam.user_id == user.id)).scalars().all()
 
-@app.post("/api/sports/favorites/", response_model=FavoriteSportsTeamResponse)
+@router.post("/sports/favorites/", response_model=FavoriteSportsTeamResponse)
 async def add_sports_favorite(data: FavoriteSportsTeamCreate, session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
     team = FavoriteSportsTeam(**data.dict(), user_id=user.id)
     session.add(team); session.commit(); session.refresh(team)
     return team
 
-@app.delete("/api/sports/favorites/{team_id}")
+@router.delete("/sports/favorites/{team_id}")
 async def remove_sports_favorite(team_id: str, session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
     team = session.execute(select(FavoriteSportsTeam).where(FavoriteSportsTeam.id == team_id)).scalar()
     if not team or team.user_id != user.id:
         raise HTTPException(status_code=404)
     session.delete(team); session.commit()
     return {"ok": True}
+
+# ─── Mount router at BOTH "" (root) AND "/api" ─────────────
+# Frontend calls /dashboard/, /tasks/, etc. (no /api prefix) — root mount covers that.
+# /api/* mount preserves backward compatibility with any direct API clients.
+app.include_router(router)
+app.include_router(router, prefix="/api")
 
 # ─── Startup ──────────────────────────────────────────
 @app.on_event("startup")
