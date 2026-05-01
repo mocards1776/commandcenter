@@ -500,6 +500,17 @@ async def stop_timer(entry_id: str, data: dict, session: Session = Depends(db.ge
     session.refresh(entry)
     return entry
 
+@app.get("/dashboard/debug")
+async def debug_dashboard(session: Session = Depends(db.get_session)):
+    import traceback
+    try:
+        today = _today_ct()
+        ct_midnight = _ct_midnight_as_utc()
+        today_tasks = session.execute(select(Task).where(Task.status.in_(["today", "in_progress"]))).scalars().all()
+        return {"ok": True, "task_count": len(today_tasks), "sample": str(today_tasks[0].title) if today_tasks else "none"}
+    except Exception as e:
+        return {"error": str(e), "traceback": traceback.format_exc()}
+
 # ─── Dashboard ───────────────────────────────────────────────────────
 @app.get("/dashboard/", response_model=DashboardSummary)
 async def get_dashboard(session: Session = Depends(db.get_session)):
