@@ -4,7 +4,7 @@ import type { Task, TimeBlock } from "@/types";
 import { useUIStore } from "@/store";
 import { useActiveTimer } from "@/hooks/useTimer";
 import { useTimerStore } from "@/store";
-import { isOverdue, formatDuration } from "@/lib/utils";
+import { isOverdue, formatDuration, todayStr } from "@/lib/utils";
 import axios from "axios";
 
 const PRIORITY_WEIGHT: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
@@ -383,7 +383,7 @@ function SHead({ icon, label }: { icon: string; label: string }) {
 export function NextUpPanel({ tasks }: { tasks: Task[] }) {
   const { setActivePage } = useUIStore();
   const apiBase = import.meta.env.VITE_API_BASE_URL || "";
-  const today   = new Date().toISOString().split("T")[0];
+  const today   = todayStr();
 
   const [topOverride, setTopOverride]   = useState<Task | null>(null);
   const [deckOverride, setDeckOverride] = useState<Task | null>(null);
