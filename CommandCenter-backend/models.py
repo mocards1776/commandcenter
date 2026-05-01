@@ -54,7 +54,8 @@ class Task(Base):
     due_date = Column(Date, nullable=True, index=True)
     time_estimate_minutes = Column(Integer, nullable=True)
     show_in_daily = Column(Boolean, default=True)
-    order = Column(Integer, default=0)
+    sort_order = Column(Integer, default=0)
+        actual_time_minutes = Column(Integer, default=0)
     category_id = Column(String(36), ForeignKey("categories.id"), nullable=True)
     tag_ids = Column(String(1000), default="")
 
@@ -102,7 +103,7 @@ class Habit(Base):
     target_minutes = Column(Integer, nullable=True)
     time_hour = Column(Integer, nullable=True)   # 0-23
     time_minute = Column(Integer, nullable=True)  # 0-59
-    sort_order = Column(Integer, default=0)
+    sort_sort_order = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
