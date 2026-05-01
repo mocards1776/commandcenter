@@ -507,7 +507,12 @@ async def debug_dashboard(session: Session = Depends(db.get_session)):
         today = _today_ct()
         ct_midnight = _ct_midnight_as_utc()
         today_tasks = session.execute(select(Task).where(Task.status.in_(["today", "in_progress"]))).scalars().all()
-        return {"ok": True, "task_count": len(today_tasks), "sample": str(today_tasks[0].title) if today_tasks else "none"}
+                    completed_today = session.execute(select(Task).where((Task.status == "done") & (Task.completed_at >= ct_midnight))).scalars().all()
+                    time_entries = session.execute(select(TimeEntry).where(TimeEntry.started_at >= ct_midnight)).scalars().all()
+                    habits_rows = session.execute(select(Habit)).scalars().all()
+                    for h in habits_rows: session.execute(select(HabitCompletion).where(HabitCompletion.habit_id == h.id)).scalars().all()
+                                    serialized = [json.loads(TaskResponse.from_orm(t).json()) for t in list(today_tasks)+list(completed_today)]
+                    return {"ok": True, "tasks": len(today_tasks), "completed": len(completed_today), "time_entries": len(time_entries), "habits": len(habits_rows), "serialized": len(serialized)}
     except Exception as e:
         return {"error": str(e), "traceback": traceback.format_exc()}
 
