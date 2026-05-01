@@ -582,8 +582,8 @@ async def get_dashboard(session: Session = Depends(db.get_session)):
 
     # Include completed tasks in the dashboard task list so they show as done
     all_today_tasks = list(today_tasks) + list(completed_today)
-    today_tasks_serialized = [TaskResponse.from_orm(t).dict() for t in all_today_tasks]
-    overdue_tasks_serialized = [TaskResponse.from_orm(t).dict() for t in overdue_tasks]
+    today_tasks_serialized = [json.loads(TaskResponse.from_orm(t).json()) for t in all_today_tasks]
+    overdue_tasks_serialized = [json.loads(TaskResponse.from_orm(t).json()) for t in overdue_tasks]
 
     return DashboardSummary(
         tasks_today=len(today_tasks),
