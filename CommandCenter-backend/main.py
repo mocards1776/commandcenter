@@ -426,7 +426,7 @@ async def complete_habit(
     session.add(completion)
     session.commit()
     session.refresh(completion)
-            return {"ok": True, "id": completion.id}
+                return {"ok": True, "id": completion.id}
 
 @app.delete("/habits/{habit_id}/complete/{completed_date}")
 async def uncomplete_habit(
