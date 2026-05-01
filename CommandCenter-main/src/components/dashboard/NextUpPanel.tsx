@@ -2,7 +2,9 @@ import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Task, TimeBlock } from "@/types";
 import { useUIStore } from "@/store";
-import { isOverdue } from "@/lib/utils";
+import { useActiveTimer } from "@/hooks/useTimer";
+import { useTimerStore } from "@/store";
+import { isOverdue, formatDuration } from "@/lib/utils";
 import axios from "axios";
 
 const PRIORITY_WEIGHT: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
@@ -32,6 +34,25 @@ function getSelectedCalIds(): string[] {
 }
 
 interface NextEvent { title: string; startMs: number; }
+
+// ── Scoring: focus_score + due urgency ────────────────────────────────
+function taskScore(task: Task): number {
+  const priorityBonus = (PRIORITY_WEIGHT[task.priority] ?? 0) * 100;
+  const fs = task.focus_score ?? 0;
+  let dueBonus = 0;
+  if (task.due_date) {
+    const msUntilDue = new Date(task.due_date).getTime() - Date.now();
+    if (msUntilDue < 0) {
+      // Overdue: major urgency boost, more overdue = higher score
+      dueBonus = 500 + Math.min(500, Math.floor(-msUntilDue / (1000 * 60 * 60)));
+    } else {
+      // Due soon: boost inversely proportional to time remaining
+      const hoursLeft = msUntilDue / (1000 * 60 * 60);
+      dueBonus = Math.max(0, Math.floor(200 - hoursLeft * 2));
+    }
+  }
+  return priorityBonus + fs * 5 + dueBonus;
+}
 
 // ── Flip panel ────────────────────────────────────────────────────────
 function FlipPanel({ value, label, urgent = false }: { value: string; label: string; urgent?: boolean }) {
@@ -68,7 +89,6 @@ function EventCountdown({ event }: { event: NextEvent }) {
   const diffMs    = event.startMs - now;
   const eventDate = new Date(event.startMs);
   const timeStr   = eventDate.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
-  // e.g. "APR 30"
   const dateStr   = eventDate.toLocaleDateString([], { month:"short", day:"numeric" }).toUpperCase();
 
   if (diffMs <= 0) {
@@ -78,11 +98,9 @@ function EventCountdown({ event }: { event: NextEvent }) {
         alignItems:"center", minHeight:72,
         background:"#2a4a3a", borderBottom:"2px solid #1e3629",
       }}>
-        {/* Left: date box + event name box side by side */}
         <div style={{ padding:"8px 8px 8px 14px", borderRight:"2px solid #1e3629",
           display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:4 }}>
           <div style={{ display:"flex", gap:6, width:"100%", alignItems:"stretch" }}>
-            {/* Date box */}
             <div style={{
               background:"#1e3629", borderRadius:4,
               border:"1px solid rgba(0,0,0,0.4)",
@@ -96,7 +114,6 @@ function EventCountdown({ event }: { event: NextEvent }) {
                 {dateStr.split(" ")[0]}<br />{dateStr.split(" ")[1]}
               </span>
             </div>
-            {/* Title box */}
             <div style={{
               background:"#1e3629", borderRadius:4,
               border:"1px solid rgba(0,0,0,0.4)",
@@ -115,7 +132,6 @@ function EventCountdown({ event }: { event: NextEvent }) {
           <div style={{ fontSize:8, fontWeight:600, letterSpacing:"0.1em",
             textTransform:"uppercase", color:"rgba(245,240,224,0.25)" }}>@ {timeStr}</div>
         </div>
-        {/* Middle: live indicator */}
         <div className="sb-cell" style={{ padding:"6px", gridColumn:"2 / span 2" }}>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
             <div className="live-dot" />
@@ -131,8 +147,6 @@ function EventCountdown({ event }: { event: NextEvent }) {
   const hours     = Math.min(Math.floor(totalMins / 60), 99);
   const mins      = totalMins % 60;
   const urgent    = totalMins < 30;
-
-  // Gray color for COUNTDOWN label and colon — same as HRS/MIN panel-sub
   const grayLabel = "rgba(245,240,224,0.35)";
 
   return (
@@ -141,11 +155,9 @@ function EventCountdown({ event }: { event: NextEvent }) {
       alignItems:"center", minHeight:72,
       background:"#2a4a3a", borderBottom:"2px solid #1e3629",
     }}>
-      {/* Left: date box + event name box side by side */}
       <div style={{ padding:"8px 8px 8px 14px", borderRight:"2px solid #1e3629",
         display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:4 }}>
         <div style={{ display:"flex", gap:6, width:"100%", alignItems:"stretch" }}>
-          {/* Date box */}
           <div style={{
             background:"#1e3629", borderRadius:4,
             border:"1px solid rgba(0,0,0,0.4)",
@@ -159,7 +171,6 @@ function EventCountdown({ event }: { event: NextEvent }) {
               {dateStr.split(" ")[0]}<br />{dateStr.split(" ")[1]}
             </span>
           </div>
-          {/* Title box */}
           <div style={{
             background:"#1e3629", borderRadius:4,
             border:"1px solid rgba(0,0,0,0.4)",
@@ -179,21 +190,18 @@ function EventCountdown({ event }: { event: NextEvent }) {
           textTransform:"uppercase", color:"rgba(245,240,224,0.25)" }}>@ {timeStr}</div>
       </div>
 
-      {/* Right two cells: countdown with label */}
       <div style={{
         gridColumn:"2 / span 2",
         display:"flex", flexDirection:"column",
         alignItems:"center", justifyContent:"center",
         padding:"6px 4px", gap:4,
       }}>
-        {/* COUNTDOWN label — always gray */}
         <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:8, fontWeight:700,
           letterSpacing:"0.22em", textTransform:"uppercase", color: grayLabel }}>
           COUNTDOWN
         </span>
         <div style={{ display:"flex", alignItems:"flex-start", gap:4 }}>
           <FlipPanel value={String(hours).padStart(2,"0")} label="HRS" urgent={urgent} />
-          {/* Colon — always gray */}
           <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:24, fontWeight:700,
             color: grayLabel,
             lineHeight:"44px", userSelect:"none" }}>:</span>
@@ -218,8 +226,118 @@ function EmptySlot({ text }: { text: string }) {
   );
 }
 
-// ── Task row — all three columns are scoreboard panel tiles ────────────────────────
-function TaskSlot({ task, size, onClick }: { task: Task; size: "lg" | "sm"; onClick: () => void }) {
+// ── Slot picker context menu ─────────────────────────────────────────────
+interface SlotPickerProps {
+  x: number;
+  y: number;
+  tasks: Task[];
+  currentId: string | undefined;
+  onSelect: (task: Task) => void;
+  onClose: () => void;
+}
+
+function SlotPicker({ x, y, tasks, currentId, onSelect, onClose }: SlotPickerProps) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onClose]);
+
+  // Clamp position so it doesn't overflow viewport
+  const menuW = 240;
+  const menuH = Math.min(tasks.length * 36 + 8, 320);
+  const left  = Math.min(x, window.innerWidth - menuW - 8);
+  const top   = Math.min(y, window.innerHeight - menuH - 8);
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        position: "fixed",
+        left, top,
+        width: menuW,
+        maxHeight: 320,
+        overflowY: "auto",
+        background: "#1a2e22",
+        border: "1px solid #2e4a36",
+        borderRadius: 4,
+        boxShadow: "0 8px 24px rgba(0,0,0,0.6)",
+        zIndex: 9999,
+        padding: "4px 0",
+      }}
+    >
+      <div style={{ padding: "4px 10px 6px", borderBottom: "1px solid rgba(0,0,0,0.3)" }}>
+        <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:8, fontWeight:700,
+          letterSpacing:"0.18em", textTransform:"uppercase", color:"rgba(232,168,32,0.5)" }}>
+          SELECT TASK
+        </span>
+      </div>
+      {tasks.map(t => {
+        const accent = ACCENT[t.priority];
+        const isCurrent = t.id === currentId;
+        const overdue = isOverdue(t.due_date);
+        return (
+          <div
+            key={t.id}
+            onClick={() => { onSelect(t); onClose(); }}
+            style={{
+              display: "flex", alignItems: "center", gap: 7,
+              padding: "7px 10px",
+              cursor: "pointer",
+              background: isCurrent ? "rgba(232,168,32,0.08)" : "transparent",
+              borderBottom: "1px solid rgba(0,0,0,0.15)",
+              transition: "background 0.1s",
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.06)")}
+            onMouseLeave={e => (e.currentTarget.style.background = isCurrent ? "rgba(232,168,32,0.08)" : "transparent")}
+          >
+            {/* Priority dot */}
+            <div style={{ width:6, height:6, borderRadius:9999, flexShrink:0, background: accent }} />
+            {/* Title */}
+            <span style={{ flex:1, fontFamily:"'Oswald',Arial,sans-serif", fontSize:11,
+              fontWeight:600, letterSpacing:"0.04em", textTransform:"uppercase",
+              color: isCurrent ? "#e8a820" : "#f5f0e0",
+              whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+              {t.title}
+            </span>
+            {/* FS badge */}
+            <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:9,
+              color: t.focus_score >= 20 ? "#d94040" : t.focus_score >= 12 ? "#e8a820" : "rgba(245,240,224,0.3)",
+              letterSpacing:"0.06em", flexShrink:0 }}>
+              {t.focus_score}
+            </span>
+            {/* Due */}
+            {t.due_date && (
+              <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:8,
+                color: overdue ? "#d94040" : "rgba(245,240,224,0.25)",
+                letterSpacing:"0.06em", flexShrink:0 }}>
+                {t.due_date}
+              </span>
+            )}
+            {isCurrent && (
+              <span style={{ color:"rgba(232,168,32,0.6)", fontSize:9, flexShrink:0 }}>●</span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Task row — with time track button + right-click picker ────────────────
+interface TaskSlotProps {
+  task: Task;
+  size: "lg" | "sm";
+  allTasks: Task[];
+  onTaskClick: () => void;
+  onOverride: (task: Task) => void;
+}
+
+function TaskSlot({ task, size, allTasks, onTaskClick, onOverride }: TaskSlotProps) {
   const overdue  = isOverdue(task.due_date);
   const accent   = ACCENT[task.priority];
   const fsColor  = task.focus_score >= 20 ? "#d94040" : task.focus_score >= 12 ? "#e8a820" : "rgba(245,240,224,0.3)";
@@ -227,94 +345,184 @@ function TaskSlot({ task, size, onClick }: { task: Task; size: "lg" | "sm"; onCl
     : task.priority === "high" ? "HIGH"
     : task.priority === "medium" ? "MED" : "LOW";
 
+  // Timer
+  const { isRunning, activeTimer, elapsedSeconds, start, stop } = useActiveTimer();
+  const { setActiveTimer } = useTimerStore();
+  const isThisRunning = isRunning && activeTimer?.task_id === task.id;
+
+  const handleTimerClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isThisRunning) stop();
+    else { setActiveTimer(null, task); start({ task_id: task.id }); }
+  };
+
+  // Context menu
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setMenu({ x: e.clientX, y: e.clientY });
+  };
+
   return (
-    <div
-      onClick={onClick}
-      title="View tasks"
-      style={{
-        display: "grid",
-        gridTemplateColumns: "2fr 1fr 1fr",
-        alignItems: "center",
-        minHeight: size === "lg" ? 72 : 60,
-        background: "#2a4a3a",
-        borderBottom: "2px solid #1e3629",
-        cursor: "pointer",
-        transition: "background 0.1s",
-      }}
-      onMouseEnter={e => (e.currentTarget.style.background = "rgba(232,168,32,0.06)")}
-      onMouseLeave={e => (e.currentTarget.style.background = "#2a4a3a")}
-    >
-      {/* Left: task title as a panel tile */}
-      <div style={{
-        padding: "8px 8px 8px 14px",
-        borderRight: "2px solid #1e3629",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 4,
-      }}>
+    <>
+      <div
+        onContextMenu={handleContextMenu}
+        onClick={onTaskClick}
+        title="Click to view tasks · Right-click to change"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "2fr 1fr 1fr",
+          alignItems: "center",
+          minHeight: size === "lg" ? 72 : 60,
+          background: "#2a4a3a",
+          borderBottom: "2px solid #1e3629",
+          cursor: "pointer",
+          transition: "background 0.1s",
+          position: "relative",
+        }}
+        onMouseEnter={e => (e.currentTarget.style.background = "rgba(232,168,32,0.06)")}
+        onMouseLeave={e => (e.currentTarget.style.background = "#2a4a3a")}
+      >
+        {/* Left: task title + timer button */}
         <div style={{
-          background: "#1e3629",
-          borderRadius: 4,
-          border: "1px solid rgba(0,0,0,0.4)",
-          boxShadow: "inset 0 2px 4px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.05)",
-          padding: "6px 10px",
-          width: "100%",
-          textAlign: "center",
-          minHeight: size === "lg" ? 46 : 38,
+          padding: "8px 8px 8px 14px",
+          borderRight: "2px solid #1e3629",
           display: "flex",
+          flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
+          gap: 4,
         }}>
-          <span style={{
-            fontFamily: "'Oswald',Arial,sans-serif",
-            fontSize: size === "lg" ? 13 : 11,
-            fontWeight: 700,
-            letterSpacing: "0.05em",
-            textTransform: "uppercase",
-            color: "#f5f0e0",
-            lineHeight: 1.2,
-            display: "-webkit-box",
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: "vertical",
-            overflow: "hidden",
-          }}>
-            {task.title}
-          </span>
-        </div>
-        {task.due_date && (
-          <div style={{ fontSize: 8, fontWeight: 600, letterSpacing: "0.1em",
-            textTransform: "uppercase",
-            color: overdue ? "#d94040" : "rgba(245,240,224,0.25)" }}>
-            {overdue ? "⚠ " : ""}{task.due_date}
+          {/* Title tile + timer button row */}
+          <div style={{ display:"flex", gap:5, width:"100%", alignItems:"stretch" }}>
+            <div style={{
+              background: "#1e3629",
+              borderRadius: 4,
+              border: "1px solid rgba(0,0,0,0.4)",
+              boxShadow: "inset 0 2px 4px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.05)",
+              padding: "6px 10px",
+              flex: 1,
+              textAlign: "center",
+              minHeight: size === "lg" ? 46 : 38,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}>
+              <span style={{
+                fontFamily: "'Oswald',Arial,sans-serif",
+                fontSize: size === "lg" ? 13 : 11,
+                fontWeight: 700,
+                letterSpacing: "0.05em",
+                textTransform: "uppercase",
+                color: "#f5f0e0",
+                lineHeight: 1.2,
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+              }}>
+                {task.title}
+              </span>
+            </div>
+
+            {/* Understated timer button */}
+            <button
+              type="button"
+              title={isThisRunning ? "Stop timer" : "Start timer"}
+              onClick={handleTimerClick}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: "4px 5px",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 3,
+                flexShrink: 0,
+                color: isThisRunning ? "#d94040" : "rgba(245,240,224,0.22)",
+                transition: "color 0.15s",
+                borderRadius: 3,
+              }}
+              onMouseEnter={e => (e.currentTarget.style.color = isThisRunning ? "#ff6060" : "rgba(245,240,224,0.55)")}
+              onMouseLeave={e => (e.currentTarget.style.color = isThisRunning ? "#d94040" : "rgba(245,240,224,0.22)")}
+            >
+              {isThisRunning ? (
+                <>
+                  {/* Stop icon: small square */}
+                  <svg width="9" height="9" viewBox="0 0 9 9" fill="currentColor">
+                    <rect x="0" y="0" width="9" height="9" rx="1"/>
+                  </svg>
+                  <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:7,
+                    letterSpacing:"0.1em", lineHeight:1 }}>
+                    {formatDuration(elapsedSeconds)}
+                  </span>
+                </>
+              ) : (
+                /* Play icon: small triangle */
+                <svg width="8" height="9" viewBox="0 0 8 9" fill="currentColor">
+                  <path d="M0 0 L8 4.5 L0 9 Z"/>
+                </svg>
+              )}
+            </button>
           </div>
-        )}
+
+          {task.due_date && (
+            <div style={{ fontSize: 8, fontWeight: 600, letterSpacing: "0.1em",
+              textTransform: "uppercase",
+              color: overdue ? "#d94040" : "rgba(245,240,224,0.25)" }}>
+              {overdue ? "⚠ " : ""}{task.due_date}
+            </div>
+          )}
+        </div>
+
+        {/* Middle: priority tile */}
+        <div className="sb-cell" style={{ padding: "6px 6px" }}>
+          <div className="panel panel-sm" style={{ width: 48, height: 42, margin: "4px auto" }}>
+            <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize: 11,
+              fontWeight: 700, letterSpacing: "0.06em", color: accent,
+              textTransform: "uppercase", lineHeight: 1 }}>
+              {priLabel}
+            </span>
+          </div>
+          <div className="panel-sub">PRIORITY</div>
+        </div>
+
+        {/* Right: focus score tile */}
+        <div className="sb-cell" style={{ padding: "6px 6px", borderRight: "none" }}>
+          <div className="panel panel-sm" style={{ width: 48, height: 42, margin: "4px auto" }}>
+            <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize: 18,
+              fontWeight: 700, color: fsColor, lineHeight: 1 }}>
+              {task.focus_score}
+            </span>
+          </div>
+          <div className="panel-sub">FS</div>
+        </div>
+
+        {/* Right-click hint — faint, bottom-right corner */}
+        <div style={{
+          position:"absolute", bottom:3, right:5,
+          fontFamily:"'Oswald',Arial,sans-serif", fontSize:7,
+          letterSpacing:"0.08em", textTransform:"uppercase",
+          color:"rgba(245,240,224,0.1)", pointerEvents:"none", userSelect:"none",
+        }}>
+          ⌥ right-click to swap
+        </div>
       </div>
 
-      {/* Middle: priority tile */}
-      <div className="sb-cell" style={{ padding: "6px 6px" }}>
-        <div className="panel panel-sm" style={{ width: 48, height: 42, margin: "4px auto" }}>
-          <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize: 11,
-            fontWeight: 700, letterSpacing: "0.06em", color: accent,
-            textTransform: "uppercase", lineHeight: 1 }}>
-            {priLabel}
-          </span>
-        </div>
-        <div className="panel-sub">PRIORITY</div>
-      </div>
-
-      {/* Right: focus score tile */}
-      <div className="sb-cell" style={{ padding: "6px 6px", borderRight: "none" }}>
-        <div className="panel panel-sm" style={{ width: 48, height: 42, margin: "4px auto" }}>
-          <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize: 18,
-            fontWeight: 700, color: fsColor, lineHeight: 1 }}>
-            {task.focus_score}
-          </span>
-        </div>
-        <div className="panel-sub">FS</div>
-      </div>
-    </div>
+      {menu && (
+        <SlotPicker
+          x={menu.x}
+          y={menu.y}
+          tasks={allTasks}
+          currentId={task.id}
+          onSelect={onOverride}
+          onClose={() => setMenu(null)}
+        />
+      )}
+    </>
   );
 }
 
@@ -334,6 +542,10 @@ export function NextUpPanel({ tasks }: { tasks: Task[] }) {
   const { setActivePage } = useUIStore();
   const apiBase = import.meta.env.VITE_API_BASE_URL || "";
   const today   = new Date().toISOString().split("T")[0];
+
+  // Manual slot overrides (right-click pick)
+  const [topOverride, setTopOverride]     = useState<Task | null>(null);
+  const [deckOverride, setDeckOverride]   = useState<Task | null>(null);
 
   const { data: localBlocks = [] } = useQuery<TimeBlock[]>({
     queryKey: ["time-blocks-dashboard", today],
@@ -374,25 +586,46 @@ export function NextUpPanel({ tasks }: { tasks: Task[] }) {
     .sort((a, b) => a.startMs - b.startMs);
   const nextEvent  = allEvents[0] ?? null;
 
+  // Sort by focus_score + due urgency (primary) then priority weight
   const pending    = tasks.filter(t => t.status !== "done" && t.status !== "cancelled");
-  const sorted     = [...pending].sort((a, b) => {
-    const pw = (PRIORITY_WEIGHT[b.priority] ?? 0) - (PRIORITY_WEIGHT[a.priority] ?? 0);
-    return pw !== 0 ? pw : b.focus_score - a.focus_score;
-  });
-  const nextTask   = sorted[0] ?? null;
-  const onDeckTask = sorted[1] ?? null;
+  const sorted     = [...pending].sort((a, b) => taskScore(b) - taskScore(a));
+
+  // Apply overrides — validate they're still pending, otherwise fall back to auto
+  const validTop  = topOverride  && pending.find(t => t.id === topOverride.id)  ? topOverride  : sorted[0] ?? null;
+  const validDeck = deckOverride && pending.find(t => t.id === deckOverride.id) ? deckOverride : null;
+
+  // On-deck: second auto-sorted task, but skip if it matches validTop
+  const autoDeck = sorted.find(t => t.id !== validTop?.id) ?? null;
+  const onDeckTask = validDeck && validDeck.id !== validTop?.id ? validDeck : autoDeck;
+  const nextTask   = validTop;
+
+  // All pending tasks available for the slot picker
+  const pickableForTop  = pending.filter(t => t.id !== onDeckTask?.id);
+  const pickableForDeck = pending.filter(t => t.id !== nextTask?.id);
 
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100%", background:"#2a4a3a" }}>
 
       <SHead icon="▶" label="Next Task" />
       {nextTask
-        ? <TaskSlot task={nextTask} size="lg" onClick={() => setActivePage("todos")} />
+        ? <TaskSlot
+            task={nextTask}
+            size="lg"
+            allTasks={pickableForTop}
+            onTaskClick={() => setActivePage("todos")}
+            onOverride={t => { setTopOverride(t); if (deckOverride?.id === t.id) setDeckOverride(null); }}
+          />
         : <EmptySlot text="Clear" />}
 
       <SHead icon="⋯" label="On Deck" />
       {onDeckTask
-        ? <TaskSlot task={onDeckTask} size="sm" onClick={() => setActivePage("todos")} />
+        ? <TaskSlot
+            task={onDeckTask}
+            size="sm"
+            allTasks={pickableForDeck}
+            onTaskClick={() => setActivePage("todos")}
+            onOverride={t => { setDeckOverride(t); if (topOverride?.id === t.id) setTopOverride(null); }}
+          />
         : <EmptySlot text="Nothing on deck" />}
 
       <SHead icon="◷" label="Next Event" />
