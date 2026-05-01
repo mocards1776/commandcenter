@@ -3,7 +3,7 @@ from datetime import datetime, date
 from typing import Optional, List, Any
 import json
 
-# ─── Auth ────────────────────────────────────────────────────────────
+# ─── Auth ──────────────────────────────────────────────────────────────
 class UserCreate(BaseModel):
     email: str
     password: str
@@ -16,11 +16,11 @@ class UserResponse(BaseModel):
     id: str
     email: str
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 
-# ─── Tasks ───────────────────────────────────────────────────────────
+# ─── Tasks ─────────────────────────────────────────────────────────────
 class TaskCreate(BaseModel):
     title: str
     description: Optional[str] = None
@@ -50,7 +50,7 @@ class TaskUpdate(BaseModel):
     project_id: Optional[str] = None
     category_id: Optional[str] = None
     tag_ids: Optional[List[str]] = None
-    
+
     class Config:
         from_attributes = True
 
@@ -105,18 +105,22 @@ class TaskResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# ─── Projects ────────────────────────────────────────────────────────
+# ─── Projects ──────────────────────────────────────────────────────────
 class ProjectCreate(BaseModel):
     title: str
     description: Optional[str] = None
     status: str = "active"
     color: Optional[str] = None
+    priority: Optional[str] = "medium"
+    due_date: Optional[str] = None
 
 class ProjectUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     status: Optional[str] = None
     color: Optional[str] = None
+    priority: Optional[str] = None
+    due_date: Optional[str] = None
 
 class ProjectResponse(BaseModel):
     id: str
@@ -124,14 +128,16 @@ class ProjectResponse(BaseModel):
     description: Optional[str] = None
     status: str
     color: Optional[str] = None
+    priority: Optional[str] = "medium"
+    due_date: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
     tasks: List[TaskResponse] = []
-    
+
     class Config:
         from_attributes = True
 
-# ─── Habits ──────────────────────────────────────────────────────────
+# ─── Habits ────────────────────────────────────────────────────────────
 class HabitCompletionResponse(BaseModel):
     id: str
     habit_id: str
@@ -147,7 +153,7 @@ class HabitCreate(BaseModel):
     description: Optional[str] = None
     color: Optional[str] = "#e8a820"
     frequency: str = "daily"
-    icon: Optional[str] = "🔥"
+    icon: Optional[str] = "\U0001f525"
     custom_days: Optional[List[int]] = None
     target_minutes: Optional[int] = None
     time_hour: Optional[int] = None
@@ -204,7 +210,7 @@ class HabitResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# ─── Time Entries ────────────────────────────────────────────────────
+# ─── Time Entries ──────────────────────────────────────────────────────
 class TimeEntryCreate(BaseModel):
     task_id: Optional[str] = None
     habit_id: Optional[str] = None
@@ -218,11 +224,11 @@ class TimeEntryResponse(BaseModel):
     started_at: datetime
     ended_at: Optional[datetime] = None
     note: Optional[str] = None
-    
+
     class Config:
         from_attributes = True
 
-# ─── Time Blocks ─────────────────────────────────────────────────────
+# ─── Time Blocks ───────────────────────────────────────────────────────
 class TimeBlockCreate(BaseModel):
     title: str
     start_time: datetime
@@ -242,11 +248,11 @@ class TimeBlockResponse(BaseModel):
     end_time: datetime
     color: Optional[str] = None
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 
-# ─── Notes ───────────────────────────────────────────────────────────
+# ─── Notes ─────────────────────────────────────────────────────────────
 class NoteCreate(BaseModel):
     title: Optional[str] = None
     content: str
@@ -264,11 +270,11 @@ class NoteResponse(BaseModel):
     tags: Optional[str] = None
     created_at: datetime
     updated_at: datetime
-    
+
     class Config:
         from_attributes = True
 
-# ─── Tags ────────────────────────────────────────────────────────────
+# ─── Tags ──────────────────────────────────────────────────────────────
 class TagCreate(BaseModel):
     name: str
     color: Optional[str] = None
@@ -278,11 +284,11 @@ class TagResponse(BaseModel):
     name: str
     color: Optional[str] = None
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 
-# ─── Categories ──────────────────────────────────────────────────────
+# ─── Categories ────────────────────────────────────────────────────────
 class CategoryCreate(BaseModel):
     name: str
     color: Optional[str] = None
@@ -294,11 +300,11 @@ class CategoryResponse(BaseModel):
     color: Optional[str] = None
     icon: Optional[str] = None
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 
-# ─── CRM ─────────────────────────────────────────────────────────────
+# ─── CRM ───────────────────────────────────────────────────────────────
 class CRMPersonCreate(BaseModel):
     name: str
     email: Optional[str] = None
@@ -322,11 +328,11 @@ class CRMPersonResponse(BaseModel):
     notes: Optional[str] = None
     last_contacted: Optional[datetime] = None
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 
-# ─── Braindump ───────────────────────────────────────────────────────
+# ─── Braindump ─────────────────────────────────────────────────────────
 class BraindumpEntryCreate(BaseModel):
     raw_text: str
 
@@ -335,11 +341,11 @@ class BraindumpEntryResponse(BaseModel):
     raw_text: str
     processed: bool
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 
-# ─── Dashboard ───────────────────────────────────────────────────────
+# ─── Dashboard ─────────────────────────────────────────────────────────
 class DashboardSummary(BaseModel):
     tasks_today: int
     completed_today: int
