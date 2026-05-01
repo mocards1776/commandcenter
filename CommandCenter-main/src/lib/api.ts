@@ -9,38 +9,73 @@ import type {
   FavoriteSportsTeam, GamificationStats,
 } from "@/types";
 
+// ─── Token helpers (cookie-based — localStorage blocked in Vercel iframes) ─
+const TOKEN_COOKIE = "cc_auth_token";
+const EXPIRY_COOKIE = "cc_auth_expiry";
+
+function setCookie(name: string, value: string, expiryMs?: number) {
+  const expires = expiryMs
+    ? `; expires=${new Date(Date.now() + expiryMs).toUTCString()}`
+    : "; expires=Fri, 31 Dec 9999 23:59:59 GMT";
+  document.cookie = `${name}=${encodeURIComponent(value)}${expires}; path=/; SameSite=Lax`;
+}
+
+function getCookie(name: string): string | null {
+  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)(?:;|$)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function deleteCookie(name: string) {
+  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+}
+
+export const tokenStore = {
+  get(): string | null {
+    // Try cookie first, fallback to localStorage for backward-compat
+    const fromCookie = getCookie(TOKEN_COOKIE);
+    if (fromCookie) return fromCookie;
+    try { return localStorage.getItem("auth_token"); } catch { return null; }
+  },
+  set(token: string, expiresInMs?: number) {
+    setCookie(TOKEN_COOKIE, token, expiresInMs);
+    if (expiresInMs) setCookie(EXPIRY_COOKIE, String(Date.now() + expiresInMs));
+    try { localStorage.setItem("auth_token", token); } catch { /* blocked */ }
+  },
+  clear() {
+    deleteCookie(TOKEN_COOKIE);
+    deleteCookie(EXPIRY_COOKIE);
+    try { localStorage.removeItem("auth_token"); } catch { /* blocked */ }
+  },
+};
+
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || "https://orca-app-v7oew.ondigitalocean.app",
   headers: { "Content-Type": "application/json" },
 });
 
-// Attach token to every request
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("auth_token");
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
+  const token = tokenStore.get();
+  if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
-// On 401, clear token and force re-login
 api.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401) {
-      localStorage.removeItem("auth_token");
+      tokenStore.clear();
       window.dispatchEvent(new CustomEvent("auth:logout"));
     }
     return Promise.reject(err);
   }
 );
 
-// ─── Dashboard ────────────────────────────────────────────
+// ─── Dashboard ────────────────────────────────────────────────
 export const dashboardApi = {
   get: () => api.get<DashboardSummary>("/dashboard/").then(r => r.data),
 };
 
-// ─── Gamification ─────────────────────────────────────────
+// ─── Gamification ─────────────────────────────────────────────
 export const gamificationApi = {
   history: (limit = 30) =>
     api.get<GamificationStats[]>("/gamification/", { params: { limit } }).then(r => r.data),
@@ -90,7 +125,7 @@ export const habitsApi = {
     api.get<{ habit_id: string; streak: number }>(`/habits/${id}/streak`).then(r => r.data),
 };
 
-// ─── Time Entries ─────────────────────────────────────────
+// ─── Time Entries ─────────────────────────────────────────────
 export const timersApi = {
   active: () =>
     api.get<TimeEntry | null>("/time-entries/active").then(r => r.data),
@@ -102,7 +137,7 @@ export const timersApi = {
     api.get<TimeEntry[]>("/time-entries/", { params }).then(r => r.data),
 };
 
-// ─── Braindump ───────────────────────────────────────────
+// ─── Braindump ───────────────────────────────────────────────
 export const braindumpApi = {
   list: () => api.get<BraindumpEntry[]>("/braindump/").then(r => r.data),
   create: (raw_text: string) =>

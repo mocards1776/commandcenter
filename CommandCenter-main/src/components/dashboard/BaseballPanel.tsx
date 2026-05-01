@@ -1,13 +1,14 @@
 import { useState } from "react";
 
-const CARD_BG   = "#162a1c";
-const PANEL_BG  = "#1a3024";
-const BORDER    = "rgba(232,168,32,0.18)";
+// ─── Design tokens (match the dashboard exactly) ───────────────────────────
+const BG        = "#162a1c";
+const ROW_BG    = "#1e3629";
+const PANEL_BG  = "#162a1c";
+const HEADER_BG = "#122016";
 const GOLD      = "#e8a820";
 const DIM       = "rgba(245,240,224,0.22)";
-const RED_COL   = "#c0392b";
-const GREEN_COL = "#4caf50";
-const LABEL_CSS: React.CSSProperties = {
+const MUTED     = "rgba(245,240,224,0.55)";
+const LABEL: React.CSSProperties = {
   fontFamily: "'Oswald',Arial,sans-serif",
   fontSize: 8,
   fontWeight: 700,
@@ -16,303 +17,385 @@ const LABEL_CSS: React.CSSProperties = {
   color: DIM,
 };
 
-type StandingsRow = {
-  team: string;
-  abbr: string;
-  wl: string;
-  pct: string;
-  gb: string;
-  strk: string;
-  l10: string;
-  isCardinals?: boolean;
-};
+// ─── Flip panel (same style as scoreboard cells) ───────────────────────────
+function FlipCell({
+  value, sub, color = "empty", small = false,
+}: {
+  value: string | number;
+  sub?: string;
+  color?: "gold" | "white" | "muted" | "empty" | "red" | "green";
+  small?: boolean;
+}) {
+  const c =
+    color === "gold"  ? GOLD
+    : color === "red"   ? "#d94040"
+    : color === "green" ? "#4caf50"
+    : color === "white" ? "#f5f0e0"
+    : color === "muted" ? MUTED
+    : "rgba(255,255,255,0.12)";
+  const v = String(value);
+  const fs = v.length > 5 ? 11 : v.length > 3 ? 15 : small ? 18 : 22;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+      <div className="panel" style={{
+        width: small ? 44 : 52, height: small ? 40 : 48,
+        boxShadow: "inset 0 3px 6px rgba(0,0,0,0.55), 0 1px 0 rgba(255,255,255,0.04)",
+      }}>
+        <span className="panel-num" style={{ fontSize: fs, color: c }}>{v}</span>
+      </div>
+      {sub && <div className="panel-sub" style={{ fontSize: 7 }}>{sub}</div>}
+    </div>
+  );
+}
 
-const NL_CENTRAL: StandingsRow[] = [
-  { team: "Cincinnati Reds",    abbr: "CIN", wl: "20-11", pct: ".645", gb: "—",  strk: "W2", l10: "7-3" },
-  { team: "Chicago Cubs",       abbr: "CHC", wl: "19-12", pct: ".613", gb: "1.0", strk: "W1", l10: "6-4" },
-  { team: "St. Louis Cardinals",abbr: "STL", wl: "18-13", pct: ".581", gb: "2.0", strk: "W3", l10: "7-3", isCardinals: true },
-  { team: "Milwaukee Brewers",  abbr: "MIL", wl: "16-14", pct: ".533", gb: "3.5", strk: "L1", l10: "5-5" },
-  { team: "Pittsburgh Pirates", abbr: "PIT", wl: "16-16", pct: ".500", gb: "4.5", strk: "L2", l10: "4-6" },
+// ─── Standings data ────────────────────────────────────────────────────────
+type Row = { abbr: string; full: string; wl: string; pct: string; gb: string; strk: string; l10: string; cards?: boolean };
+
+const STANDINGS: Row[] = [
+  { abbr:"CIN", full:"Cincinnati Reds",     wl:"20-11", pct:".645", gb:"\u2014",  strk:"W2", l10:"7-3" },
+  { abbr:"CHC", full:"Chicago Cubs",         wl:"19-12", pct:".613", gb:"1.0",   strk:"W1", l10:"6-4" },
+  { abbr:"STL", full:"St. Louis Cardinals",  wl:"18-13", pct:".581", gb:"2.0",   strk:"W3", l10:"7-3", cards:true },
+  { abbr:"MIL", full:"Milwaukee Brewers",    wl:"16-14", pct:".533", gb:"3.5",   strk:"L1", l10:"5-5" },
+  { abbr:"PIT", full:"Pittsburgh Pirates",   wl:"16-16", pct:".500", gb:"4.5",   strk:"L2", l10:"4-6" },
 ];
 
-const COL_HEADER: React.CSSProperties = {
-  ...LABEL_CSS,
-  color: "rgba(232,168,32,0.45)",
-  padding: "0 6px",
-  textAlign: "center" as const,
-};
-
-function StrkBadge({ strk }: { strk: string }) {
-  const win = strk.startsWith("W");
+// ─── Section header (matches sb-header style) ─────────────────────────────
+function SBHead({ label }: { label: string }) {
   return (
-    <span style={{
-      fontFamily: "'Oswald',Arial,sans-serif",
-      fontSize: 10,
-      fontWeight: 700,
-      letterSpacing: "0.06em",
-      color: win ? GREEN_COL : RED_COL,
-    }}>{strk}</span>
+    <div style={{
+      display: "grid", gridTemplateColumns: "1fr",
+      background: HEADER_BG,
+      borderBottom: "2px solid #122016",
+      borderTop: "2px solid #122016",
+      padding: "3px 0",
+    }}>
+      <div style={{
+        fontFamily: "'Oswald',Arial,sans-serif",
+        fontSize: 9,
+        fontWeight: 700,
+        letterSpacing: "0.18em",
+        textTransform: "uppercase" as const,
+        color: "rgba(232,168,32,0.55)",
+        textAlign: "center" as const,
+        padding: "1px 0",
+      }}>{label}</div>
+    </div>
   );
 }
 
-function InningDiamond() {
+// ─── Column header row ─────────────────────────────────────────────────────
+function ColHead({ cols }: { cols: string[] }) {
   return (
-    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ display: "inline-block", verticalAlign: "middle", marginRight: 4, opacity: 0.5 }}>
-      <rect x="2" y="2" width="6" height="6" rx="0.5" transform="rotate(45 5 5)" stroke={GOLD} strokeWidth="1" />
-    </svg>
+    <div style={{
+      display: "grid",
+      gridTemplateColumns: cols.length === 7 ? "18px 60px 1fr 1fr 1fr 1fr 1fr" : "1fr 1fr 1fr",
+      background: HEADER_BG,
+      borderBottom: "1px solid rgba(18,32,22,0.8)",
+      padding: "2px 8px",
+    }}>
+      {cols.map((c, i) => (
+        <div key={i} style={{
+          ...LABEL,
+          color: "rgba(232,168,32,0.35)",
+          textAlign: i === 1 ? "left" as const : "center" as const,
+          padding: "1px 2px",
+        }}>{c}</div>
+      ))}
+    </div>
   );
 }
 
+// ─── Standings row ─────────────────────────────────────────────────────────
+function StandingsRow({ row, rank }: { row: Row; rank: number }) {
+  const strkWin = row.strk.startsWith("W");
+  return (
+    <div style={{
+      display: "grid",
+      gridTemplateColumns: "18px 60px 1fr 1fr 1fr 1fr 1fr",
+      alignItems: "center",
+      background: row.cards ? "rgba(232,168,32,0.05)" : (rank % 2 === 0 ? ROW_BG : BG),
+      borderBottom: "1px solid rgba(18,32,22,0.7)",
+      padding: "4px 8px",
+      minHeight: 40,
+    }}>
+      {/* Rank */}
+      <span style={{ ...LABEL, color: row.cards ? GOLD : "rgba(245,240,224,0.2)", fontSize: 9 }}>{rank}</span>
+
+      {/* Team name tile */}
+      <div style={{
+        background: PANEL_BG,
+        border: `1px solid ${row.cards ? "rgba(232,168,32,0.3)" : "rgba(0,0,0,0.4)"}`,
+        borderRadius: 3,
+        boxShadow: "inset 0 2px 3px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.03)",
+        padding: "3px 6px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        minHeight: 30,
+      }}>
+        <span style={{
+          fontFamily: "'Oswald',Arial,sans-serif",
+          fontSize: 10,
+          fontWeight: row.cards ? 800 : 600,
+          letterSpacing: "0.1em",
+          textTransform: "uppercase" as const,
+          color: row.cards ? GOLD : MUTED,
+        }}>{row.abbr}</span>
+      </div>
+
+      {/* W-L tile */}
+      <div style={{ display:"flex", justifyContent:"center" }}>
+        <div style={{
+          background: PANEL_BG,
+          border: "1px solid rgba(0,0,0,0.4)",
+          borderRadius: 3,
+          boxShadow: "inset 0 2px 3px rgba(0,0,0,0.4)",
+          padding: "3px 5px",
+          minWidth: 42,
+          textAlign: "center" as const,
+        }}>
+          <span style={{
+            fontFamily: "'Oswald',Arial,sans-serif",
+            fontSize: row.cards ? 12 : 11,
+            fontWeight: row.cards ? 800 : 600,
+            letterSpacing: "0.04em",
+            color: row.cards ? "#f5f0e0" : "rgba(245,240,224,0.6)",
+            fontVariantNumeric: "tabular-nums" as const,
+          }}>{row.wl}</span>
+        </div>
+      </div>
+
+      {/* PCT */}
+      <div style={{ display:"flex", justifyContent:"center" }}>
+        <div style={{
+          background: PANEL_BG, border: "1px solid rgba(0,0,0,0.4)", borderRadius: 3,
+          boxShadow: "inset 0 2px 3px rgba(0,0,0,0.4)",
+          padding: "3px 5px", minWidth: 36, textAlign: "center" as const,
+        }}>
+          <span style={{
+            fontFamily: "'Oswald',Arial,sans-serif",
+            fontSize: row.cards ? 12 : 10,
+            fontWeight: row.cards ? 700 : 500,
+            color: row.cards ? GOLD : "rgba(245,240,224,0.4)",
+            fontVariantNumeric: "tabular-nums" as const,
+          }}>{row.pct}</span>
+        </div>
+      </div>
+
+      {/* GB */}
+      <div style={{ textAlign: "center" as const }}>
+        <span style={{ ...LABEL, fontSize: 10, color: "rgba(245,240,224,0.3)" }}>{row.gb}</span>
+      </div>
+
+      {/* STRK */}
+      <div style={{ display:"flex", justifyContent:"center" }}>
+        <div style={{
+          background: PANEL_BG, border: `1px solid ${strkWin ? "rgba(76,175,80,0.2)" : "rgba(217,64,64,0.2)"}`,
+          borderRadius: 3, boxShadow: "inset 0 2px 3px rgba(0,0,0,0.4)",
+          padding: "3px 5px", minWidth: 28, textAlign: "center" as const,
+        }}>
+          <span style={{
+            fontFamily: "'Oswald',Arial,sans-serif", fontSize: 10, fontWeight: 700,
+            letterSpacing: "0.06em",
+            color: strkWin ? "#4caf50" : "#d94040",
+          }}>{row.strk}</span>
+        </div>
+      </div>
+
+      {/* L10 */}
+      <div style={{ display:"flex", justifyContent:"center" }}>
+        <div style={{
+          background: PANEL_BG, border: "1px solid rgba(0,0,0,0.4)", borderRadius: 3,
+          boxShadow: "inset 0 2px 3px rgba(0,0,0,0.4)",
+          padding: "3px 5px", minWidth: 28, textAlign: "center" as const,
+        }}>
+          <span style={{
+            fontFamily: "'Oswald',Arial,sans-serif", fontSize: 10, fontWeight: 500,
+            color: "rgba(245,240,224,0.35)",
+          }}>{row.l10}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Score display (big flip-panel style) ─────────────────────────────────
+function ScoreRow({ team, abbr, score, isWinner, editing, onScoreChange }: {
+  team: string; abbr: string; score: number; isWinner: boolean;
+  editing: boolean; onScoreChange: (v: number) => void;
+}) {
+  return (
+    <div style={{
+      display: "grid", gridTemplateColumns: "1fr auto",
+      alignItems: "center", gap: 8,
+      background: isWinner ? "rgba(232,168,32,0.05)" : "transparent",
+      padding: "6px 12px",
+      borderBottom: "1px solid rgba(18,32,22,0.8)",
+    }}>
+      {/* Team name tile */}
+      <div style={{
+        background: PANEL_BG,
+        border: `1px solid ${isWinner ? "rgba(232,168,32,0.3)" : "rgba(0,0,0,0.4)"}`,
+        borderRadius: 3,
+        boxShadow: "inset 0 2px 4px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.04)",
+        padding: "6px 10px",
+        minHeight: 36,
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
+        <span style={{
+          fontFamily: "'Oswald',Arial,sans-serif",
+          fontSize: 11, fontWeight: isWinner ? 800 : 600, letterSpacing: "0.1em",
+          textTransform: "uppercase" as const,
+          color: isWinner ? GOLD : MUTED,
+        }}>{abbr} · {team}</span>
+      </div>
+
+      {/* Score flip cell */}
+      {editing ? (
+        <input type="number" value={score} onChange={e => onScoreChange(Number(e.target.value))}
+          style={{
+            width: 52, height: 48, background: PANEL_BG,
+            border: `1px solid ${isWinner ? GOLD : "rgba(0,0,0,0.4)"}`,
+            borderRadius: 3, boxShadow: "inset 0 3px 6px rgba(0,0,0,0.55)",
+            color: isWinner ? GOLD : MUTED,
+            fontFamily: "'Oswald',Arial,sans-serif", fontSize: 22, fontWeight: 700,
+            textAlign: "center" as const, padding: "2px 4px",
+          }}
+        />
+      ) : (
+        <FlipCell value={score} color={isWinner ? "gold" : "empty"} />
+      )}
+    </div>
+  );
+}
+
+// ─── Next game display ─────────────────────────────────────────────────────
+function NextGameRow({ label, value, editing, onChange }: {
+  label: string; value: string; editing: boolean; onChange: (v: string) => void;
+}) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "60px 1fr", gap: 6, alignItems: "center", padding: "4px 8px" }}>
+      <span style={{ ...LABEL, color: "rgba(232,168,32,0.35)", textAlign: "right" as const }}>{label}</span>
+      {editing ? (
+        <input value={value} onChange={e => onChange(e.target.value)}
+          style={{
+            background: PANEL_BG, border: "1px solid rgba(232,168,32,0.3)", borderRadius: 3,
+            color: "#f5f0e0", fontFamily: "'Oswald',Arial,sans-serif", fontSize: 11,
+            fontWeight: 600, letterSpacing: "0.04em", padding: "3px 7px", width: "100%",
+          }}
+        />
+      ) : (
+        <div style={{
+          background: PANEL_BG, border: "1px solid rgba(0,0,0,0.4)", borderRadius: 3,
+          boxShadow: "inset 0 2px 3px rgba(0,0,0,0.4)",
+          padding: "4px 8px", minHeight: 28, display: "flex", alignItems: "center",
+        }}>
+          <span style={{
+            fontFamily: "'Oswald',Arial,sans-serif", fontSize: 11, fontWeight: 600,
+            letterSpacing: "0.06em", textTransform: "uppercase" as const, color: "#f5f0e0",
+          }}>{value}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main export ───────────────────────────────────────────────────────────
 export function BaseballPanel() {
-  const [lastR1, setLastR1] = useState(10);
-  const [lastR2, setLastR2] = useState(5);
-  const [nextTime, setNextTime] = useState("7:15 PM");
-  const [nextOpp, setNextOpp] = useState("Los Angeles Dodgers");
-  const [nextHome, setNextHome] = useState(true); // true = home, false = away
-  const [editing, setEditing] = useState(false);
+  const [lastR1, setLastR1]     = useState(10);
+  const [lastR2, setLastR2]     = useState(5);
+  const [lastOpp, setLastOpp]   = useState("Pirates");
+  const [nextTime, setNextTime] = useState("7:15 PM CDT");
+  const [nextOpp, setNextOpp]   = useState("Dodgers");
+  const [nextVenue, setNextVenue] = useState("Busch Stadium · St. Louis, MO");
+  const [nextDate, setNextDate] = useState("Today · May 1");
+  const [editing, setEditing]   = useState(false);
 
-  const cellNum: React.CSSProperties = {
-    fontFamily: "'Oswald',Arial,sans-serif",
-    fontSize: 11,
-    fontWeight: 600,
-    letterSpacing: "0.06em",
-    color: "rgba(245,240,224,0.75)",
-    textAlign: "center" as const,
-    padding: "0 6px",
-    tabularNums: true,
-  } as React.CSSProperties;
+  const cardsWon = lastR1 > lastR2;
 
   return (
     <div style={{
       display: "grid",
-      gridTemplateColumns: "1fr 1px 1fr",
-      background: CARD_BG,
-      borderTop: `1px solid ${BORDER}`,
+      gridTemplateColumns: "1fr 3px 1fr",
+      background: BG,
+      borderTop: "3px solid #122016",
     }}>
 
       {/* ── LEFT: NL Central Standings ── */}
-      <div style={{ padding: "12px 16px 14px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-          <InningDiamond />
-          <span style={{ ...LABEL_CSS, color: GOLD, fontSize: 9, letterSpacing: "0.18em" }}>NL CENTRAL STANDINGS</span>
-          <span style={{ ...LABEL_CSS, marginLeft: "auto", fontSize: 8, opacity: 0.4 }}>MAY 1, 2026</span>
-        </div>
-
-        {/* Header row */}
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: "22px 1fr 52px 40px 40px 36px 36px",
-          alignItems: "center",
-          borderBottom: `1px solid ${BORDER}`,
-          paddingBottom: 4,
-          marginBottom: 2,
-        }}>
-          <span />
-          <span style={COL_HEADER}>TEAM</span>
-          <span style={{ ...COL_HEADER, textAlign: "center" }}>W-L</span>
-          <span style={{ ...COL_HEADER }}>PCT</span>
-          <span style={{ ...COL_HEADER }}>GB</span>
-          <span style={{ ...COL_HEADER }}>STRK</span>
-          <span style={{ ...COL_HEADER }}>L10</span>
-        </div>
-
-        {NL_CENTRAL.map((row, i) => (
-          <div
-            key={row.abbr}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "22px 1fr 52px 40px 40px 36px 36px",
-              alignItems: "center",
-              padding: "5px 0",
-              borderBottom: i < NL_CENTRAL.length - 1 ? `1px solid rgba(232,168,32,0.07)` : "none",
-              background: row.isCardinals ? "rgba(232,168,32,0.06)" : "transparent",
-              borderRadius: row.isCardinals ? 2 : 0,
-            }}
-          >
-            {/* Rank */}
-            <span style={{ ...LABEL_CSS, color: row.isCardinals ? GOLD : DIM, fontWeight: row.isCardinals ? 700 : 500, fontSize: 9 }}>{i + 1}</span>
-
-            {/* Team name */}
-            <span style={{
-              fontFamily: "'Oswald',Arial,sans-serif",
-              fontSize: 11,
-              fontWeight: row.isCardinals ? 700 : 500,
-              letterSpacing: "0.06em",
-              color: row.isCardinals ? GOLD : "rgba(245,240,224,0.8)",
-              textTransform: "uppercase" as const,
-            }}>
-              {row.isCardinals && <span style={{ color: GOLD, marginRight: 4, fontSize: 8 }}>▶</span>}
-              {row.abbr}
-            </span>
-
-            {/* W-L */}
-            <span style={{ ...cellNum, fontWeight: row.isCardinals ? 700 : 500, color: row.isCardinals ? "rgba(245,240,224,0.9)" : "rgba(245,240,224,0.65)" }}>{row.wl}</span>
-
-            {/* PCT */}
-            <span style={{ ...cellNum, color: row.isCardinals ? GOLD : "rgba(245,240,224,0.55)" }}>{row.pct}</span>
-
-            {/* GB */}
-            <span style={{ ...cellNum, color: "rgba(245,240,224,0.45)" }}>{row.gb}</span>
-
-            {/* STRK */}
-            <span style={{ textAlign: "center" as const, padding: "0 6px" }}><StrkBadge strk={row.strk} /></span>
-
-            {/* L10 */}
-            <span style={{ ...cellNum, fontSize: 10, color: "rgba(245,240,224,0.45)" }}>{row.l10}</span>
-          </div>
-        ))}
+      <div>
+        <SBHead label="NL Central Standings · May 1, 2026" />
+        <ColHead cols={["", "TEAM", "W-L", "PCT", "GB", "STRK", "L10"]} />
+        {STANDINGS.map((row, i) => <StandingsRow key={row.abbr} row={row} rank={i + 1} />)}
       </div>
 
       {/* Divider */}
-      <div style={{ background: BORDER }} />
+      <div style={{ background: "#122016" }} />
 
-      {/* ── RIGHT: Cardinals Game Info ── */}
-      <div style={{ padding: "12px 16px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
-
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <InningDiamond />
-            <span style={{ ...LABEL_CSS, color: GOLD, fontSize: 9, letterSpacing: "0.18em" }}>ST. LOUIS CARDINALS</span>
+      {/* ── RIGHT: Cardinals game info ── */}
+      <div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: HEADER_BG }}>
+          <div style={{ flex: 1 }}>
+            <SBHead label="St. Louis Cardinals" />
           </div>
           <button
             onClick={() => setEditing(e => !e)}
             style={{
-              background: "none", border: `1px solid ${BORDER}`, borderRadius: 2, cursor: "pointer",
+              background: "none", border: `1px solid ${editing ? GOLD : "rgba(232,168,32,0.15)"}`,
+              borderRadius: 3, cursor: "pointer", marginRight: 8,
               fontFamily: "'Oswald',Arial,sans-serif", fontSize: 8, letterSpacing: "0.12em",
-              color: editing ? GOLD : DIM, padding: "2px 6px", textTransform: "uppercase" as const,
+              color: editing ? GOLD : DIM, padding: "2px 7px", textTransform: "uppercase" as const,
             }}
           >{editing ? "DONE" : "EDIT"}</button>
         </div>
 
-        {/* Last Game */}
-        <div style={{ background: PANEL_BG, border: `1px solid ${BORDER}`, borderRadius: 3, padding: "10px 12px" }}>
-          <div style={{ ...LABEL_CSS, marginBottom: 8 }}>LAST GAME</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8 }}>
-            {/* Cardinals score */}
-            <div style={{ textAlign: "center" as const }}>
-              <div style={{
-                fontFamily: "'Oswald',Arial,sans-serif", fontSize: 8, fontWeight: 600,
-                letterSpacing: "0.14em", color: GOLD, textTransform: "uppercase" as const, marginBottom: 4,
-              }}>STL</div>
-              {editing ? (
-                <input
-                  type="number"
-                  value={lastR1}
-                  onChange={e => setLastR1(Number(e.target.value))}
-                  style={{
-                    width: 48, background: CARD_BG, border: `1px solid ${GOLD}`, borderRadius: 2,
-                    color: GOLD, fontFamily: "'Oswald',Arial,sans-serif", fontSize: 28, fontWeight: 700,
-                    textAlign: "center" as const, padding: "2px 4px",
-                  }}
-                />
-              ) : (
-                <div style={{
-                  fontFamily: "'Oswald',Arial,sans-serif", fontSize: 32, fontWeight: 700,
-                  color: lastR1 > lastR2 ? GOLD : "rgba(245,240,224,0.7)",
-                  lineHeight: 1,
-                }}>{lastR1}</div>
-              )}
-            </div>
-
-            <div style={{
-              fontFamily: "'Oswald',Arial,sans-serif", fontSize: 11, fontWeight: 600,
-              color: "rgba(245,240,224,0.25)", letterSpacing: "0.1em",
-            }}>FINAL</div>
-
-            {/* Opponent score */}
-            <div style={{ textAlign: "center" as const }}>
-              <div style={{
-                fontFamily: "'Oswald',Arial,sans-serif", fontSize: 8, fontWeight: 600,
-                letterSpacing: "0.14em", color: "rgba(245,240,224,0.4)",
-                textTransform: "uppercase" as const, marginBottom: 4,
-              }}>PIT</div>
-              {editing ? (
-                <input
-                  type="number"
-                  value={lastR2}
-                  onChange={e => setLastR2(Number(e.target.value))}
-                  style={{
-                    width: 48, background: CARD_BG, border: `1px solid rgba(232,168,32,0.3)`, borderRadius: 2,
-                    color: "rgba(245,240,224,0.7)", fontFamily: "'Oswald',Arial,sans-serif", fontSize: 28, fontWeight: 700,
-                    textAlign: "center" as const, padding: "2px 4px",
-                  }}
-                />
-              ) : (
-                <div style={{
-                  fontFamily: "'Oswald',Arial,sans-serif", fontSize: 32, fontWeight: 700,
-                  color: lastR2 > lastR1 ? GOLD : "rgba(245,240,224,0.45)",
-                  lineHeight: 1,
-                }}>{lastR2}</div>
-              )}
-            </div>
+        {/* Last game */}
+        <SBHead label="Last Game — Final" />
+        <ScoreRow
+          team="Cardinals" abbr="STL" score={lastR1} isWinner={cardsWon}
+          editing={editing} onScoreChange={setLastR1}
+        />
+        {editing ? (
+          <div style={{ padding: "4px 8px", display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ ...LABEL, color: "rgba(232,168,32,0.35)" }}>OPP</span>
+            <input value={lastOpp} onChange={e => setLastOpp(e.target.value)}
+              style={{
+                background: PANEL_BG, border: "1px solid rgba(232,168,32,0.3)", borderRadius: 3,
+                color: "#f5f0e0", fontFamily: "'Oswald',Arial,sans-serif",
+                fontSize: 11, padding: "3px 7px",
+              }}
+            />
           </div>
-          <div style={{ ...LABEL_CSS, textAlign: "center" as const, marginTop: 6, opacity: 0.5 }}>
-            {lastR1 > lastR2 ? "✓ WIN" : lastR1 < lastR2 ? "✗ LOSS" : "TIE"}
+        ) : null}
+        <ScoreRow
+          team={lastOpp} abbr={lastOpp.slice(0, 3).toUpperCase()} score={lastR2} isWinner={!cardsWon}
+          editing={editing} onScoreChange={setLastR2}
+        />
+
+        {/* Result badge */}
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: "5px 0", background: ROW_BG, borderBottom: "1px solid #122016",
+          gap: 8,
+        }}>
+          <div className="panel panel-sm" style={{ width: 36, height: 30 }}>
+            <span style={{
+              fontFamily: "'Oswald',Arial,sans-serif", fontSize: 14, fontWeight: 800,
+              color: cardsWon ? "#4caf50" : "#d94040",
+            }}>{cardsWon ? "W" : "L"}</span>
           </div>
+          <span style={{ ...LABEL, fontSize: 9, color: cardsWon ? "rgba(76,175,80,0.7)" : "rgba(217,64,64,0.7)" }}>
+            {cardsWon ? `Cardinals win ${lastR1}-${lastR2}` : `Cardinals fall ${lastR1}-${lastR2}`}
+          </span>
         </div>
 
-        {/* Next Game */}
-        <div style={{ background: PANEL_BG, border: `1px solid ${BORDER}`, borderRadius: 3, padding: "10px 12px" }}>
-          <div style={{ ...LABEL_CSS, marginBottom: 8 }}>NEXT GAME</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{
-              background: "rgba(232,168,32,0.1)", border: `1px solid rgba(232,168,32,0.25)`,
-              borderRadius: 2, padding: "3px 8px",
-              fontFamily: "'Oswald',Arial,sans-serif", fontSize: 9, fontWeight: 700,
-              color: GOLD, letterSpacing: "0.1em", textTransform: "uppercase" as const, whiteSpace: "nowrap" as const,
-            }}>TODAY</div>
-            {editing ? (
-              <input
-                value={nextTime}
-                onChange={e => setNextTime(e.target.value)}
-                style={{
-                  background: CARD_BG, border: `1px solid ${GOLD}`, borderRadius: 2,
-                  color: "rgba(245,240,224,0.9)", fontFamily: "'Oswald',Arial,sans-serif",
-                  fontSize: 13, fontWeight: 600, padding: "2px 6px", width: 80,
-                }}
-              />
-            ) : (
-              <span style={{
-                fontFamily: "'Oswald',Arial,sans-serif", fontSize: 15, fontWeight: 700,
-                color: "rgba(245,240,224,0.9)", letterSpacing: "0.06em",
-              }}>{nextTime}</span>
-            )}
-          </div>
-
-          <div style={{ marginTop: 8 }}>
-            {editing ? (
-              <div style={{ display: "flex", flexDirection: "column" as const, gap: 4 }}>
-                <input
-                  value={nextOpp}
-                  onChange={e => setNextOpp(e.target.value)}
-                  style={{
-                    background: CARD_BG, border: `1px solid rgba(232,168,32,0.3)`, borderRadius: 2,
-                    color: "rgba(245,240,224,0.9)", fontFamily: "'Oswald',Arial,sans-serif",
-                    fontSize: 12, padding: "3px 6px", width: "100%",
-                  }}
-                  placeholder="Opponent"
-                />
-                <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-                  <input type="checkbox" checked={nextHome} onChange={e => setNextHome(e.target.checked)} style={{ accentColor: GOLD }} />
-                  <span style={{ ...LABEL_CSS, cursor: "pointer" }}>Home game</span>
-                </label>
-              </div>
-            ) : (
-              <div>
-                <div style={{
-                  fontFamily: "'Oswald',Arial,sans-serif", fontSize: 13, fontWeight: 700,
-                  color: "rgba(245,240,224,0.85)", letterSpacing: "0.06em", textTransform: "uppercase" as const,
-                }}>
-                  {nextHome ? "vs" : "@"} {nextOpp}
-                </div>
-                <div style={{ ...LABEL_CSS, marginTop: 3, opacity: 0.55 }}>
-                  {nextHome ? "BUSCH STADIUM · ST. LOUIS, MO" : "AWAY"}
-                </div>
-              </div>
-            )}
-          </div>
+        {/* Next game */}
+        <SBHead label="Next Game" />
+        <div style={{ padding: "4px 0 8px" }}>
+          <NextGameRow label="DATE" value={nextDate} editing={editing} onChange={setNextDate} />
+          <NextGameRow label="TIME" value={nextTime} editing={editing} onChange={setNextTime} />
+          <NextGameRow label="OPP" value={`vs ${nextOpp}`} editing={editing} onChange={v => setNextOpp(v.replace(/^vs\s*/i, ""))} />
+          <NextGameRow label="VENUE" value={nextVenue} editing={editing} onChange={setNextVenue} />
         </div>
-
       </div>
     </div>
   );
