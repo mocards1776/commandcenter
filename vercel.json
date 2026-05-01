@@ -1,7 +1,8 @@
 {
-  "buildCommand": "cd CommandCenter-main && npm install && npm run build",
-  "outputDirectory": "CommandCenter-main/dist",
-  "installCommand": "echo skip",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "installCommand": "npm install",
+  "framework": "vite",
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ]
