@@ -601,7 +601,7 @@ async def get_dashboard(session: Session = Depends(db.get_session)):
     today_tasks_serialized = [json.loads(TaskResponse.from_orm(t).json()) for t in all_today_tasks]
     overdue_tasks_serialized = [json.loads(TaskResponse.from_orm(t).json()) for t in overdue_tasks]
 
-    return {
+    return DashboardSummary(
         tasks_today=len(today_tasks),
         completed_today=len(completed_today),
         focus_score_today=focus_score_today,
