@@ -1013,6 +1013,17 @@ async def startup():
             if 'due_date' not in columns:
                 conn.execute(text("ALTER TABLE projects ADD COLUMN due_date DATETIME"))
                 conn.commit()
+                            # Check/add missing columns to tasks table
+            result = conn.execute(text("PRAGMA table_info(tasks)")).fetchall()
+            task_columns = [row[1] for row in result]
+            if 'sort_order' not in task_columns:
+                conn.execute(text("ALTER TABLE tasks ADD COLUMN sort_order INTEGER DEFAULT 0"))
+                conn.commit()
+                print("✓ Added sort_order column to tasks table")
+            if 'actual_time_minutes' not in task_columns:
+                conn.execute(text("ALTER TABLE tasks ADD COLUMN actual_time_minutes INTEGER DEFAULT 0"))
+                conn.commit()
+                print("✓ Added actual_time_minutes column to tasks table")
                 print("✓ Added due_date column to projects table")
     except Exception as e:
         print(f"Migration warning: {e}")
