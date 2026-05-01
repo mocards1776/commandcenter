@@ -103,7 +103,7 @@ class Habit(Base):
     target_minutes = Column(Integer, nullable=True)
     time_hour = Column(Integer, nullable=True)   # 0-23
     time_minute = Column(Integer, nullable=True)  # 0-59
-    sort_sort_order = Column(Integer, default=0)
+    sort_order = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
