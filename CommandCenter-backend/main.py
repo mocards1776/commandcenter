@@ -598,7 +598,14 @@ async def get_dashboard(session: Session = Depends(db.get_session)):
         total_tasks_today=len(today_tasks) + len(completed_today),
         completed_tasks_today=len(completed_today),
         habit_completion_rate=0.0,
-        gamification=None,
+        gamification={
+            "tasks_completed": len(completed_today),
+            "tasks_attempted": len(today_tasks) + len(completed_today),
+            "batting_average": len(completed_today) / (len(today_tasks) + len(completed_today)) if (len(today_tasks) + len(completed_today)) > 0 else 0.0,
+            "hits": len(completed_today),
+            "home_runs": sum(1 for t in completed_today if t.priority == "critical"),
+            "total_focus_minutes": round(total_seconds / 60),
+        },
     )
 
 # ─── Tags & Categories ──────────────────────────────────────────────
@@ -718,6 +725,35 @@ async def create_braindump(data: BraindumpEntryCreate, session: Session = Depend
     session.commit()
     session.refresh(entry)
     return entry
+
+# ─── Gamification ──────────────────────────────────────────────────────────────
+@app.get("/gamification/", response_model=List[dict])
+async def get_gamification_history(limit: int = 30, session: Session = Depends(db.get_session)):
+    from sqlalchemy import func, cast, Date
+    results = []
+    # Get the last `limit` days that have completed tasks
+    rows = session.execute(
+        select(
+            cast(Task.completed_at, Date).label("day"),
+            func.count(Task.id).label("tasks_completed"),
+            func.sum(Task.focus_score).label("focus_score_sum"),
+            func.sum(Task.actual_time_minutes).label("focus_minutes"),
+        )
+        .where(Task.status == "done", Task.completed_at != None)
+        .group_by(cast(Task.completed_at, Date))
+        .order_by(cast(Task.completed_at, Date).desc())
+        .limit(limit)
+    ).all()
+    for r in rows:
+        completed = r.tasks_completed or 0
+        results.append({
+            "date": str(r.day),
+            "tasks_completed": completed,
+            "total_focus_minutes": int(r.focus_minutes or 0),
+            "batting_average": min(completed / (completed + 1), 1.0) if completed else 0.0,
+            "hits": completed,
+        })
+    return results
 
 @app.post("/braindump/{entry_id}/process")
 async def process_braindump(entry_id: str, session: Session = Depends(db.get_session)):
@@ -963,6 +999,23 @@ async def manual_email_poll():
 async def startup():
     db.init_db()
     print("\u2713 Database initialized")
+        # Add missing columns to projects table if they don't exist
+    try:
+        from sqlalchemy import text
+        with db.engine.connect() as conn:
+            # Check if priority column exists
+            result = conn.execute(text("PRAGMA table_info(projects)")).fetchall()
+            columns = [row[1] for row in result]
+            if 'priority' not in columns:
+                conn.execute(text("ALTER TABLE projects ADD COLUMN priority VARCHAR(50) DEFAULT 'medium'"))
+                conn.commit()
+                print("✓ Added priority column to projects table")
+            if 'due_date' not in columns:
+                conn.execute(text("ALTER TABLE projects ADD COLUMN due_date DATETIME"))
+                conn.commit()
+                print("✓ Added due_date column to projects table")
+    except Exception as e:
+        print(f"Migration warning: {e}")
     asyncio.create_task(gmail_poll_loop())
 
 if __name__ == "__main__":
