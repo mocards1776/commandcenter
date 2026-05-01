@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { dashboardApi, gamificationApi } from "@/lib/api";
 import { GameScoreboard } from "@/components/dashboard/GameScoreboard";
 import { NextUpPanel } from "@/components/dashboard/NextUpPanel";
+import { BaseballPanel } from "@/components/dashboard/BaseballPanel";
 import { HabitRow } from "@/components/habits/HabitRow";
 import { useUIStore, useTimerStore } from "@/store";
 import { Loader2 } from "lucide-react";
@@ -96,7 +97,7 @@ export function DashboardPage() {
         </div>
         <span style={{ color: "#e8a820", fontSize: 9, letterSpacing: 5, opacity: 0.6 }}>&#9733; &#9733; &#9733;</span>
 
-        {/* Date + Time — right side (matches HabitsPage) */}
+        {/* Date + Time */}
         <div style={{ position: "absolute", right: 24, top: "50%", transform: "translateY(-50%)", textAlign: "right" }}>
           <div style={{
             fontFamily: "'Oswald', Arial, sans-serif",
@@ -215,6 +216,10 @@ export function DashboardPage() {
           &ldquo;It is not in the still calm of life that great characters are formed.&rdquo; &#8212; Abigail Adams
         </p>
       </div>
+
+      {/* Baseball scoreboard panel */}
+      <BaseballPanel />
+
     </div>
   );
 }
