@@ -517,7 +517,7 @@ async def debug_dashboard(session: Session = Depends(db.get_session)):
         return {"error": str(e), "traceback": traceback.format_exc()}
 
 # ─── Dashboard ───────────────────────────────────────────────────────
-@app.get("/dashboard/", response_model=DashboardSummary)
+@app.get("/dashboard/")
 async def get_dashboard(session: Session = Depends(db.get_session)):
     # Use CDT date for date columns (due_date, completed_date).
     # Use _ct_midnight_as_utc() for UTC timestamp columns (started_at, completed_at).
@@ -601,7 +601,7 @@ async def get_dashboard(session: Session = Depends(db.get_session)):
     today_tasks_serialized = [json.loads(TaskResponse.from_orm(t).json()) for t in all_today_tasks]
     overdue_tasks_serialized = [json.loads(TaskResponse.from_orm(t).json()) for t in overdue_tasks]
 
-    return DashboardSummary(
+    return {
         tasks_today=len(today_tasks),
         completed_today=len(completed_today),
         focus_score_today=focus_score_today,
