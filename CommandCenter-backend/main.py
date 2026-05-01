@@ -1045,5 +1045,4 @@ async def migrate_tasks_columns():
             print("✓ Tasks column migration complete")
     except Exception as e:
         print(f"Tasks column migration warning: {e}")
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    
