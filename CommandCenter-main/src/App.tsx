@@ -18,6 +18,7 @@ import { CRMPage }        from "@/pages/CRMPage";
 import { StatsPage }      from "@/pages/StatsPage";
 import { SportsPage }     from "@/pages/SportsPage";
 import { LoginPage }      from "@/pages/LoginPage";
+import { tokenStore }     from "@/lib/api";
 
 const qc = new QueryClient({ defaultOptions:{ queries:{ staleTime:30_000, retry:1 } } });
 
@@ -51,7 +52,8 @@ function AppInner() {
 }
 
 export default function App() {
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem("auth_token"));
+  // Read token from cookie (localStorage is blocked in Vercel sandboxed iframes)
+  const [token, setToken] = useState<string | null>(() => tokenStore.get());
 
   useEffect(() => {
     const handleLogout = () => setToken(null);
@@ -60,7 +62,7 @@ export default function App() {
   }, []);
 
   if (!token) {
-    return <LoginPage onLogin={setToken} />;
+    return <LoginPage onLogin={(t) => { tokenStore.set(t); setToken(t); }} />;
   }
 
   return (
