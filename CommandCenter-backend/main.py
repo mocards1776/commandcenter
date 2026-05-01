@@ -1045,4 +1045,17 @@ async def migrate_tasks_columns():
             print("✓ Tasks column migration complete")
     except Exception as e:
         print(f"Tasks column migration warning: {e}")
+
+@app.on_event("startup")
+async def migrate_projects_columns():
+    """Add missing PostgreSQL columns to projects table."""
+    try:
+        from sqlalchemy import text
+        with db.engine.connect() as conn:
+            conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS priority VARCHAR(50) DEFAULT 'medium'"))
+            conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS due_date TIMESTAMP"))
+            conn.commit()
+            print("✓ Projects column migration complete")
+    except Exception as e:
+        print(f"Projects column migration warning: {e}")
     
