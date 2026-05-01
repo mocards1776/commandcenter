@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tokenStore } from "@/lib/api";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "https://orca-app-v7oew.ondigitalocean.app";
 
@@ -30,7 +31,8 @@ export function LoginPage({ onLogin }: { onLogin: (token: string) => void }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Login failed");
-      localStorage.setItem("auth_token", data.access_token);
+      // Use tokenStore.set() — writes to cookie (works on Vercel) + localStorage fallback
+      tokenStore.set(data.access_token);
       onLogin(data.access_token);
     } catch (err: any) {
       setError(err.message);
