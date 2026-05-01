@@ -37,126 +37,126 @@ api.interceptors.response.use(
 
 // ─── Dashboard ────────────────────────────────────────────
 export const dashboardApi = {
-  get: () => api.get<DashboardSummary>("/api/dashboard/").then(r => r.data),
+  get: () => api.get<DashboardSummary>("/dashboard/").then(r => r.data),
 };
 
 // ─── Gamification ─────────────────────────────────────────
 export const gamificationApi = {
   history: (limit = 30) =>
-    api.get<GamificationStats[]>("/api/gamification/", { params: { limit } }).then(r => r.data),
+    api.get<GamificationStats[]>("/gamification/", { params: { limit } }).then(r => r.data),
 };
 
 // ─── Tasks ─────────────────────────────────────────────
 export const tasksApi = {
   list: (params?: Record<string, any>) =>
-    api.get<Task[]>("/api/tasks/", { params }).then(r => r.data),
-  today: () => api.get<Task[]>("/api/tasks/today").then(r => r.data),
-  get: (id: string) => api.get<Task>(`/api/tasks/${id}`).then(r => r.data),
+    api.get<Task[]>("/tasks/", { params }).then(r => r.data),
+  today: () => api.get<Task[]>("/tasks/today").then(r => r.data),
+  get: (id: string) => api.get<Task>(`/tasks/${id}`).then(r => r.data),
   create: (data: Partial<TaskCreate>) =>
-    api.post<Task>("/api/tasks/", data).then(r => r.data),
+    api.post<Task>("/tasks/", data).then(r => r.data),
   update: (id: string, data: TaskUpdate) =>
-    api.patch<Task>(`/api/tasks/${id}`, data).then(r => r.data),
-  delete: (id: string) => api.delete(`/api/tasks/${id}`),
+    api.patch<Task>(`/tasks/${id}`, data).then(r => r.data),
+  delete: (id: string) => api.delete(`/tasks/${id}`),
   complete: (id: string) =>
-    api.post<Task>(`/api/tasks/${id}/complete`).then(r => r.data),
-  reorder: (ids: string[]) => api.post("/api/tasks/reorder", ids),
+    api.post<Task>(`/tasks/${id}/complete`).then(r => r.data),
+  reorder: (ids: string[]) => api.post("/tasks/reorder", ids),
 };
 
 // ─── Projects ────────────────────────────────────────────
 export const projectsApi = {
   list: (params?: Record<string, any>) =>
-    api.get<ProjectSummary[]>("/api/projects/", { params }).then(r => r.data),
-  get: (id: string) => api.get<Project>(`/api/projects/${id}`).then(r => r.data),
-  create: (data: any) => api.post<Project>("/api/projects/", data).then(r => r.data),
+    api.get<ProjectSummary[]>("/projects/", { params }).then(r => r.data),
+  get: (id: string) => api.get<Project>(`/projects/${id}`).then(r => r.data),
+  create: (data: any) => api.post<Project>("/projects/", data).then(r => r.data),
   update: (id: string, data: any) =>
-    api.patch<Project>(`/api/projects/${id}`, data).then(r => r.data),
-  delete: (id: string) => api.delete(`/api/projects/${id}`),
+    api.patch<Project>(`/projects/${id}`, data).then(r => r.data),
+  delete: (id: string) => api.delete(`/projects/${id}`),
 };
 
 // ─── Habits ────────────────────────────────────────────
 export const habitsApi = {
   list: (params?: Record<string, any>) =>
-    api.get<Habit[]>("/api/habits/", { params }).then(r => r.data),
-  get: (id: string) => api.get<Habit>(`/api/habits/${id}`).then(r => r.data),
-  create: (data: any) => api.post<Habit>("/api/habits/", data).then(r => r.data),
+    api.get<Habit[]>("/habits/", { params }).then(r => r.data),
+  get: (id: string) => api.get<Habit>(`/habits/${id}`).then(r => r.data),
+  create: (data: any) => api.post<Habit>("/habits/", data).then(r => r.data),
   update: (id: string, data: any) =>
-    api.patch<Habit>(`/api/habits/${id}`, data).then(r => r.data),
-  delete: (id: string) => api.delete(`/api/habits/${id}`),
+    api.patch<Habit>(`/habits/${id}`, data).then(r => r.data),
+  delete: (id: string) => api.delete(`/habits/${id}`),
   complete: (id: string, data: { completed_date: string; note?: string }) =>
-    api.post<HabitCompletion>(`/api/habits/${id}/complete`, data).then(r => r.data),
+    api.post<HabitCompletion>(`/habits/${id}/complete`, data).then(r => r.data),
   uncomplete: (id: string, date: string) =>
-    api.delete(`/api/habits/${id}/complete/${date}`),
+    api.delete(`/habits/${id}/complete/${date}`),
   streak: (id: string) =>
-    api.get<{ habit_id: string; streak: number }>(`/api/habits/${id}/streak`).then(r => r.data),
+    api.get<{ habit_id: string; streak: number }>(`/habits/${id}/streak`).then(r => r.data),
 };
 
 // ─── Time Entries ─────────────────────────────────────────
 export const timersApi = {
   active: () =>
-    api.get<TimeEntry | null>("/api/time-entries/active").then(r => r.data),
+    api.get<TimeEntry | null>("/time-entries/active").then(r => r.data),
   start: (data: { task_id?: string; habit_id?: string; started_at: string; note?: string }) =>
-    api.post<TimeEntry>("/api/time-entries/start", data).then(r => r.data),
+    api.post<TimeEntry>("/time-entries/start", data).then(r => r.data),
   stop: (id: string, data: { ended_at: string; note?: string }) =>
-    api.post<TimeEntry>(`/api/time-entries/${id}/stop`, data).then(r => r.data),
+    api.post<TimeEntry>(`/time-entries/${id}/stop`, data).then(r => r.data),
   list: (params?: Record<string, any>) =>
-    api.get<TimeEntry[]>("/api/time-entries/", { params }).then(r => r.data),
+    api.get<TimeEntry[]>("/time-entries/", { params }).then(r => r.data),
 };
 
 // ─── Braindump ───────────────────────────────────────────
 export const braindumpApi = {
-  list: () => api.get<BraindumpEntry[]>("/api/braindump/").then(r => r.data),
+  list: () => api.get<BraindumpEntry[]>("/braindump/").then(r => r.data),
   create: (raw_text: string) =>
-    api.post<BraindumpEntry>("/api/braindump/", { raw_text }).then(r => r.data),
+    api.post<BraindumpEntry>("/braindump/", { raw_text }).then(r => r.data),
   process: (id: string) =>
-    api.post<BraindumpEntry>(`/api/braindump/${id}/process`).then(r => r.data),
+    api.post<BraindumpEntry>(`/braindump/${id}/process`).then(r => r.data),
 };
 
 // ─── Notes ─────────────────────────────────────────────
 export const notesApi = {
   list: (params?: Record<string, any>) =>
-    api.get<Note[]>("/api/notes/", { params }).then(r => r.data),
-  create: (data: any) => api.post<Note>("/api/notes/", data).then(r => r.data),
+    api.get<Note[]>("/notes/", { params }).then(r => r.data),
+  create: (data: any) => api.post<Note>("/notes/", data).then(r => r.data),
   update: (id: string, data: any) =>
-    api.patch<Note>(`/api/notes/${id}`, data).then(r => r.data),
-  delete: (id: string) => api.delete(`/api/notes/${id}`),
+    api.patch<Note>(`/notes/${id}`, data).then(r => r.data),
+  delete: (id: string) => api.delete(`/notes/${id}`),
 };
 
 // ─── CRM ───────────────────────────────────────────────
 export const crmApi = {
   list: (params?: Record<string, any>) =>
-    api.get<CRMPerson[]>("/api/crm/", { params }).then(r => r.data),
-  get: (id: string) => api.get<CRMPerson>(`/api/crm/${id}`).then(r => r.data),
-  create: (data: any) => api.post<CRMPerson>("/api/crm/", data).then(r => r.data),
+    api.get<CRMPerson[]>("/crm/", { params }).then(r => r.data),
+  get: (id: string) => api.get<CRMPerson>(`/crm/${id}`).then(r => r.data),
+  create: (data: any) => api.post<CRMPerson>("/crm/", data).then(r => r.data),
   update: (id: string, data: any) =>
-    api.patch<CRMPerson>(`/api/crm/${id}`, data).then(r => r.data),
-  delete: (id: string) => api.delete(`/api/crm/${id}`),
+    api.patch<CRMPerson>(`/crm/${id}`, data).then(r => r.data),
+  delete: (id: string) => api.delete(`/crm/${id}`),
   markContacted: (id: string) =>
-    api.post<CRMPerson>(`/api/crm/${id}/contacted`).then(r => r.data),
+    api.post<CRMPerson>(`/crm/${id}/contacted`).then(r => r.data),
 };
 
 // ─── Tags ─────────────────────────────────────────────────
 export const tagsApi = {
-  list: () => api.get<Tag[]>("/api/tags/").then(r => r.data),
+  list: () => api.get<Tag[]>("/tags/").then(r => r.data),
   create: (data: { name: string; color: string }) =>
-    api.post<Tag>("/api/tags/", data).then(r => r.data),
-  delete: (id: string) => api.delete(`/api/tags/${id}`),
+    api.post<Tag>("/tags/", data).then(r => r.data),
+  delete: (id: string) => api.delete(`/tags/${id}`),
 };
 
 // ─── Categories ───────────────────────────────────────────
 export const categoriesApi = {
-  list: () => api.get<Category[]>("/api/categories/").then(r => r.data),
+  list: () => api.get<Category[]>("/categories/").then(r => r.data),
   create: (data: { name: string; color: string; icon?: string }) =>
-    api.post<Category>("/api/categories/", data).then(r => r.data),
-  delete: (id: string) => api.delete(`/api/categories/${id}`),
+    api.post<Category>("/categories/", data).then(r => r.data),
+  delete: (id: string) => api.delete(`/categories/${id}`),
 };
 
 // ─── Sports ────────────────────────────────────────────
 export const sportsApi = {
   favorites: () =>
-    api.get<FavoriteSportsTeam[]>("/api/sports/favorites/").then(r => r.data),
+    api.get<FavoriteSportsTeam[]>("/sports/favorites/").then(r => r.data),
   addFavorite: (data: any) =>
-    api.post<FavoriteSportsTeam>("/api/sports/favorites/", data).then(r => r.data),
-  removeFavorite: (id: string) => api.delete(`/api/sports/favorites/${id}`),
+    api.post<FavoriteSportsTeam>("/sports/favorites/", data).then(r => r.data),
+  removeFavorite: (id: string) => api.delete(`/sports/favorites/${id}`),
 };
 
 export default api;

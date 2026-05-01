@@ -15,7 +15,7 @@ export function LoginPage({ onLogin }: { onLogin: (token: string) => void }) {
     setLoading(true);
     try {
       if (mode === "register") {
-        const res = await fetch(`${API_BASE}/api/auth/register`, {
+        const res = await fetch(`${API_BASE}/auth/register`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email, password }),
@@ -23,7 +23,7 @@ export function LoginPage({ onLogin }: { onLogin: (token: string) => void }) {
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || "Registration failed");
       }
-      const res = await fetch(`${API_BASE}/api/auth/login`, {
+      const res = await fetch(`${API_BASE}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
