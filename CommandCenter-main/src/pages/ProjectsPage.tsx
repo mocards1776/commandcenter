@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { projectsApi, tasksApi } from "@/lib/api";
 import { Loader2, ArrowLeft, Plus, ChevronRight, CheckCircle2, Circle, Pencil, X, Save }
-  import { TaskModal } from "@/components/todos/TaskModal";from "lucide-react";
+  import { TaskModal } from "@/components/todos/TaskModal";
 import type { ProjectSummary, Task, Project } from "@/types";
 import { toast } from "react-hot-toast";
 
