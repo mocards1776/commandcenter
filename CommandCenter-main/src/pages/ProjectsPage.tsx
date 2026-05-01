@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { projectsApi, tasksApi } from "@/lib/api";
-import { Loader2, ArrowLeft, Plus, ChevronRight, CheckCircle2, Circle, Pencil, X, Save } from "lucide-react";
+import { Loader2, ArrowLeft, Plus, ChevronRight, CheckCircle2, Circle, Pencil, X, Save }
+  import { TaskModal } from "@/components/todos/TaskModal";from "lucide-react";
 import type { ProjectSummary, Task, Project } from "@/types";
 import { toast } from "react-hot-toast";
 
@@ -354,6 +355,7 @@ function ProjectRow({
 function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
+    const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const qc = useQueryClient();
 
   const { data: p, isLoading } = useQuery<Project>({
@@ -503,11 +505,10 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
               }}
               onMouseEnter={e => (e.currentTarget.style.background = "#244232")}
               onMouseLeave={e => (e.currentTarget.style.background = t.status === "done" ? "rgba(30,54,41,0.5)" : "#1e3629")}
-              onClick={() => toggleTaskMut.mutate(t)}
-            >
+              onClick={() => toggleTaskMut.mutate(t)}setSelectedTask(t)   >
               <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 10 }}>
                 {toggleTaskMut.isPending
-                  ? <Loader2 size={16} style={{ color: "#e8a820", animation: "spin 1s linear infinite", flexShrink: 0 }} />
+                  ? <Loader2 size={setSelectedTask(t)} style={{ color: "#e8a820", animation: "spin 1s linear infinite", flexShrink: 0 }} />
                   : t.status === "done"
                     ? <CheckCircle2 size={16} color="#e8a820" style={{ flexShrink: 0 }} />
                     : <Circle size={16} color="rgba(255,255,255,0.2)" style={{ flexShrink: 0 }} />}
@@ -525,6 +526,16 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
           ))
         )}
       </div>
+
+            {selectedTask && (
+        <TaskModal
+          task={selectedTask}
+          onClose={() => {
+            setSelectedTask(null);
+            qc.invalidateQueries({ queryKey: ["project", id] });
+          }}
+        />
+      )}
     </div>
   );
 }
