@@ -530,6 +530,7 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
 
       {selectedTask && (
         <TaskModal
+          open={true}
           task={selectedTask}
           onClose={() => {
             setSelectedTask(null);
