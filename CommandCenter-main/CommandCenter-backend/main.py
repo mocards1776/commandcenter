@@ -82,7 +82,7 @@ async def today_tasks(
     session: Session = Depends(db.get_session),
     user: User = Depends(get_current_user),
 ):
-    today = datetime.now().date()  # respects TZ=America/Chicago
+    today = datetime.now().date()
     query = select(Task).where(
         (Task.user_id == user.id) &
         (Task.status.in_(["today", "in_progress"])) |
@@ -152,7 +152,7 @@ async def complete_task(
     if not task or task.user_id != user.id:
         raise HTTPException(status_code=404)
     task.status = "done"
-    task.completed_at = datetime.now()  # respects TZ=America/Chicago
+    task.completed_at = datetime.now()
     session.commit()
     session.refresh(task)
     return task
@@ -348,7 +348,6 @@ async def complete_habit(
     if not habit or habit.user_id != user.id:
         raise HTTPException(status_code=404)
     completed_date = datetime.fromisoformat(data["completed_date"]).date()
-    # Idempotent — don’t create a duplicate completion for the same day
     existing = session.execute(
         select(HabitCompletion).where(
             HabitCompletion.habit_id == habit_id,
@@ -372,7 +371,6 @@ async def uncomplete_habit(
     session: Session = Depends(db.get_session),
     user: User = Depends(get_current_user),
 ):
-    """Remove today’s completion so the user can toggle a habit off."""
     habit = session.execute(select(Habit).where(Habit.id == habit_id)).scalar()
     if not habit or habit.user_id != user.id:
         raise HTTPException(status_code=404)
@@ -404,7 +402,7 @@ async def get_habit_streak(
     if not completions:
         return {"habit_id": habit_id, "streak": 0}
     streak = 0
-    today = datetime.now().date()  # respects TZ=America/Chicago
+    today = datetime.now().date()
     for i, comp in enumerate(completions):
         if comp.completed_date == today - timedelta(days=i):
             streak += 1
@@ -464,45 +462,217 @@ async def stop_timer(
     return entry
 
 # ─── Dashboard ──────────────────────────────────────────
-@app.get("/api/dashboard/", response_model=DashboardSummary)
+# Returns the full shape DashboardPage.tsx expects.
+@app.get("/api/dashboard/")
 async def get_dashboard(
     session: Session = Depends(db.get_session),
     user: User = Depends(get_current_user),
 ):
-    now = datetime.now()  # respects TZ=America/Chicago
+    now = datetime.now()
     today = now.date()
     today_start = datetime(today.year, today.month, today.day)
-    today_tasks = session.execute(
+
+    # Tasks flagged as today / in-progress
+    today_task_rows = session.execute(
         select(Task).where(
             (Task.user_id == user.id) &
             (Task.status.in_(["today", "in_progress"]))
-        )
+        ).order_by(Task.priority_order)
     ).scalars().all()
-    completed_today = session.execute(
+
+    # Overdue: past due_date, not done
+    overdue_rows = session.execute(
+        select(Task).where(
+            (Task.user_id == user.id) &
+            (Task.status != "done") &
+            (Task.due_date != None) &
+            (Task.due_date < today)
+        ).order_by(Task.due_date)
+    ).scalars().all()
+
+    # Completed today
+    completed_rows = session.execute(
         select(Task).where(
             (Task.user_id == user.id) &
             (Task.status == "done") &
             (Task.completed_at >= today_start)
         )
     ).scalars().all()
+
+    # Habits + today completions
+    habits_rows = session.execute(
+        select(Habit).where(Habit.user_id == user.id).order_by(Habit.created_at.desc())
+    ).scalars().all()
+    habits_data = []
+    for h in habits_rows:
+        completions = session.execute(
+            select(HabitCompletion).where(HabitCompletion.habit_id == h.id)
+            .order_by(HabitCompletion.completed_date.desc())
+            .limit(30)
+        ).scalars().all()
+        habits_data.append({
+            "id": h.id,
+            "name": h.name,
+            "icon": getattr(h, "icon", None),
+            "frequency": h.frequency,
+            "completions": [{"completed_date": str(c.completed_date)} for c in completions],
+        })
+
+    # Active projects with completion %
+    projects_rows = session.execute(
+        select(Project).where(
+            (Project.user_id == user.id) &
+            (Project.status == "active")
+        ).order_by(Project.created_at.desc())
+    ).scalars().all()
+    projects_data = []
+    for p in projects_rows:
+        all_tasks = session.execute(
+            select(Task).where(Task.project_id == p.id)
+        ).scalars().all()
+        done_tasks = [t for t in all_tasks if t.status == "done"]
+        pct = round(len(done_tasks) / len(all_tasks) * 100) if all_tasks else 0
+        projects_data.append({
+            "id": p.id,
+            "title": p.title,
+            "status": p.status,
+            "task_count": len(all_tasks),
+            "completion_percentage": pct,
+        })
+
+    # Focus time today
     time_entries = session.execute(
         select(TimeEntry).where(
             (TimeEntry.user_id == user.id) &
             (TimeEntry.started_at >= today_start)
         )
     ).scalars().all()
-    total_seconds = 0
-    for entry in time_entries:
-        end = entry.ended_at or datetime.now()
-        total_seconds += int((end - entry.started_at).total_seconds())
-    focus_score_today = sum(t.focus_score for t in completed_today if t.focus_score)
-    return DashboardSummary(
-        tasks_today=len(today_tasks),
-        completed_today=len(completed_today),
-        focus_score_today=focus_score_today,
-        time_tracked_seconds=total_seconds,
-        streak_days=0,
+    total_seconds = sum(
+        int(((e.ended_at or datetime.now()) - e.started_at).total_seconds())
+        for e in time_entries
     )
+
+    # Gamification block
+    completed_count = len(completed_rows)
+    attempted_count = len(today_task_rows) + completed_count
+    batting_avg = round(completed_count / attempted_count, 3) if attempted_count > 0 else 0.0
+
+    # Hitting streak: consecutive days with >= 1 completion
+    streak = 0
+    check_date = today
+    while True:
+        ds = datetime(check_date.year, check_date.month, check_date.day)
+        de = ds + timedelta(days=1)
+        hit = session.execute(
+            select(Task).where(
+                (Task.user_id == user.id) &
+                (Task.status == "done") &
+                (Task.completed_at >= ds) &
+                (Task.completed_at < de)
+            )
+        ).scalars().first()
+        if hit:
+            streak += 1
+            check_date -= timedelta(days=1)
+        else:
+            break
+
+    habits_done_today = sum(
+        1 for h in habits_data
+        if any(c["completed_date"] == str(today) for c in h["completions"])
+    )
+
+    gamification = {
+        "stat_date": str(today),
+        "tasks_completed": completed_count,
+        "tasks_attempted": attempted_count,
+        "habits_completed": habits_done_today,
+        "total_focus_minutes": round(total_seconds / 60),
+        "home_runs": len([t for t in completed_rows if getattr(t, "priority", "") == "critical"]),
+        "hits": completed_count,
+        "strikeouts": len(overdue_rows),
+        "batting_average": batting_avg,
+        "hitting_streak": streak,
+    }
+
+    return {
+        "today_tasks": [
+            {
+                "id": t.id,
+                "title": t.title,
+                "status": t.status,
+                "priority": getattr(t, "priority", None),
+                "due_date": str(t.due_date) if t.due_date else None,
+                "project_id": getattr(t, "project_id", None),
+            }
+            for t in today_task_rows
+        ],
+        "overdue_tasks": [
+            {
+                "id": t.id,
+                "title": t.title,
+                "status": t.status,
+                "due_date": str(t.due_date) if t.due_date else None,
+            }
+            for t in overdue_rows
+        ],
+        "completed_tasks_today": completed_count,
+        "total_tasks_today": attempted_count,
+        "today_habits": habits_data,
+        "active_projects": projects_data,
+        "time_tracked_seconds": total_seconds,
+        "gamification": gamification,
+    }
+
+# ─── Gamification history ──────────────────────────────────
+@app.get("/api/gamification/")
+async def get_gamification_history(
+    limit: int = Query(30, ge=1, le=90),
+    session: Session = Depends(db.get_session),
+    user: User = Depends(get_current_user),
+):
+    today = datetime.now().date()
+    results = []
+    for i in range(limit):
+        day = today - timedelta(days=i)
+        ds = datetime(day.year, day.month, day.day)
+        de = ds + timedelta(days=1)
+
+        done = session.execute(
+            select(Task).where(
+                (Task.user_id == user.id) &
+                (Task.status == "done") &
+                (Task.completed_at >= ds) &
+                (Task.completed_at < de)
+            )
+        ).scalars().all()
+
+        time_entries = session.execute(
+            select(TimeEntry).where(
+                (TimeEntry.user_id == user.id) &
+                (TimeEntry.started_at >= ds) &
+                (TimeEntry.started_at < de)
+            )
+        ).scalars().all()
+        secs = sum(
+            int(((e.ended_at or datetime.now()) - e.started_at).total_seconds())
+            for e in time_entries
+        )
+
+        n_done = len(done)
+        results.append({
+            "stat_date": str(day),
+            "tasks_completed": n_done,
+            "tasks_attempted": n_done,
+            "habits_completed": 0,
+            "total_focus_minutes": round(secs / 60),
+            "home_runs": len([t for t in done if getattr(t, "priority", "") == "critical"]),
+            "hits": n_done,
+            "strikeouts": 0,
+            "batting_average": 1.0 if n_done > 0 else 0.0,
+            "hitting_streak": 0,
+        })
+    return list(reversed(results))
 
 # ─── Tags & Categories ─────────────────────────────────────
 @app.get("/api/tags/", response_model=List[TagResponse])
@@ -566,6 +736,28 @@ async def process_braindump(entry_id: str, session: Session = Depends(db.get_ses
     entry.processed = True
     session.commit(); session.refresh(entry)
     return entry
+
+# ─── Sports ────────────────────────────────────────────
+from models import FavoriteSportsTeam
+from schemas import FavoriteSportsTeamCreate, FavoriteSportsTeamResponse
+
+@app.get("/api/sports/favorites/", response_model=List[FavoriteSportsTeamResponse])
+async def list_sports_favorites(session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
+    return session.execute(select(FavoriteSportsTeam).where(FavoriteSportsTeam.user_id == user.id)).scalars().all()
+
+@app.post("/api/sports/favorites/", response_model=FavoriteSportsTeamResponse)
+async def add_sports_favorite(data: FavoriteSportsTeamCreate, session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
+    team = FavoriteSportsTeam(**data.dict(), user_id=user.id)
+    session.add(team); session.commit(); session.refresh(team)
+    return team
+
+@app.delete("/api/sports/favorites/{team_id}")
+async def remove_sports_favorite(team_id: str, session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
+    team = session.execute(select(FavoriteSportsTeam).where(FavoriteSportsTeam.id == team_id)).scalar()
+    if not team or team.user_id != user.id:
+        raise HTTPException(status_code=404)
+    session.delete(team); session.commit()
+    return {"ok": True}
 
 # ─── Startup ──────────────────────────────────────────
 @app.on_event("startup")
