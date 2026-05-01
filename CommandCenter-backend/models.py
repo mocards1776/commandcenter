@@ -55,7 +55,7 @@ class Task(Base):
     time_estimate_minutes = Column(Integer, nullable=True)
     show_in_daily = Column(Boolean, default=True)
     sort_order = Column(Integer, default=0)
-        actual_time_minutes = Column(Integer, default=0)
+    actual_time_minutes = Column(Integer, default=0)
     category_id = Column(String(36), ForeignKey("categories.id"), nullable=True)
     tag_ids = Column(String(1000), default="")
 
