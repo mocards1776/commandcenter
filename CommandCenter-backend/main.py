@@ -1030,5 +1030,19 @@ async def startup():
     asyncio.create_task(gmail_poll_loop())
 
 if __name__ == "__main__":
+
+    
+@app.on_event("startup")
+async def migrate_tasks_columns():
+    """Add missing PostgreSQL columns to tasks table."""
+    try:
+        from sqlalchemy import text
+        with db.engine.connect() as conn:
+            conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0"))
+            conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS actual_time_minutes INTEGER DEFAULT 0"))
+            conn.commit()
+            print("✓ Tasks column migration complete")
+    except Exception as e:
+        print(f"Tasks column migration warning: {e}")
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
