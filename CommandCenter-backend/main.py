@@ -1070,4 +1070,26 @@ async def migrate_projects_columns():
             print("✓ Projects column migration complete")
     except Exception as e:
         print(f"Projects column migration warning: {e}")
-    
+
+
+@app.on_event("startup")
+async def migrate_time_entries_columns():
+    """Add missing PostgreSQL columns to time_entries and related tables."""
+    try:
+        from sqlalchemy import text
+        with db.engine.connect() as conn:
+            conn.execute(text("ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS habit_id VARCHAR(36)"))
+            conn.execute(text("ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS user_id VARCHAR(36)"))
+            conn.execute(text("ALTER TABLE habits ADD COLUMN IF NOT EXISTS user_id VARCHAR(36)"))
+            conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS user_id VARCHAR(36)"))
+            conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS user_id VARCHAR(36)"))
+            conn.execute(text("ALTER TABLE notes ADD COLUMN IF NOT EXISTS user_id VARCHAR(36)"))
+            conn.execute(text("ALTER TABLE tags ADD COLUMN IF NOT EXISTS user_id VARCHAR(36)"))
+            conn.execute(text("ALTER TABLE categories ADD COLUMN IF NOT EXISTS user_id VARCHAR(36)"))
+            conn.execute(text("ALTER TABLE crm_persons ADD COLUMN IF NOT EXISTS user_id VARCHAR(36)"))
+            conn.execute(text("ALTER TABLE time_blocks ADD COLUMN IF NOT EXISTS user_id VARCHAR(36)"))
+            conn.execute(text("ALTER TABLE braindump_entries ADD COLUMN IF NOT EXISTS user_id VARCHAR(36)"))
+            conn.commit()
+            print("✓ time_entries and related column migrations complete")
+    except Exception as e:
+        print(f"time_entries migration warning: {e}")
