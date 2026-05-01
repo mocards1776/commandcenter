@@ -9,6 +9,12 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+    css: {
+    transformer: 'postcss',
+  },
+  build: {
+    cssMinify: 'esbuild',
+  },
   server: {
     port: 5173,
     proxy: {
