@@ -190,7 +190,7 @@ async def today_tasks(session: Session = Depends(db.get_session)):
         Task.status.in_(["today", "in_progress"]) |
         ((Task.due_date == today) & (Task.status != "done"))
     )
-    return session.execute(query.order_by(Task.order)).scalars().all()
+    return session.execute(query.order_by(Task.sort_order)).scalars().all()
 
 @app.post("/tasks/", response_model=TaskResponse)
 async def create_task(data: TaskCreate, session: Session = Depends(db.get_session)):
@@ -263,7 +263,7 @@ async def reorder_tasks(ids: List[str], session: Session = Depends(db.get_sessio
     for idx, task_id in enumerate(ids):
         task = session.execute(select(Task).where(Task.id == task_id)).scalar()
         if task:
-            task.order = idx
+            task.sort_order = idx
     session.commit()
     return {"ok": True}
 
@@ -752,6 +752,7 @@ async def get_gamification_history(limit: int = 30, session: Session = Depends(d
             "total_focus_minutes": int(r.focus_minutes or 0),
             "batting_average": min(completed / (completed + 1), 1.0) if completed else 0.0,
             "hits": completed,
+                            "home_runs": 0,
         })
     return results
 
