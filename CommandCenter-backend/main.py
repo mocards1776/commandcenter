@@ -426,7 +426,7 @@ async def complete_habit(
     session.add(completion)
     session.commit()
     session.refresh(completion)
-    return {"ok": True, "id": completion.id}
+        return {"ok": True, "id": completion.id}
 
 @app.delete("/habits/{habit_id}/complete/{completed_date}")
 async def uncomplete_habit(
@@ -512,7 +512,7 @@ async def debug_dashboard(session: Session = Depends(db.get_session)):
         habits_rows = session.execute(select(Habit)).scalars().all()
         for h in habits_rows: session.execute(select(HabitCompletion).where(HabitCompletion.habit_id == h.id)).scalars().all()
         serialized = [json.loads(TaskResponse.from_orm(t).json()) for t in list(today_tasks)+list(completed_today)]
-                    return {"ok": True, "tasks": len(today_tasks), "completed": len(completed_today), "time_entries": len(time_entries), "habits": len(habits_rows), "serialized": len(serialized)}
+        return {"ok": True, "tasks": len(today_tasks), "completed": len(completed_today), "time_entries": len(time_entries), "habits": len(habits_rows), "serialized": len(serialized)}
     except Exception as e:
         return {"error": str(e), "traceback": traceback.format_exc()}
 
