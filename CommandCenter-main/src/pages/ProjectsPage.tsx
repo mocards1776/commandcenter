@@ -505,7 +505,7 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
               }}
               onMouseEnter={e => (e.currentTarget.style.background = "#244232")}
               onMouseLeave={e => (e.currentTarget.style.background = t.status === "done" ? "rgba(30,54,41,0.5)" : "#1e3629")}
-              onClick={() => setSelectedTask(t)}
+              onClick={() => setSelectedTask({ ...t, tag_ids: t.tag_ids ?? [], subtasks: t.subtasks ?? [] })}
             >
               <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 10 }}>
                 {toggleTaskMut.isPending
@@ -640,3 +640,4 @@ export function ProjectsPage() {
     </div>
   );
 }
+
