@@ -82,3 +82,20 @@ export const useUIStore = create<UIState>()(
     { name: "ui-store" }
   )
 );
+
+// ─── Pinned top task ──────────────────────────────────────────────────────────
+// Persists which task the user manually dragged/pinned to position #1.
+// Cleared when the task is completed or deleted.
+interface PinnedTaskState {
+  pinnedTaskId: string | null;
+  setPinnedTask: (id: string | null) => void;
+}
+export const usePinnedTaskStore = create<PinnedTaskState>()(
+  persist(
+    (set) => ({
+      pinnedTaskId: null,
+      setPinnedTask: (id) => set({ pinnedTaskId: id }),
+    }),
+    { name: "pinned-task-store" }
+  )
+);
