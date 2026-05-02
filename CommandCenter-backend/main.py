@@ -379,7 +379,7 @@ async def delete_project(project_id: str, session: Session = Depends(db.get_sess
     return {"ok": True}
 
 # ─── Habits ──────────────────────────────────────────────────────────
-@app.get("/habits/", response_model=List[HabitResponse])
+@app.get("/habits/")
 async def list_habits(session: Session = Depends(db.get_session)):
     habits = session.execute(select(Habit).order_by(Habit.sort_order)).scalars().all()
     result = []
@@ -409,7 +409,7 @@ async def list_habits(session: Session = Depends(db.get_session)):
         })
     return result
 
-@app.post("/habits/", response_model=HabitResponse)
+@app.post("/habits/")
 async def create_habit(data: HabitCreate, session: Session = Depends(db.get_session)):
     d = data.dict()
     habit = Habit(
@@ -443,7 +443,7 @@ async def create_habit(data: HabitCreate, session: Session = Depends(db.get_sess
                                                 "updated_at": habit.updated_at,
     }
 
-@app.patch("/habits/{habit_id}", response_model=HabitResponse)
+@app.patch("/habits/{habit_id}")
 async def update_habit(habit_id: str, data: HabitUpdate, session: Session = Depends(db.get_session)):
     habit = session.execute(select(Habit).where(Habit.id == habit_id)).scalar()
     if not habit:
