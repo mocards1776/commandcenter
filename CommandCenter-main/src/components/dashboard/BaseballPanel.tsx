@@ -328,7 +328,6 @@ function StandingsRow({ row, rank }: { row: Row; rank: number }) {
 }
 
 // ─── Game block ──────────────────────────────────────────────────────────────
-// Small muted label used for "Current Game — Final", "Next Game — ...", etc.
 function GameLabel({ text }: { text: string }) {
   return (
     <div style={{
@@ -342,10 +341,30 @@ function GameLabel({ text }: { text: string }) {
   );
 }
 
+// Shared inset cell — scoreboard panel
+function Cell({ children, gold = false, wide = false }: { children: React.ReactNode; gold?: boolean; wide?: boolean }) {
+  return (
+    <div style={{
+      background: PANEL,
+      border: `1px solid ${gold ? "rgba(201,168,50,0.35)" : "rgba(0,0,0,0.55)"}`,
+      borderRadius: 2,
+      boxShadow: "inset 0 2px 5px rgba(0,0,0,0.70), inset 0 -1px 0 rgba(255,255,255,0.03)",
+      display: "flex", alignItems: "center",
+      justifyContent: wide ? "flex-start" : "center",
+      padding: wide ? "5px 8px" : "5px 6px",
+      minHeight: 32,
+      minWidth: wide ? 0 : 28,
+    }}>{children}</div>
+  );
+}
+
 function GameBlock({ game, label }: { game: any; label: string }) {
   if (!game) return (
-    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <span style={{ fontFamily: FONT, fontSize: 9, color: DIM }}>Loading…</span>
+    <div style={{ padding: "0 8px 6px" }}>
+      <GameLabel text={label} />
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:70 }}>
+        <span style={{ fontFamily:FONT, fontSize:9, color:DIM }}>Loading…</span>
+      </div>
     </div>
   );
 
@@ -356,84 +375,112 @@ function GameBlock({ game, label }: { game: any; label: string }) {
   const statusSuffix = isFinal ? "Final" : isLive ? "Live" : (game.date_label ?? "");
   const headerText   = statusSuffix ? `${label} — ${statusSuffix}` : label;
 
+  const showScores = isFinal || isLive;
+  const oppName    = (game.opp_name ?? "").toUpperCase();
+  const oppAbbr    = (game.opp_abbr ?? "").toUpperCase();
+
+  // RHE — only meaningful for final/live
+  const stlR  = showScores ? game.stl_score  ?? "—" : "—";
+  const oppR  = showScores ? game.opp_score  ?? "—" : "—";
+
   return (
-    <div style={{ padding: "0 8px 6px" }}>
+    <div style={{ padding: "0 8px 8px" }}>
       <GameLabel text={headerText} />
 
-      {/* Team rows — centered grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 18px 1fr", gap: 4, alignItems: "center", marginTop: 2 }}>
+      {/* Scoreboard table */}
+      <div style={{ display:"flex", flexDirection:"column", gap:3, marginTop:4 }}>
 
-        {/* STL box */}
-        <div style={{
-          background: PANEL,
-          border: `1px solid ${isFinal && stlWon ? "rgba(201,168,50,0.45)" : isFinal ? "rgba(200,48,48,0.20)" : "rgba(201,168,50,0.22)"}`,
-          borderRadius: 3,
-          boxShadow: "inset 0 2px 5px rgba(0,0,0,0.65)",
-          padding: "6px 8px",
-          display: "flex", justifyContent: "space-between", alignItems: "center",
-        }}>
-          <span style={{ fontFamily: FONT, fontSize: 11, fontWeight: 800, letterSpacing: "0.08em",
-            color: isFinal && stlWon ? GOLD : isFinal ? "rgba(200,195,160,0.45)" : GOLD }}>
-            STL · CARDINALS
-          </span>
-          {(isFinal || isLive) && (
-            <span style={{ fontFamily: FONT, fontSize: 22, fontWeight: 900,
-              color: isFinal && stlWon ? GOLD : "rgba(200,195,160,0.55)",
-              fontVariantNumeric: "tabular-nums" as const, lineHeight: 1 }}>{game.stl_score}</span>
-          )}
-        </div>
-
-        {/* vs / @ */}
-        <div style={{ fontFamily: FONT, fontSize: 8, color: DIM, textAlign: "center" as const }}>
-          {!isFinal && !isLive ? (game.stl_is_home ? "vs" : "@") : ""}
-        </div>
-
-        {/* OPP box */}
-        <div style={{
-          background: PANEL,
-          border: "1px solid rgba(0,0,0,0.5)",
-          borderRadius: 3,
-          boxShadow: "inset 0 2px 5px rgba(0,0,0,0.65)",
-          padding: "6px 8px",
-          display: "flex", justifyContent: "space-between", alignItems: "center",
-        }}>
-          <span style={{ fontFamily: FONT, fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", color: MUTED }}>
-            {game.opp_abbr} · {(game.opp_name ?? "").toUpperCase()}
-          </span>
-          {(isFinal || isLive) && (
-            <span style={{ fontFamily: FONT, fontSize: 22, fontWeight: 700,
-              color: isFinal && !stlWon ? LOSS_RD : "rgba(200,195,160,0.45)",
-              fontVariantNumeric: "tabular-nums" as const, lineHeight: 1 }}>{game.opp_score}</span>
-          )}
-        </div>
-      </div>
-
-      {/* Footer row: W/L badge + result + venue */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 5 }}>
-        {isFinal ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <div style={{
-              fontFamily: FONT, fontSize: 10, fontWeight: 800,
-              background: stlWon ? "rgba(58,145,64,0.15)" : "rgba(200,48,48,0.15)",
-              color: stlWon ? WIN_GRN : LOSS_RD,
-              border: `1px solid ${stlWon ? "rgba(58,145,64,0.45)" : "rgba(200,48,48,0.40)"}`,
-              borderRadius: 2, padding: "1px 8px",
-              textShadow: stlWon ? "0 0 8px rgba(58,145,64,0.5)" : "0 0 8px rgba(200,48,48,0.4)",
-            }}>{stlWon ? "W" : "L"}</div>
-            <span style={{ fontFamily: FONT, fontSize: 9,
-              color: stlWon ? "rgba(58,145,64,0.60)" : "rgba(200,48,48,0.55)" }}>
-              {game.result}
-            </span>
+        {/* Column header row — inning-style, only for live/final */}
+        {showScores && (
+          <div style={{
+            display:"grid",
+            gridTemplateColumns: "1fr 40px 20px 20px 20px",
+            gap:3, alignItems:"center",
+          }}>
+            <div /> {/* spacer for team col */}
+            {/* R H E headers */}
+            {["R","H","E"].map(h => (
+              <div key={h} style={{
+                fontFamily:FONT, fontSize:8, fontWeight:700,
+                color:"rgba(200,195,160,0.35)", letterSpacing:"0.12em",
+                textAlign:"center" as const,
+              }}>{h}</div>
+            ))}
           </div>
-        ) : isLive ? (
-          <span style={{ fontFamily: FONT, fontSize: 11, fontWeight: 700, color: WIN_GRN }}>{game.result}</span>
-        ) : (
-          <span style={{ fontFamily: FONT, fontSize: 13, fontWeight: 800, color: GOLD,
-            letterSpacing: "0.04em" }}>{game.game_time}</span>
         )}
-        <span style={{ fontFamily: FONT, fontSize: 8, color: DIM, textAlign: "right" as const }}>
-          {game.venue}{game.city ? ` · ${game.city}` : ""}
-        </span>
+
+        {/* STL row */}
+        <div style={{
+          display:"grid",
+          gridTemplateColumns: showScores ? "1fr 40px 20px 20px 20px" : "1fr",
+          gap:3, alignItems:"center",
+        }}>
+          <Cell wide gold={isFinal ? stlWon : true}>
+            <span style={{
+              fontFamily:FONT, fontSize:11, fontWeight:800,
+              letterSpacing:"0.08em",
+              color: isFinal ? (stlWon ? GOLD : "rgba(200,195,160,0.45)") : GOLD,
+            }}>STL · CARDINALS</span>
+          </Cell>
+          {showScores && <>
+            <Cell gold={stlWon && isFinal}>
+              <span style={{
+                fontFamily:FONT, fontSize:18, fontWeight:900, lineHeight:1,
+                fontVariantNumeric:"tabular-nums" as const,
+                color: stlWon && isFinal ? GOLD : "rgba(200,195,160,0.65)",
+              }}>{stlR}</span>
+            </Cell>
+            {/* H and E — dashes, not in API but keeps the aesthetic */}
+            {["—","—"].map((v,i) => (
+              <Cell key={i}>
+                <span style={{ fontFamily:FONT, fontSize:11, color:"rgba(200,195,160,0.25)" }}>{v}</span>
+              </Cell>
+            ))}
+          </>}
+        </div>
+
+        {/* OPP row */}
+        <div style={{
+          display:"grid",
+          gridTemplateColumns: showScores ? "1fr 40px 20px 20px 20px" : "1fr",
+          gap:3, alignItems:"center",
+        }}>
+          <Cell wide>
+            <span style={{
+              fontFamily:FONT, fontSize:11, fontWeight:700,
+              letterSpacing:"0.08em",
+              color: isFinal && !stlWon ? "rgba(200,48,48,0.70)" : MUTED,
+            }}>{oppAbbr} · {oppName}</span>
+          </Cell>
+          {showScores && <>
+            <Cell>
+              <span style={{
+                fontFamily:FONT, fontSize:18, fontWeight:800, lineHeight:1,
+                fontVariantNumeric:"tabular-nums" as const,
+                color: !stlWon && isFinal ? LOSS_RD : "rgba(200,195,160,0.45)",
+              }}>{oppR}</span>
+            </Cell>
+            {["—","—"].map((v,i) => (
+              <Cell key={i}>
+                <span style={{ fontFamily:FONT, fontSize:11, color:"rgba(200,195,160,0.25)" }}>{v}</span>
+              </Cell>
+            ))}
+          </>}
+        </div>
+
+        {/* Footer: game time (upcoming) or venue */}
+        <div style={{
+          display:"flex", justifyContent: !showScores ? "space-between" : "flex-end",
+          alignItems:"center", marginTop:2, paddingRight:2,
+        }}>
+          {!showScores && (
+            <span style={{ fontFamily:FONT, fontSize:13, fontWeight:800,
+              color:GOLD, letterSpacing:"0.04em" }}>{game.game_time}</span>
+          )}
+          <span style={{ fontFamily:FONT, fontSize:8, color:DIM }}>
+            {game.venue}{game.city ? ` · ${game.city}` : ""}
+          </span>
+        </div>
       </div>
     </div>
   );
