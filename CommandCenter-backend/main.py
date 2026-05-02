@@ -328,6 +328,7 @@ async def list_projects(
         result.append({
             "id": p.id, "title": p.title, "description": p.description,
             "status": p.status, "color": p.color, "due_date": p.due_date,
+            "priority": p.priority,
             "created_at": p.created_at, "updated_at": p.updated_at,
             "tasks": [json.loads(TaskResponse.from_orm(t).json()) for t in proj_tasks],
             "task_count": total, "completion_percentage": pct,
@@ -348,6 +349,7 @@ async def create_project(
     return {
         "id": project.id, "title": project.title, "description": project.description,
         "status": project.status, "color": project.color, "due_date": project.due_date,
+        "priority": project.priority,
         "created_at": project.created_at, "updated_at": project.updated_at,
         "tasks": [], "task_count": 0, "completion_percentage": 0,
     }
@@ -372,6 +374,7 @@ async def get_project(
     return {
         "id": project.id, "title": project.title, "description": project.description,
         "status": project.status, "color": project.color, "due_date": project.due_date,
+        "priority": project.priority,
         "created_at": project.created_at, "updated_at": project.updated_at,
         "tasks": [json.loads(TaskResponse.from_orm(t).json()) for t in proj_tasks],
         "task_count": total, "completion_percentage": pct,
@@ -402,6 +405,7 @@ async def update_project(
     return {
         "id": project.id, "title": project.title, "description": project.description,
         "status": project.status, "color": project.color, "due_date": project.due_date,
+        "priority": project.priority,
         "created_at": project.created_at, "updated_at": project.updated_at,
         "tasks": [json.loads(TaskResponse.from_orm(t).json()) for t in proj_tasks],
         "task_count": total, "completion_percentage": pct,
@@ -1004,7 +1008,6 @@ async def dashboard(
     today = _today_ct()  # date object
     ct_midnight_utc = _ct_midnight_as_utc()
 
-    # FIX: Task.due_date is a Date column — compare against date, not datetime.
     today_tasks_q = session.execute(
         _own(select(Task), Task, user).where(
             Task.status.in_(["today", "in_progress"]) |
@@ -1054,13 +1057,12 @@ async def dashboard(
                 (HabitCompletion.completed_date == today)
             )
         ).scalar()
-        today_habits_data.append({"habit": _serialize_habit(h, [comp] if comp else []), "completed": bool(comp)})
+        today_habits_data.append(_serialize_habit(h, [comp] if comp else []))
         if comp:
             completed_habit_count += 1
 
     habit_completion_rate = (completed_habit_count / len(habits) * 100) if habits else 0
 
-    # FIX: compare Date column against date, not datetime
     overdue = session.execute(
         _own(select(Task), Task, user).where(
             (Task.due_date != None) &  # noqa
@@ -1073,6 +1075,24 @@ async def dashboard(
         _own(select(Project), Project, user).where(Project.status == "active")
     ).scalars().all()
 
+    # Build project summaries with real task counts and completion percentages
+    project_summaries = []
+    for p in active_projects:
+        proj_tasks = session.execute(
+            _own(select(Task), Task, user).where(Task.project_id == p.id)
+        ).scalars().all()
+        total = len(proj_tasks)
+        done = sum(1 for t in proj_tasks if t.status == "done")
+        pct = int((done / total) * 100) if total else 0
+        project_summaries.append({
+            "id": p.id,
+            "title": p.title,
+            "status": p.status,
+            "color": p.color,
+            "task_count": total,
+            "completion_percentage": pct,
+        })
+
     return {
         "tasks_today": len(today_tasks_q),
         "completed_today": len(completed_today),
@@ -1082,7 +1102,7 @@ async def dashboard(
         "today_tasks": [json.loads(TaskResponse.from_orm(t).json()) for t in today_tasks_q],
         "overdue_tasks": [json.loads(TaskResponse.from_orm(t).json()) for t in overdue],
         "today_habits": today_habits_data,
-        "active_projects": [{"id": p.id, "title": p.title, "status": p.status, "color": p.color} for p in active_projects],
+        "active_projects": project_summaries,
         "total_tasks_today": len(today_tasks_q),
         "completed_tasks_today": len(completed_today),
         "habit_completion_rate": habit_completion_rate,

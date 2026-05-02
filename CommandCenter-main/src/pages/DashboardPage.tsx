@@ -65,7 +65,9 @@ export function DashboardPage() {
   };
 
   const overdueT = data?.overdue_tasks ?? [];
-  const habits = data?.today_habits ?? [];
+  // today_habits entries from backend are { habit: {...}, completed: bool } — unwrap them
+  const rawHabits = data?.today_habits ?? [];
+  const habits = rawHabits.map((entry: any) => entry?.habit ?? entry);
   const projects = data?.active_projects ?? [];
 
   const allPending = [...(data?.today_tasks ?? []), ...overdueT];
@@ -145,7 +147,7 @@ export function DashboardPage() {
           </div>
           {habits.length === 0 ? (
             <p style={{ padding: "12px 14px", fontFamily: "'IM Fell English',Georgia,serif", fontStyle: "italic", fontSize: 11, color: "rgba(245,240,224,0.2)" }}>No habits configured</p>
-          ) : habits.slice(0, 6).map(h => <HabitRow key={h.id} habit={h} todayStr={today} />)}
+          ) : habits.slice(0, 6).map((h: any) => <HabitRow key={h.id} habit={h} todayStr={today} />)}
         </div>
 
         {/* Projects */}
@@ -156,14 +158,14 @@ export function DashboardPage() {
           </div>
           {projects.length === 0 ? (
             <p style={{ padding: "12px 14px", fontFamily: "'IM Fell English',Georgia,serif", fontStyle: "italic", fontSize: 11, color: "rgba(245,240,224,0.2)" }}>No active projects</p>
-          ) : projects.map(p => (
+          ) : projects.map((p: any) => (
             <div key={p.id} className="proj-row" onClick={() => navigate("/projects")}>
               <div className="proj-name-line">
                 <span className="proj-name">{p.title}</span>
-                <span className="proj-pct">{p.completion_percentage}%</span>
+                <span className="proj-pct">{p.completion_percentage ?? 0}%</span>
               </div>
-              <div className="proj-track"><div className="proj-fill" style={{ width: `${p.completion_percentage}%` }} /></div>
-              <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(245,240,224,0.25)", marginTop: 3 }}>{p.task_count} tasks</div>
+              <div className="proj-track"><div className="proj-fill" style={{ width: `${p.completion_percentage ?? 0}%` }} /></div>
+              <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(245,240,224,0.25)", marginTop: 3 }}>{p.task_count ?? 0} tasks</div>
             </div>
           ))}
         </div>
@@ -184,7 +186,7 @@ export function DashboardPage() {
               <div>
                 <div style={{ fontSize: 8, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 4 }}>Habits</div>
                 <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
-                  <div className="panel panel-sm"><span className="panel-num gold" style={{ fontSize: 20 }}>{habits.filter(h => h.completions.some((c: any) => c.completed_date === today)).length}</span></div>
+                  <div className="panel panel-sm"><span className="panel-num gold" style={{ fontSize: 20 }}>{habits.filter((h: any) => h?.completions?.some((c: any) => c.completed_date === today)).length}</span></div>
                   <div style={{ fontSize: 18, color: "rgba(255,255,255,0.2)", lineHeight: "36px" }}>/</div>
                   <div className="panel panel-sm"><span className="panel-num empty" style={{ fontSize: 20 }}>{habits.length}</span></div>
                 </div>
