@@ -54,6 +54,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# DigitalOcean/Cloudflare proxy strips Access-Control-Allow-Credentials.
+# This middleware re-injects it so the browser doesn't block credentialed requests.
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+
+class CredentialsCORSFixMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        response = await call_next(request)
+        origin = request.headers.get("origin", "")
+        is_allowed = (
+            origin in ALLOWED_ORIGINS
+            or (origin.startswith("https://command-center") and origin.endswith(".vercel.app"))
+        )
+        if is_allowed:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Accept"
+            response.headers["Vary"] = "Origin"
+        return response
+
+app.add_middleware(CredentialsCORSFixMiddleware)
+
 @app.on_event("startup")
 def _on_startup():
     try:
@@ -245,11 +268,12 @@ async def update_task(
     updates = data.dict(exclude_unset=True)
     if "tag_ids" in updates:
         updates["tag_ids"] = tags_to_str(updates["tag_ids"])
-    for key, value in updates.items():
-        setattr(task, key, value)
-    if updates.get("status") == "done" and not task.completed_at:
-        task.completed_at = datetime.utcnow()
-    task.focus_score = calc_focus_score(task.importance, task.difficulty)
+    if "importance" in updates or "difficulty" in updates:
+        imp = updates.get("importance", task.importance)
+        diff = updates.get("difficulty", task.difficulty)
+        updates["focus_score"] = calc_focus_score(imp, diff)
+    for k, v in updates.items():
+        setattr(task, k, v)
     session.commit()
     session.refresh(task)
     return task
@@ -263,22 +287,11 @@ async def delete_task(
     task = session.execute(_own(select(Task), Task, user).where(Task.id == task_id)).scalar()
     if not task:
         raise HTTPException(status_code=404)
-    session.query(TimeEntry).filter(TimeEntry.task_id == task_id).update({TimeEntry.task_id: None})
-    children = session.execute(
-        _own(select(Task), Task, user).where(Task.parent_id == task_id)
-    ).scalars().all()
-    for child in children:
-        session.query(TimeEntry).filter(TimeEntry.task_id == child.id).update({TimeEntry.task_id: None})
-        session.delete(child)
     session.delete(task)
-    try:
-        session.commit()
-    except Exception as e:
-        session.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to delete task: {e}")
+    session.commit()
     return {"ok": True}
 
-@app.post("/tasks/{task_id}/complete", response_model=TaskResponse)
+@app.post("/tasks/{task_id}/complete/", response_model=TaskResponse)
 async def complete_task(
     task_id: str,
     user: User = Depends(get_current_user),
@@ -293,16 +306,16 @@ async def complete_task(
     session.refresh(task)
     return task
 
-@app.post("/tasks/reorder")
+@app.post("/tasks/reorder/")
 async def reorder_tasks(
     ids: List[str],
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    for idx, task_id in enumerate(ids):
+    for i, task_id in enumerate(ids):
         task = session.execute(_own(select(Task), Task, user).where(Task.id == task_id)).scalar()
         if task:
-            task.sort_order = idx
+            task.sort_order = i
     session.commit()
     return {"ok": True}
 
@@ -316,24 +329,18 @@ async def list_projects(
     query = _own(select(Project), Project, user)
     if status:
         query = query.where(Project.status == status)
-    projects = session.execute(query.order_by(Project.created_at.desc())).scalars().all()
-    result = []
-    for p in projects:
-        proj_tasks = session.execute(
-            _own(select(Task), Task, user).where(Task.project_id == p.id)
-        ).scalars().all()
-        total = len(proj_tasks)
-        done = sum(1 for t in proj_tasks if t.status == "done")
-        pct = int((done / total) * 100) if total else 0
-        result.append({
-            "id": p.id, "title": p.title, "description": p.description,
-            "status": p.status, "color": p.color, "due_date": p.due_date,
-            "priority": p.priority,
-            "created_at": p.created_at, "updated_at": p.updated_at,
-            "tasks": [json.loads(TaskResponse.from_orm(t).json()) for t in proj_tasks],
-            "task_count": total, "completion_percentage": pct,
-        })
-    return result
+    return session.execute(query.order_by(Project.created_at.desc())).scalars().all()
+
+@app.get("/projects/{project_id}", response_model=ProjectResponse)
+async def get_project(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    project = session.execute(_own(select(Project), Project, user).where(Project.id == project_id)).scalar()
+    if not project:
+        raise HTTPException(status_code=404)
+    return project
 
 @app.post("/projects/", response_model=ProjectResponse)
 async def create_project(
@@ -346,39 +353,7 @@ async def create_project(
     session.add(project)
     session.commit()
     session.refresh(project)
-    return {
-        "id": project.id, "title": project.title, "description": project.description,
-        "status": project.status, "color": project.color, "due_date": project.due_date,
-        "priority": project.priority,
-        "created_at": project.created_at, "updated_at": project.updated_at,
-        "tasks": [], "task_count": 0, "completion_percentage": 0,
-    }
-
-@app.get("/projects/{project_id}", response_model=ProjectResponse)
-async def get_project(
-    project_id: str,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(db.get_session),
-):
-    project = session.execute(
-        _own(select(Project), Project, user).where(Project.id == project_id)
-    ).scalar()
-    if not project:
-        raise HTTPException(status_code=404)
-    proj_tasks = session.execute(
-        _own(select(Task), Task, user).where(Task.project_id == project_id)
-    ).scalars().all()
-    total = len(proj_tasks)
-    done = sum(1 for t in proj_tasks if t.status == "done")
-    pct = int((done / total) * 100) if total else 0
-    return {
-        "id": project.id, "title": project.title, "description": project.description,
-        "status": project.status, "color": project.color, "due_date": project.due_date,
-        "priority": project.priority,
-        "created_at": project.created_at, "updated_at": project.updated_at,
-        "tasks": [json.loads(TaskResponse.from_orm(t).json()) for t in proj_tasks],
-        "task_count": total, "completion_percentage": pct,
-    }
+    return project
 
 @app.patch("/projects/{project_id}", response_model=ProjectResponse)
 async def update_project(
@@ -387,29 +362,14 @@ async def update_project(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    project = session.execute(
-        _own(select(Project), Project, user).where(Project.id == project_id)
-    ).scalar()
+    project = session.execute(_own(select(Project), Project, user).where(Project.id == project_id)).scalar()
     if not project:
         raise HTTPException(status_code=404)
-    for key, value in data.dict(exclude_unset=True).items():
-        setattr(project, key, value)
+    for k, v in data.dict(exclude_unset=True).items():
+        setattr(project, k, v)
     session.commit()
     session.refresh(project)
-    proj_tasks = session.execute(
-        _own(select(Task), Task, user).where(Task.project_id == project_id)
-    ).scalars().all()
-    total = len(proj_tasks)
-    done = sum(1 for t in proj_tasks if t.status == "done")
-    pct = int((done / total) * 100) if total else 0
-    return {
-        "id": project.id, "title": project.title, "description": project.description,
-        "status": project.status, "color": project.color, "due_date": project.due_date,
-        "priority": project.priority,
-        "created_at": project.created_at, "updated_at": project.updated_at,
-        "tasks": [json.loads(TaskResponse.from_orm(t).json()) for t in proj_tasks],
-        "task_count": total, "completion_percentage": pct,
-    }
+    return project
 
 @app.delete("/projects/{project_id}")
 async def delete_project(
@@ -417,94 +377,61 @@ async def delete_project(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    project = session.execute(
-        _own(select(Project), Project, user).where(Project.id == project_id)
-    ).scalar()
+    project = session.execute(_own(select(Project), Project, user).where(Project.id == project_id)).scalar()
     if not project:
         raise HTTPException(status_code=404)
     session.delete(project)
     session.commit()
     return {"ok": True}
 
-# ─── Habits ──────────────────────────────────────────────────────────
-def _serialize_habit(h: Habit, comps: List[HabitCompletion]) -> dict:
-    return {
-        "id": h.id, "name": h.title, "color": h.color,
-        "icon": getattr(h, "icon", None), "frequency": h.frequency,
-        "time_hour": getattr(h, "time_hour", None),
-        "time_minute": getattr(h, "time_minute", None),
-        "sort_order": getattr(h, "sort_order", 0),
-        "is_active": getattr(h, "is_active", True),
-        "completions": [
-            {"id": c.id, "habit_id": c.habit_id,
-             "completed_date": c.completed_date.isoformat() if c.completed_date else None,
-             "created_at": c.created_at.isoformat() if c.created_at else None}
-            for c in comps
-        ],
-        "description": getattr(h, "description", None),
-        "custom_days": None,
-        "target_minutes": getattr(h, "target_minutes", None),
-        "created_at": h.created_at, "updated_at": h.updated_at,
-    }
-
-@app.get("/habits/")
+# ─── Habits ────────────────────────────────────────────────────────────
+@app.get("/habits/", response_model=List[HabitResponse])
 async def list_habits(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    habits = session.execute(
-        _own(select(Habit), Habit, user).order_by(Habit.sort_order)
-    ).scalars().all()
-    result = []
-    for h in habits:
-        comps = session.execute(
-            select(HabitCompletion).where(HabitCompletion.habit_id == h.id)
-        ).scalars().all()
-        result.append(_serialize_habit(h, comps))
-    return result
+    query = _own(select(Habit), Habit, user)
+    return session.execute(query.order_by(Habit.created_at.desc())).scalars().all()
 
-@app.post("/habits/")
+@app.get("/habits/{habit_id}", response_model=HabitResponse)
+async def get_habit(
+    habit_id: str,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    habit = session.execute(_own(select(Habit), Habit, user).where(Habit.id == habit_id)).scalar()
+    if not habit:
+        raise HTTPException(status_code=404)
+    return habit
+
+@app.post("/habits/", response_model=HabitResponse)
 async def create_habit(
     data: HabitCreate,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    d = data.dict()
-    habit = Habit(
-        title=d["name"], color=d.get("color", "#e8a820"),
-        icon=d.get("icon"), frequency=d.get("frequency", "daily"),
-        time_hour=d.get("time_hour"), time_minute=d.get("time_minute"),
-        sort_order=d.get("sort_order", 0), is_active=d.get("is_active", True),
-    )
+    habit = Habit(**data.dict())
     habit.user_id = user.id
     session.add(habit)
     session.commit()
     session.refresh(habit)
-    return _serialize_habit(habit, [])
+    return habit
 
-@app.patch("/habits/{habit_id}")
+@app.patch("/habits/{habit_id}", response_model=HabitResponse)
 async def update_habit(
     habit_id: str,
     data: HabitUpdate,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    habit = session.execute(
-        _own(select(Habit), Habit, user).where(Habit.id == habit_id)
-    ).scalar()
+    habit = session.execute(_own(select(Habit), Habit, user).where(Habit.id == habit_id)).scalar()
     if not habit:
         raise HTTPException(status_code=404)
-    updates = data.dict(exclude_unset=True)
-    if "name" in updates:
-        habit.title = updates.pop("name")
-    for key, value in updates.items():
-        setattr(habit, key, value)
+    for k, v in data.dict(exclude_unset=True).items():
+        setattr(habit, k, v)
     session.commit()
     session.refresh(habit)
-    comps = session.execute(
-        select(HabitCompletion).where(HabitCompletion.habit_id == habit.id)
-    ).scalars().all()
-    return _serialize_habit(habit, comps)
+    return habit
 
 @app.delete("/habits/{habit_id}")
 async def delete_habit(
@@ -512,50 +439,38 @@ async def delete_habit(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    habit = session.execute(
-        _own(select(Habit), Habit, user).where(Habit.id == habit_id)
-    ).scalar()
+    habit = session.execute(_own(select(Habit), Habit, user).where(Habit.id == habit_id)).scalar()
     if not habit:
         raise HTTPException(status_code=404)
-    session.query(HabitCompletion).filter(HabitCompletion.habit_id == habit_id).delete()
     session.delete(habit)
     session.commit()
     return {"ok": True}
 
-@app.post("/habits/{habit_id}/complete")
+@app.post("/habits/{habit_id}/complete/")
 async def complete_habit(
     habit_id: str,
     data: dict,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    habit = session.execute(
-        _own(select(Habit), Habit, user).where(Habit.id == habit_id)
-    ).scalar()
+    habit = session.execute(_own(select(Habit), Habit, user).where(Habit.id == habit_id)).scalar()
     if not habit:
         raise HTTPException(status_code=404)
-    completed_date_str = data.get("completed_date")
-    if not completed_date_str:
-        raise HTTPException(status_code=400, detail="completed_date required")
-    try:
-        completed_date = datetime.fromisoformat(completed_date_str).date()
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid date format")
+    completed_date = data.get("completed_date", str(_today_ct()))
+    note = data.get("note", "")
     existing = session.execute(
         select(HabitCompletion).where(
-            (HabitCompletion.habit_id == habit_id) &
-            (HabitCompletion.completed_date == completed_date)
+            HabitCompletion.habit_id == habit_id,
+            HabitCompletion.completed_date == completed_date,
         )
     ).scalar()
     if existing:
-        return {"ok": True, "id": existing.id}
-    completion = HabitCompletion(
-        habit_id=habit_id, completed_date=completed_date, note=data.get("note"),
-    )
+        return existing
+    completion = HabitCompletion(habit_id=habit_id, completed_date=completed_date, note=note)
     session.add(completion)
     session.commit()
     session.refresh(completion)
-    return {"ok": True, "id": completion.id}
+    return completion
 
 @app.delete("/habits/{habit_id}/complete/{completed_date}")
 async def uncomplete_habit(
@@ -564,89 +479,64 @@ async def uncomplete_habit(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    habit = session.execute(
-        _own(select(Habit), Habit, user).where(Habit.id == habit_id)
-    ).scalar()
+    habit = session.execute(_own(select(Habit), Habit, user).where(Habit.id == habit_id)).scalar()
     if not habit:
         raise HTTPException(status_code=404)
-    target_date = datetime.fromisoformat(completed_date).date()
     completion = session.execute(
         select(HabitCompletion).where(
-            (HabitCompletion.habit_id == habit_id) &
-            (HabitCompletion.completed_date == target_date)
+            HabitCompletion.habit_id == habit_id,
+            HabitCompletion.completed_date == completed_date,
         )
     ).scalar()
-    if not completion:
-        raise HTTPException(status_code=404)
-    session.delete(completion)
-    session.commit()
+    if completion:
+        session.delete(completion)
+        session.commit()
     return {"ok": True}
 
-@app.get("/habits/{habit_id}/streak")
-async def get_habit_streak(
+@app.get("/habits/{habit_id}/streak/")
+async def habit_streak(
     habit_id: str,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    habit = session.execute(
-        _own(select(Habit), Habit, user).where(Habit.id == habit_id)
-    ).scalar()
+    habit = session.execute(_own(select(Habit), Habit, user).where(Habit.id == habit_id)).scalar()
     if not habit:
         raise HTTPException(status_code=404)
-    comps = session.execute(
+    completions = session.execute(
         select(HabitCompletion)
         .where(HabitCompletion.habit_id == habit_id)
         .order_by(HabitCompletion.completed_date.desc())
     ).scalars().all()
-    if not comps:
-        return {"habit_id": habit_id, "streak": 0}
-    dates = sorted({c.completed_date for c in comps}, reverse=True)
     streak = 0
-    check = _today_ct()
-    for d in dates:
-        if d == check:
-            streak += 1
-            check -= timedelta(days=1)
-        elif d == check - timedelta(days=1):
-            check = d
-            streak += 1
-            check -= timedelta(days=1)
-        else:
-            break
+    check_date = _today_ct()
+    completion_dates = {c.completed_date for c in completions}
+    while str(check_date) in completion_dates:
+        streak += 1
+        check_date = check_date - timedelta(days=1)
     return {"habit_id": habit_id, "streak": streak}
 
-# ─── Time Entries ───────────────────────────────────────────────────
-@app.get("/time-entries/", response_model=List[TimeEntryResponse])
-async def list_time_entries(
-    user: User = Depends(get_current_user),
-    session: Session = Depends(db.get_session),
-):
-    entries = session.execute(
-        _own(select(TimeEntry), TimeEntry, user).order_by(TimeEntry.started_at.desc())
-    ).scalars().all()
-    return entries
-
-@app.get("/time-entries/active", response_model=Optional[TimeEntryResponse])
-async def get_active_timer(
+# ─── Time Entries ──────────────────────────────────────────────────────
+@app.get("/time-entries/active/")
+async def active_timer(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
     entry = session.execute(
-        _own(select(TimeEntry), TimeEntry, user).where(TimeEntry.ended_at == None)  # noqa
+        _own(select(TimeEntry), TimeEntry, user).where(TimeEntry.ended_at == None)  # noqa: E711
     ).scalar()
     return entry
 
-@app.post("/time-entries/start", response_model=TimeEntryResponse)
+@app.post("/time-entries/start/", response_model=TimeEntryResponse)
 async def start_timer(
     data: TimeEntryCreate,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
     active = session.execute(
-        _own(select(TimeEntry), TimeEntry, user).where(TimeEntry.ended_at == None)  # noqa
+        _own(select(TimeEntry), TimeEntry, user).where(TimeEntry.ended_at == None)  # noqa: E711
     ).scalar()
     if active:
-        active.ended_at = datetime.utcnow()
+        raise HTTPException(status_code=400, detail="A timer is already running")
     entry = TimeEntry(**data.dict())
     entry.user_id = user.id
     session.add(entry)
@@ -654,33 +544,33 @@ async def start_timer(
     session.refresh(entry)
     return entry
 
-@app.post("/time-entries/{entry_id}/stop", response_model=TimeEntryResponse)
+@app.post("/time-entries/{entry_id}/stop/", response_model=TimeEntryResponse)
 async def stop_timer(
     entry_id: str,
     data: dict,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    entry = session.execute(
-        _own(select(TimeEntry), TimeEntry, user).where(TimeEntry.id == entry_id)
-    ).scalar()
+    entry = session.execute(_own(select(TimeEntry), TimeEntry, user).where(TimeEntry.id == entry_id)).scalar()
     if not entry:
         raise HTTPException(status_code=404)
-    entry.ended_at = datetime.fromisoformat(data["ended_at"]) if isinstance(data["ended_at"], str) else data["ended_at"]
-    if "note" in data:
+    entry.ended_at = data.get("ended_at", datetime.utcnow().isoformat())
+    if data.get("note"):
         entry.note = data["note"]
-    if entry.task_id:
-        task = session.execute(
-            _own(select(Task), Task, user).where(Task.id == entry.task_id)
-        ).scalar()
-        if task:
-            delta = entry.ended_at - entry.started_at
-            task.actual_time_minutes = (task.actual_time_minutes or 0) + int(delta.total_seconds() / 60)
     session.commit()
     session.refresh(entry)
     return entry
 
-# ─── Notes ──────────────────────────────────────────────────────────
+@app.get("/time-entries/", response_model=List[TimeEntryResponse])
+async def list_time_entries(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    return session.execute(
+        _own(select(TimeEntry), TimeEntry, user).order_by(TimeEntry.started_at.desc())
+    ).scalars().all()
+
+# ─── Notes ────────────────────────────────────────────────────────────
 @app.get("/notes/", response_model=List[NoteResponse])
 async def list_notes(
     search: Optional[str] = None,
@@ -689,7 +579,7 @@ async def list_notes(
 ):
     query = _own(select(Note), Note, user)
     if search:
-        query = query.where(Note.content.ilike(f"%{search}%") | Note.title.ilike(f"%{search}%"))
+        query = query.where(Note.title.ilike(f"%{search}%") | Note.content.ilike(f"%{search}%"))
     return session.execute(query.order_by(Note.updated_at.desc())).scalars().all()
 
 @app.post("/notes/", response_model=NoteResponse)
@@ -712,13 +602,12 @@ async def update_note(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    note = session.execute(
-        _own(select(Note), Note, user).where(Note.id == note_id)
-    ).scalar()
+    note = session.execute(_own(select(Note), Note, user).where(Note.id == note_id)).scalar()
     if not note:
         raise HTTPException(status_code=404)
-    for key, value in data.dict(exclude_unset=True).items():
-        setattr(note, key, value)
+    for k, v in data.dict(exclude_unset=True).items():
+        setattr(note, k, v)
+    note.updated_at = datetime.utcnow()
     session.commit()
     session.refresh(note)
     return note
@@ -729,25 +618,99 @@ async def delete_note(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    note = session.execute(
-        _own(select(Note), Note, user).where(Note.id == note_id)
-    ).scalar()
+    note = session.execute(_own(select(Note), Note, user).where(Note.id == note_id)).scalar()
     if not note:
         raise HTTPException(status_code=404)
     session.delete(note)
     session.commit()
     return {"ok": True}
 
-# ─── Tags ──────────────────────────────────────────────────────────
+# ─── CRM ──────────────────────────────────────────────────────────────
+@app.get("/crm/", response_model=List[CRMPersonResponse])
+async def list_crm(
+    search: Optional[str] = None,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    query = _own(select(CRMPerson), CRMPerson, user)
+    if search:
+        query = query.where(CRMPerson.name.ilike(f"%{search}%"))
+    return session.execute(query.order_by(CRMPerson.name)).scalars().all()
+
+@app.get("/crm/{person_id}", response_model=CRMPersonResponse)
+async def get_crm_person(
+    person_id: str,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    person = session.execute(_own(select(CRMPerson), CRMPerson, user).where(CRMPerson.id == person_id)).scalar()
+    if not person:
+        raise HTTPException(status_code=404)
+    return person
+
+@app.post("/crm/", response_model=CRMPersonResponse)
+async def create_crm_person(
+    data: CRMPersonCreate,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    person = CRMPerson(**data.dict())
+    person.user_id = user.id
+    session.add(person)
+    session.commit()
+    session.refresh(person)
+    return person
+
+@app.patch("/crm/{person_id}", response_model=CRMPersonResponse)
+async def update_crm_person(
+    person_id: str,
+    data: CRMPersonUpdate,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    person = session.execute(_own(select(CRMPerson), CRMPerson, user).where(CRMPerson.id == person_id)).scalar()
+    if not person:
+        raise HTTPException(status_code=404)
+    for k, v in data.dict(exclude_unset=True).items():
+        setattr(person, k, v)
+    session.commit()
+    session.refresh(person)
+    return person
+
+@app.delete("/crm/{person_id}")
+async def delete_crm_person(
+    person_id: str,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    person = session.execute(_own(select(CRMPerson), CRMPerson, user).where(CRMPerson.id == person_id)).scalar()
+    if not person:
+        raise HTTPException(status_code=404)
+    session.delete(person)
+    session.commit()
+    return {"ok": True}
+
+@app.post("/crm/{person_id}/contacted/", response_model=CRMPersonResponse)
+async def mark_contacted(
+    person_id: str,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    person = session.execute(_own(select(CRMPerson), CRMPerson, user).where(CRMPerson.id == person_id)).scalar()
+    if not person:
+        raise HTTPException(status_code=404)
+    person.last_contacted = datetime.utcnow().date()
+    session.commit()
+    session.refresh(person)
+    return person
+
+# ─── Tags ──────────────────────────────────────────────────────────────
 @app.get("/tags/", response_model=List[TagResponse])
 async def list_tags(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    tags = session.execute(
-        _own_or_legacy(select(Tag), Tag, user).order_by(Tag.name)
-    ).scalars().all()
-    return tags
+    return session.execute(_own(select(Tag), Tag, user).order_by(Tag.name)).scalars().all()
 
 @app.post("/tags/", response_model=TagResponse)
 async def create_tag(
@@ -768,25 +731,20 @@ async def delete_tag(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    tag = session.execute(
-        _own(select(Tag), Tag, user).where(Tag.id == tag_id)
-    ).scalar()
+    tag = session.execute(_own(select(Tag), Tag, user).where(Tag.id == tag_id)).scalar()
     if not tag:
         raise HTTPException(status_code=404)
     session.delete(tag)
     session.commit()
     return {"ok": True}
 
-# ─── Categories ───────────────────────────────────────────────────
+# ─── Categories ────────────────────────────────────────────────────────
 @app.get("/categories/", response_model=List[CategoryResponse])
 async def list_categories(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    cats = session.execute(
-        _own_or_legacy(select(Category), Category, user).order_by(Category.name)
-    ).scalars().all()
-    return cats
+    return session.execute(_own(select(Category), Category, user).order_by(Category.name)).scalars().all()
 
 @app.post("/categories/", response_model=CategoryResponse)
 async def create_category(
@@ -801,174 +759,28 @@ async def create_category(
     session.refresh(cat)
     return cat
 
-@app.delete("/categories/{category_id}")
+@app.delete("/categories/{cat_id}")
 async def delete_category(
-    category_id: str,
+    cat_id: str,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    cat = session.execute(
-        _own(select(Category), Category, user).where(Category.id == category_id)
-    ).scalar()
+    cat = session.execute(_own(select(Category), Category, user).where(Category.id == cat_id)).scalar()
     if not cat:
         raise HTTPException(status_code=404)
     session.delete(cat)
     session.commit()
     return {"ok": True}
 
-# ─── CRM ──────────────────────────────────────────────────────────
-@app.get("/crm/", response_model=List[CRMPersonResponse])
-async def list_crm(
-    user: User = Depends(get_current_user),
-    session: Session = Depends(db.get_session),
-):
-    people = session.execute(
-        _own(select(CRMPerson), CRMPerson, user).order_by(CRMPerson.name)
-    ).scalars().all()
-    return people
-
-@app.post("/crm/", response_model=CRMPersonResponse)
-async def create_crm(
-    data: CRMPersonCreate,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(db.get_session),
-):
-    person = CRMPerson(**data.dict())
-    person.user_id = user.id
-    session.add(person)
-    session.commit()
-    session.refresh(person)
-    return person
-
-@app.get("/crm/{person_id}", response_model=CRMPersonResponse)
-async def get_crm(
-    person_id: str,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(db.get_session),
-):
-    person = session.execute(
-        _own(select(CRMPerson), CRMPerson, user).where(CRMPerson.id == person_id)
-    ).scalar()
-    if not person:
-        raise HTTPException(status_code=404)
-    return person
-
-@app.patch("/crm/{person_id}", response_model=CRMPersonResponse)
-async def update_crm(
-    person_id: str,
-    data: CRMPersonUpdate,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(db.get_session),
-):
-    person = session.execute(
-        _own(select(CRMPerson), CRMPerson, user).where(CRMPerson.id == person_id)
-    ).scalar()
-    if not person:
-        raise HTTPException(status_code=404)
-    for key, value in data.dict(exclude_unset=True).items():
-        setattr(person, key, value)
-    session.commit()
-    session.refresh(person)
-    return person
-
-@app.delete("/crm/{person_id}")
-async def delete_crm(
-    person_id: str,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(db.get_session),
-):
-    person = session.execute(
-        _own(select(CRMPerson), CRMPerson, user).where(CRMPerson.id == person_id)
-    ).scalar()
-    if not person:
-        raise HTTPException(status_code=404)
-    session.delete(person)
-    session.commit()
-    return {"ok": True}
-
-@app.post("/crm/{person_id}/contacted", response_model=CRMPersonResponse)
-async def mark_contacted(
-    person_id: str,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(db.get_session),
-):
-    person = session.execute(
-        _own(select(CRMPerson), CRMPerson, user).where(CRMPerson.id == person_id)
-    ).scalar()
-    if not person:
-        raise HTTPException(status_code=404)
-    person.last_contacted = datetime.utcnow()
-    session.commit()
-    session.refresh(person)
-    return person
-
-# ─── Time Blocks ──────────────────────────────────────────────────
-@app.get("/time-blocks/", response_model=List[TimeBlockResponse])
-async def list_time_blocks(
-    user: User = Depends(get_current_user),
-    session: Session = Depends(db.get_session),
-):
-    blocks = session.execute(
-        _own(select(TimeBlock), TimeBlock, user).order_by(TimeBlock.start_time)
-    ).scalars().all()
-    return blocks
-
-@app.post("/time-blocks/", response_model=TimeBlockResponse)
-async def create_time_block(
-    data: TimeBlockCreate,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(db.get_session),
-):
-    block = TimeBlock(**data.dict())
-    block.user_id = user.id
-    session.add(block)
-    session.commit()
-    session.refresh(block)
-    return block
-
-@app.patch("/time-blocks/{block_id}", response_model=TimeBlockResponse)
-async def update_time_block(
-    block_id: str,
-    data: TimeBlockUpdate,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(db.get_session),
-):
-    block = session.execute(
-        _own(select(TimeBlock), TimeBlock, user).where(TimeBlock.id == block_id)
-    ).scalar()
-    if not block:
-        raise HTTPException(status_code=404)
-    for key, value in data.dict(exclude_unset=True).items():
-        setattr(block, key, value)
-    session.commit()
-    session.refresh(block)
-    return block
-
-@app.delete("/time-blocks/{block_id}")
-async def delete_time_block(
-    block_id: str,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(db.get_session),
-):
-    block = session.execute(
-        _own(select(TimeBlock), TimeBlock, user).where(TimeBlock.id == block_id)
-    ).scalar()
-    if not block:
-        raise HTTPException(status_code=404)
-    session.delete(block)
-    session.commit()
-    return {"ok": True}
-
-# ─── Braindump ────────────────────────────────────────────────────
+# ─── Braindump ─────────────────────────────────────────────────────────
 @app.get("/braindump/", response_model=List[BraindumpEntryResponse])
 async def list_braindump(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    entries = session.execute(
+    return session.execute(
         _own(select(BraindumpEntry), BraindumpEntry, user).order_by(BraindumpEntry.created_at.desc())
     ).scalars().all()
-    return entries
 
 @app.post("/braindump/", response_model=BraindumpEntryResponse)
 async def create_braindump(
@@ -976,14 +788,14 @@ async def create_braindump(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    entry = BraindumpEntry(raw_text=data.raw_text, processed=False)
+    entry = BraindumpEntry(**data.dict())
     entry.user_id = user.id
     session.add(entry)
     session.commit()
     session.refresh(entry)
     return entry
 
-@app.post("/braindump/{entry_id}/process", response_model=BraindumpEntryResponse)
+@app.post("/braindump/{entry_id}/process/", response_model=BraindumpEntryResponse)
 async def process_braindump(
     entry_id: str,
     user: User = Depends(get_current_user),
@@ -999,167 +811,92 @@ async def process_braindump(
     session.refresh(entry)
     return entry
 
-# ─── Dashboard ────────────────────────────────────────────────────
+# ─── Dashboard ─────────────────────────────────────────────────────────
 @app.get("/dashboard/", response_model=DashboardSummary)
 async def dashboard(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    today = _today_ct()  # date object
-    ct_midnight_utc = _ct_midnight_as_utc()
-
-    today_tasks_q = session.execute(
+    today = _today_ct()
+    tasks_today = session.execute(
+        _own(select(Task), Task, user).where(Task.status.in_(["today", "in_progress"]))
+    ).scalars().all()
+    tasks_done_today = session.execute(
         _own(select(Task), Task, user).where(
-            Task.status.in_(["today", "in_progress"]) |
-            ((Task.due_date != None) & (Task.due_date <= today) & (Task.status != "done"))  # noqa
+            Task.status == "done",
+            Task.completed_at >= _ct_midnight_as_utc(),
         )
     ).scalars().all()
-
-    completed_today = session.execute(
-        _own(select(Task), Task, user).where(
-            (Task.status == "done") &
-            (Task.completed_at >= ct_midnight_utc)
+    habits = session.execute(_own(select(Habit), Habit, user)).scalars().all()
+    habit_completions_today = session.execute(
+        select(HabitCompletion).where(
+            HabitCompletion.habit_id.in_([h.id for h in habits]),
+            HabitCompletion.completed_date == str(today),
         )
     ).scalars().all()
-
-    focus_score_today = sum(t.focus_score for t in completed_today)
-
-    finished_entries = session.execute(
-        _own(select(TimeEntry), TimeEntry, user).where(
-            (TimeEntry.ended_at != None) &  # noqa
-            (TimeEntry.started_at >= ct_midnight_utc)
-        )
-    ).scalars().all()
-
-    time_tracked_seconds = sum(
-        int((e.ended_at - e.started_at).total_seconds()) for e in finished_entries
-    )
-
-    all_completed = session.execute(
-        _own(select(Task), Task, user).where(Task.status == "done")
-    ).scalars().all()
-    completed_dates = {t.completed_at.date() for t in all_completed if t.completed_at}
-    streak = 0
-    check_day = today
-    while check_day in completed_dates:
-        streak += 1
-        check_day -= timedelta(days=1)
-
-    habits = session.execute(
-        _own(select(Habit), Habit, user).where(Habit.is_active == True)  # noqa
-    ).scalars().all()
-    today_habits_data = []
-    completed_habit_count = 0
-    for h in habits:
-        comp = session.execute(
-            select(HabitCompletion).where(
-                (HabitCompletion.habit_id == h.id) &
-                (HabitCompletion.completed_date == today)
-            )
-        ).scalar()
-        today_habits_data.append(_serialize_habit(h, [comp] if comp else []))
-        if comp:
-            completed_habit_count += 1
-
-    habit_completion_rate = (completed_habit_count / len(habits) * 100) if habits else 0
-
-    overdue = session.execute(
-        _own(select(Task), Task, user).where(
-            (Task.due_date != None) &  # noqa
-            (Task.due_date < today) &
-            (Task.status != "done")
-        )
-    ).scalars().all()
-
-    active_projects = session.execute(
+    completed_habit_ids = {c.habit_id for c in habit_completions_today}
+    active_timer = session.execute(
+        _own(select(TimeEntry), TimeEntry, user).where(TimeEntry.ended_at == None)  # noqa: E711
+    ).scalar()
+    projects = session.execute(
         _own(select(Project), Project, user).where(Project.status == "active")
     ).scalars().all()
+    return DashboardSummary(
+        tasks_today=len(tasks_today),
+        tasks_done_today=len(tasks_done_today),
+        habits_total=len(habits),
+        habits_done_today=len(completed_habit_ids),
+        active_timer=active_timer is not None,
+        active_projects=len(projects),
+    )
 
-    # Build project summaries with real task counts and completion percentages
-    project_summaries = []
-    for p in active_projects:
-        proj_tasks = session.execute(
-            _own(select(Task), Task, user).where(Task.project_id == p.id)
-        ).scalars().all()
-        total = len(proj_tasks)
-        done = sum(1 for t in proj_tasks if t.status == "done")
-        pct = int((done / total) * 100) if total else 0
-        project_summaries.append({
-            "id": p.id,
-            "title": p.title,
-            "status": p.status,
-            "color": p.color,
-            "task_count": total,
-            "completion_percentage": pct,
-        })
-
-    return {
-        "tasks_today": len(today_tasks_q),
-        "completed_today": len(completed_today),
-        "focus_score_today": focus_score_today,
-        "time_tracked_seconds": time_tracked_seconds,
-        "streak_days": streak,
-        "today_tasks": [json.loads(TaskResponse.from_orm(t).json()) for t in today_tasks_q],
-        "overdue_tasks": [json.loads(TaskResponse.from_orm(t).json()) for t in overdue],
-        "today_habits": today_habits_data,
-        "active_projects": project_summaries,
-        "total_tasks_today": len(today_tasks_q),
-        "completed_tasks_today": len(completed_today),
-        "habit_completion_rate": habit_completion_rate,
-        "gamification": None,
-    }
-
-# ─── Gamification ─────────────────────────────────────────────────
+# ─── Gamification ──────────────────────────────────────────────────────
 @app.get("/gamification/")
 async def gamification_history(
-    limit: int = Query(30, ge=1, le=365),
+    limit: int = 30,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
     today = _today_ct()
-    result = []
-    for i in range(limit - 1, -1, -1):
+    results = []
+    for i in range(limit):
         day = today - timedelta(days=i)
-        day_start = datetime.combine(day, datetime.min.time())
-        day_end   = datetime.combine(day, datetime.max.time())
-        completed = session.execute(
+        tasks_done = session.execute(
             _own(select(Task), Task, user).where(
-                (Task.status == "done") &
-                (Task.completed_at >= day_start) &
-                (Task.completed_at <= day_end)
+                Task.status == "done",
+                Task.completed_at >= datetime.combine(day, datetime.min.time()),
+                Task.completed_at < datetime.combine(day + timedelta(days=1), datetime.min.time()),
             )
         ).scalars().all()
-        focus = sum(t.focus_score for t in completed)
-        entries = session.execute(
-            _own(select(TimeEntry), TimeEntry, user).where(
-                (TimeEntry.ended_at != None) &  # noqa
-                (TimeEntry.started_at >= day_start) &
-                (TimeEntry.started_at <= day_end)
+        habits_done = session.execute(
+            select(HabitCompletion).where(
+                HabitCompletion.completed_date == str(day),
+                HabitCompletion.habit_id.in_(
+                    [h.id for h in session.execute(_own(select(Habit), Habit, user)).scalars().all()]
+                ),
             )
         ).scalars().all()
-        time_sec = sum(int((e.ended_at - e.started_at).total_seconds()) for e in entries)
-        result.append({
-            "date": day.isoformat(),
-            "tasks_completed": len(completed),
-            "focus_score": focus,
-            "time_tracked_seconds": time_sec,
-            "points": focus + len(completed) * 10,
+        xp = len(tasks_done) * 10 + len(habits_done) * 5
+        results.append({
+            "date": str(day),
+            "tasks_completed": len(tasks_done),
+            "habits_completed": len(habits_done),
+            "xp_earned": xp,
         })
-    return result
+    return results
 
-# ─── Sports ───────────────────────────────────────────────────────
-@app.get("/sports/favorites/", response_model=List[FavoriteSportsTeamResponse])
-async def list_favorite_teams(
+# ─── Sports ────────────────────────────────────────────────────────────
+@app.get("/sports/favorites/")
+async def list_favorites(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    teams = session.execute(
+    return session.execute(
         _own(select(FavoriteSportsTeam), FavoriteSportsTeam, user)
     ).scalars().all()
-    return teams
 
-@app.post("/sports/favorites/", response_model=FavoriteSportsTeamResponse)
-async def add_favorite_team(
+@app.post("/sports/favorites/")
+async def add_favorite(
     data: FavoriteSportsTeamCreate,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
@@ -1172,7 +909,7 @@ async def add_favorite_team(
     return team
 
 @app.delete("/sports/favorites/{team_id}")
-async def remove_favorite_team(
+async def remove_favorite(
     team_id: str,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
@@ -1186,49 +923,71 @@ async def remove_favorite_team(
     session.commit()
     return {"ok": True}
 
-# ─── Telegram Webhook ─────────────────────────────────────────────
-@app.post("/telegram/webhook")
-async def telegram_webhook(
-    request: Request,
-    session: Session = Depends(db.get_session),
-):
-    data = await request.json()
-    message = data.get("message", {})
-    text = message.get("text", "")
+# ─── Telegram Webhook ──────────────────────────────────────────────────
+@app.post("/telegram/webhook/")
+async def telegram_webhook(request: Request, session: Session = Depends(db.get_session)):
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    message = body.get("message", {})
     chat_id = message.get("chat", {}).get("id")
-    from_id = str(message.get("from", {}).get("id", ""))
-    if not chat_id:
+    text = message.get("text", "").strip()
+    tg_user_id = str(message.get("from", {}).get("id", ""))
+    if not chat_id or not text:
         return {"ok": True}
-    if TELEGRAM_OWNER_USER_ID and from_id != TELEGRAM_OWNER_USER_ID:
+    owner_id = TELEGRAM_OWNER_USER_ID.strip()
+    if owner_id and tg_user_id != owner_id:
         await telegram_send_message(chat_id, "Unauthorized.")
         return {"ok": True}
-    if not text:
-        return {"ok": True}
-    if text.lower() in ("/start", "/help"):
-        await telegram_send_message(
-            chat_id,
-            "CommandCenter Bot\n\nCommands:\n/task <title> — create a task\n!/task <title> — create urgent task"
-        )
-        return {"ok": True}
     if text.lower().startswith("/task"):
-        user = session.execute(select(User)).scalar()
-        if not user:
-            await telegram_send_message(chat_id, "No users found in the system.")
-            return {"ok": True}
         try:
             task_data = parse_telegram_task(text)
-            task_data["focus_score"] = calc_focus_score(task_data["importance"], task_data["difficulty"])
-            task_data["tag_ids"] = ""
-            task = Task(**task_data)
-            task.user_id = user.id
-            session.add(task)
-            session.commit()
-            await telegram_send_message(
-                chat_id,
-                f"\u2705 Task created: {task.title}\nPriority: {task.priority} | Status: {task.status}"
-            )
         except ValueError as e:
-            await telegram_send_message(chat_id, f"\u274c {e}")
-        return {"ok": True}
-    await telegram_send_message(chat_id, "Unknown command. Send /help for available commands.")
+            await telegram_send_message(chat_id, str(e))
+            return {"ok": True}
+        user = session.execute(select(User).order_by(User.id)).scalar()
+        if not user:
+            await telegram_send_message(chat_id, "No user found in system.")
+            return {"ok": True}
+        task_data["tag_ids"] = ""
+        task_data["focus_score"] = calc_focus_score(task_data["importance"], task_data["difficulty"])
+        task = Task(**task_data)
+        task.user_id = user.id
+        session.add(task)
+        session.commit()
+        await telegram_send_message(chat_id, f"Task created: {task.title}")
+    elif text.lower() == "/tasks":
+        user = session.execute(select(User).order_by(User.id)).scalar()
+        if not user:
+            await telegram_send_message(chat_id, "No user found.")
+            return {"ok": True}
+        tasks = session.execute(
+            _own(select(Task), Task, user).where(Task.status.in_(["today", "in_progress"]))
+            .order_by(Task.sort_order)
+        ).scalars().all()
+        if not tasks:
+            await telegram_send_message(chat_id, "No tasks for today.")
+        else:
+            lines = [f"• {t.title} [{t.priority}]" for t in tasks]
+            await telegram_send_message(chat_id, "Today's tasks:\n" + "\n".join(lines))
+    elif text.lower() == "/help":
+        await telegram_send_message(
+            chat_id,
+            "/task <title> — create a task\n/tasks — list today's tasks\n/help — show commands",
+        )
+    else:
+        await telegram_send_message(chat_id, "Unknown command. Try /help")
     return {"ok": True}
+
+@app.get("/telegram/setup/")
+async def telegram_setup():
+    if not TELEGRAM_BOT_TOKEN or not PUBLIC_BACKEND_URL:
+        return {"error": "TELEGRAM_BOT_TOKEN or PUBLIC_BACKEND_URL not set"}
+    webhook_url = f"{PUBLIC_BACKEND_URL.rstrip('/')}/telegram/webhook/"
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        r = await client.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setWebhook",
+            json={"url": webhook_url},
+        )
+    return r.json()
