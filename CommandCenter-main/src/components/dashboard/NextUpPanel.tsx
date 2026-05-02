@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Task, TimeBlock } from "@/types";
-import { useUIStore } from "@/store";
+import { useUIStore, useTimerStore, usePinnedTaskStore } from "@/store";
 import { useActiveTimer } from "@/hooks/useTimer";
-import { useTimerStore } from "@/store";
 import { isOverdue, formatDuration, todayStr } from "@/lib/utils";
 import axios from "axios";
 
@@ -385,7 +384,7 @@ export function NextUpPanel({ tasks }: { tasks: Task[] }) {
   const apiBase = import.meta.env.VITE_API_BASE_URL || "";
   const today   = todayStr();
 
-  const [topOverride, setTopOverride]   = useState<Task | null>(null);
+  const { pinnedTaskId, setPinnedTask } = usePinnedTaskStore();
   const [deckOverride, setDeckOverride] = useState<Task | null>(null);
 
   const { data: localBlocks = [] } = useQuery<TimeBlock[]>({
@@ -430,13 +429,18 @@ export function NextUpPanel({ tasks }: { tasks: Task[] }) {
   const pending    = tasks.filter(t => t.status !== "done" && t.status !== "cancelled");
   const sorted     = [...pending].sort((a, b) => taskScore(b) - taskScore(a));
 
-  const validTop  = topOverride  && pending.find(t => t.id === topOverride.id)  ? topOverride  : sorted[0] ?? null;
+  const pinnedTask = pinnedTaskId ? pending.find(t => t.id === pinnedTaskId) ?? null : null;
+  const validTop  = pinnedTask ?? sorted[0] ?? null;
   const validDeck = deckOverride && pending.find(t => t.id === deckOverride.id) ? deckOverride : null;
   const autoDeck  = sorted.find(t => t.id !== validTop?.id) ?? null;
   const onDeckTask = validDeck && validDeck.id !== validTop?.id ? validDeck : autoDeck;
   const nextTask   = validTop;
 
   const pickableForTop  = pending.filter(t => t.id !== onDeckTask?.id);
+  // clear stale pin if the pinned task no longer exists in pending
+  if (pinnedTaskId && !pending.find(t => t.id === pinnedTaskId)) {
+    setTimeout(() => setPinnedTask(null), 0);
+  }
   const pickableForDeck = pending.filter(t => t.id !== nextTask?.id);
 
   return (
@@ -445,13 +449,13 @@ export function NextUpPanel({ tasks }: { tasks: Task[] }) {
       {nextTask
         ? <TaskSlot task={nextTask} size="lg" allTasks={pickableForTop}
             onTaskClick={() => setActivePage("todos")}
-            onOverride={t => { setTopOverride(t); if (deckOverride?.id === t.id) setDeckOverride(null); }} />
+            onOverride={t => { setPinnedTask(t.id); if (deckOverride?.id === t.id) setDeckOverride(null); }} />
         : <EmptySlot text="Clear" />}
       <SHead icon="⋯" label="On Deck" />
       {onDeckTask
         ? <TaskSlot task={onDeckTask} size="sm" allTasks={pickableForDeck}
             onTaskClick={() => setActivePage("todos")}
-            onOverride={t => { setDeckOverride(t); if (topOverride?.id === t.id) setTopOverride(null); }} />
+            onOverride={t => { setDeckOverride(t); if (pinnedTaskId === t.id) setPinnedTask(null); }} />
         : <EmptySlot text="Nothing on deck" />}
       <SHead icon="◷" label="Next Event" />
       {nextEvent
@@ -460,3 +464,4 @@ export function NextUpPanel({ tasks }: { tasks: Task[] }) {
     </div>
   );
 }
+
