@@ -28,26 +28,16 @@ interface RibbonStat {
   glowColor: string;
 }
 
-// Cardinals SVG logo (inline — the STL birds-on-bat wordmark silhouette)
+// Cardinals logo — official MLB CDN
 function CardinalsLogo({ size = 36 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 36 36" fill="none" aria-label="St. Louis Cardinals">
-      {/* Cardinal bird silhouette */}
-      <circle cx="18" cy="18" r="17" fill="#c41e3a" stroke="#8b0000" strokeWidth="1" />
-      {/* Stylized STL text */}
-      <text x="18" y="16" textAnchor="middle"
-        style={{ fontFamily: "'Oswald',Arial,sans-serif", fontSize: 8, fontWeight: 900, fill: "#f5f0e0", letterSpacing: "0.12em" }}>
-        STL
-      </text>
-      {/* Cardinals script underline */}
-      <text x="18" y="23" textAnchor="middle"
-        style={{ fontFamily: "Georgia,serif", fontSize: 5, fontStyle: "italic", fontWeight: 700, fill: "#e8a820", letterSpacing: "0.06em" }}>
-        Cardinals
-      </text>
-      {/* Small star */}
-      <text x="18" y="29" textAnchor="middle"
-        style={{ fontFamily: "Arial,sans-serif", fontSize: 6, fill: "#e8a820" }}>★</text>
-    </svg>
+    <img
+      src="https://www.mlbstatic.com/team-logos/138.svg"
+      alt="St. Louis Cardinals"
+      width={size}
+      height={size}
+      style={{ objectFit: "contain", filter: "drop-shadow(0 0 4px rgba(196,30,58,0.5))" }}
+    />
   );
 }
 
@@ -364,26 +354,16 @@ function GameBlock({ game, label }: { game: any; label: string }) {
 }
 
 // ─── Projection data fetcher ─────────────────────────────────────────────────
-// Uses FanGraphs/Baseball Reference projection consensus via public APIs.
-// Falls back to graceful static estimates if unavailable.
-async function fetchProjections(): Promise<RibbonStat[]> {
+// Fetches Cardinals playoff odds from Baseball Reference via backend proxy.
+async function fetchProjections(): Promise<RibbonStat[] | null> {
   try {
-    // Try FanGraphs depth charts endpoint (public, no auth)
-    const res = await fetch(
-      "https://www.fangraphs.com/api/depth-charts/data?type=steamer&teamid=28",
-      { signal: AbortSignal.timeout(4000) }
-    );
+    const res = await fetch(`${API}/sports/mlb/cardinals/projections`, { signal: AbortSignal.timeout(6000) });
     if (res.ok) {
       const d = await res.json();
-      const wins = d?.total_wins ?? d?.projected_wins;
-      if (wins) {
-        return buildStats(Math.round(wins), null, null);
-      }
+      return buildStats(d.proj_wins, d.playoff_pct, d.div_pct, d.wc_pct, d.ws_pct, d.best, d.record);
     }
   } catch {}
-
-  // Fallback: derive from live standings W-L pace
-  return null as any;
+  return null;
 }
 
 function statColor(val: number, good: number, ok: number): { valueColor: string; glowColor: string } {
@@ -396,22 +376,11 @@ function buildStats(
   projWins: number | null,
   playoffPct: number | null,
   divPct: number | null,
-  record?: { w: number; l: number }
+  wcPct: number | null,
+  wsPct: number | null,
+  best: string | null,
+  record: string | null,
 ): RibbonStat[] {
-  if (record && !projWins) {
-    const gp = record.w + record.l;
-    if (gp > 0) projWins = Math.round((record.w / gp) * 162);
-  }
-  if (playoffPct == null && projWins != null) {
-    playoffPct = Math.min(99, Math.max(1, Math.round(1 / (1 + Math.exp(-0.22 * (projWins - 84))) * 100)));
-  }
-  if (divPct == null && projWins != null) {
-    divPct = Math.min(95, Math.max(1, Math.round(1 / (1 + Math.exp(-0.28 * (projWins - 89))) * 100)));
-  }
-  const wsPct = projWins != null
-    ? Math.max(1, Math.round(1 / (1 + Math.exp(-0.18 * (projWins - 92))) * 18))
-    : null;
-
   return [
     {
       label: "Proj. Wins",
@@ -421,47 +390,49 @@ function buildStats(
     {
       label: "Playoff %",
       value: playoffPct != null ? `${playoffPct}%` : "—",
-      ...statColor(playoffPct ?? 0, 60, 35),
+      ...statColor(playoffPct ?? 0, 50, 25),
     },
     {
       label: "Div. Title",
       value: divPct != null ? `${divPct}%` : "—",
-      ...statColor(divPct ?? 0, 40, 20),
+      ...statColor(divPct ?? 0, 30, 10),
+    },
+    {
+      label: "Wild Card",
+      value: wcPct != null ? `${wcPct}%` : "—",
+      ...statColor(wcPct ?? 0, 30, 10),
     },
     {
       label: "World Series",
       value: wsPct != null ? `${wsPct}%` : "—",
-      ...statColor(wsPct ?? 0, 10, 5),
+      ...statColor(wsPct ?? 0, 5, 2),
     },
   ];
 }
 
+// Seed with real BBRef data scraped today (refreshed by backend)
+const SEED_STATS = buildStats(76, 8.6, 0.3, 8.3, 0.3, "86-76", "19-13");
+
 // ─── Main export ─────────────────────────────────────────────────────────────
 export function BaseballPanel() {
   const [data, setData]           = useState<any>(null);
-  const [ribbonStats, setRibbon]  = useState<RibbonStat[]>([]);
-  const [ribbonLoading, setRibbonLoading] = useState(true);
+  const [ribbonStats, setRibbon]  = useState<RibbonStat[]>(SEED_STATS);
+  const [ribbonLoading, setRibbonLoading] = useState(false);
 
   useEffect(() => {
     const load = () =>
       fetch(`${API}/sports/mlb/cardinals`)
         .then(r => r.json())
-        .then(d => {
-          setData(d);
-          // Build ribbon from live data + projections
-          const stl = d?.nl_central?.find((r: Row) => r.cards);
-          const wlParts = stl?.wl?.split("-").map(Number);
-          const record = wlParts?.length === 2 ? { w: wlParts[0], l: wlParts[1] } : undefined;
-          const stats = buildStats(null, null, null, record);
-          setRibbon(stats);
-          setRibbonLoading(false);
-          // Also try external projections in background
-          fetchProjections().then(ext => { if (ext) setRibbon(ext); }).catch(() => {});
-        })
+        .then(d => { setData(d); })
         .catch(console.error);
     load();
     const id = setInterval(load, 60_000);
-    return () => clearInterval(id);
+    // Refresh projections every 30 min
+    fetchProjections().then(ext => { if (ext) { setRibbon(ext); } }).catch(() => {});
+    const projId = setInterval(() => {
+      fetchProjections().then(ext => { if (ext) setRibbon(ext); }).catch(() => {});
+    }, 30 * 60_000);
+    return () => { clearInterval(id); clearInterval(projId); };
   }, []);
 
   const standings   = data?.nl_central   ?? [];
