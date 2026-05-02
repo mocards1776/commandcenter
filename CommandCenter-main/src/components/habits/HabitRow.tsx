@@ -17,7 +17,7 @@ function toCDT(d: Date): string {
 }
 
 function fmtTime(hour?: number | null, minute?: number | null): string {
-  if (hour == null) return "\u2014";
+  if (hour == null) return "—";
   const h12 = hour % 12 || 12;
   const ampm = hour < 12 ? "A" : "P";
   if (!minute) return `${h12}${ampm}`;
@@ -98,7 +98,7 @@ export function HabitRow({ habit, todayStr, last7 = [], isEven = false }: Props)
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["habits"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
-      toast.success(`${habit.icon ?? "\uD83D\uDD25"} ${habit.name}`, { duration: 1800 });
+      toast.success(`${habit.icon ?? "🔥"} ${habit.name}`, { duration: 1800 });
     },
   });
 
@@ -113,11 +113,12 @@ export function HabitRow({ habit, todayStr, last7 = [], isEven = false }: Props)
     isDoneToday ? uncompleteMut.mutate() : completeMut.mutate();
   };
 
-  // -------------------------------------------------------------------------
+  // ─────────────────────────────────────────────────────────────────────────
   // DASHBOARD MODE — classic circle-checkbox + name + dots
   // Only used when the dashboard passes no last7 prop
-  // -------------------------------------------------------------------------
+  // ─────────────────────────────────────────────────────────────────────────
   if (last7.length === 0) {
+    // Build last 8 days ending today
     const last8 = Array.from({ length: 8 }, (_, i) => {
       const d = new Date(todayStr + "T12:00:00");
       d.setDate(d.getDate() - (7 - i));
@@ -220,9 +221,9 @@ export function HabitRow({ habit, todayStr, last7 = [], isEven = false }: Props)
     );
   }
 
-  // -------------------------------------------------------------------------
-  // HABITS PAGE MODE — full scoreboard slot layout
-  // -------------------------------------------------------------------------
+  // ─────────────────────────────────────────────────────────────────────────
+  // HABITS PAGE MODE — full scoreboard slot layout (UNCHANGED)
+  // ─────────────────────────────────────────────────────────────────────────
   const rowBg = isEven ? "rgba(0,0,0,0.12)" : "rgba(0,0,0,0.04)";
   const timeStr = fmtTime(habit.time_hour, habit.time_minute);
   const hasTime = habit.time_hour != null;
@@ -244,7 +245,7 @@ export function HabitRow({ habit, todayStr, last7 = [], isEven = false }: Props)
         onMouseLeave={e => (e.currentTarget.style.background = rowBg)}
       >
 
-        {/* TIME SLOT */}
+        {/* ── P column: TIME SLOT ── */}
         <div style={slot({ width: 44, height: 50 })}>
           <span style={{
             fontFamily: "'Oswald', Arial, sans-serif",
@@ -257,7 +258,7 @@ export function HabitRow({ habit, todayStr, last7 = [], isEven = false }: Props)
           }}>{timeStr}</span>
         </div>
 
-        {/* HABIT NAME */}
+        {/* ── HABIT NAME ── */}
         <div
           onClick={() => setModalOpen(true)}
           title="Edit habit"
@@ -281,92 +282,104 @@ export function HabitRow({ habit, todayStr, last7 = [], isEven = false }: Props)
             fontSize: 13,
             letterSpacing: "0.10em",
             textTransform: "uppercase",
-            color: isDoneToday ? "#f0ece0" : "rgba(240,236,224,0.5)",
+            color: isDoneToday ? "#f0ece0" : "rgba(240,236,224,0.6)",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
-          }}>{habit.name}</span>
-        </div>
-
-        {/* TODAY checkbox */}
-        <div
-          onClick={handleTodayClick}
-          title={isDoneToday ? "Mark incomplete" : "Mark complete"}
-          style={slot({ width: 44, height: 50, cursor: "pointer", background: isDoneToday ? "rgba(232,168,32,0.15)" : "rgba(0,0,0,0.45)" })}
-        >
-          {isDoneToday ? (
-            <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-              <circle cx="11" cy="11" r="10" stroke="#e8a820" strokeWidth="1.5" />
-              <circle cx="11" cy="11" r="7" fill="#e8a820" />
-              <path d="M7.5 11l2.5 2.5 4.5-4.5" stroke="#1a2e1f" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          ) : (
-            <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-              <circle cx="11" cy="11" r="10" stroke="rgba(240,236,224,0.2)" strokeWidth="1.5" />
-            </svg>
-          )}
-        </div>
-
-        {/* 7-DAY DOTS */}
-        <div style={slot({ width: 90, height: 50, padding: "4px 6px" })}>
-          <div style={{ display: "flex", gap: 4, alignItems: "center", justifyContent: "center" }}>
-            {last7.map(dateStr => {
-              const done  = doneSet.has(dateStr);
-              const isT   = dateStr === todayStr;
-              const isFut = dateStr > todayStr;
-              return (
-                <div key={dateStr} style={{
-                  width: done ? 10 : 8, height: done ? 10 : 8,
-                  borderRadius: "50%",
-                  background: done
-                    ? isT ? "#f4c842" : "rgba(232,168,32,0.6)"
-                    : isFut ? "rgba(240,236,224,0.06)"
-                    : isT   ? "rgba(232,168,32,0.2)"
-                    : "rgba(240,236,224,0.12)",
-                  border: isT && !done ? "1px solid rgba(232,168,32,0.4)" : "none",
-                  boxShadow: done && isT ? "0 0 5px rgba(244,200,66,0.5)" : "none",
-                  flexShrink: 0,
-                  transition: "all 0.15s",
-                }} />
-              );
-            })}
-          </div>
-          <div style={{ fontSize: 7, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(240,236,224,0.2)", marginTop: 3 }}>7 DAYS</div>
-        </div>
-
-        {/* STREAK */}
-        <div style={slot({ width: 52, height: 50 })}>
-          <span style={{ fontFamily: "'Oswald',Arial,sans-serif", fontSize: 20, fontWeight: 700, color: streakColor, lineHeight: 1 }}>{streak}</span>
-          <span style={{ fontSize: 7, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(240,236,224,0.25)", marginTop: 2 }}>STREAK</span>
-        </div>
-
-        {/* BEST */}
-        <div style={slot({ width: 48, height: 50 })}>
-          <span style={{ fontFamily: "'Oswald',Arial,sans-serif", fontSize: 20, fontWeight: 700, color: bestColor, lineHeight: 1 }}>{best}</span>
-          <span style={{ fontSize: 7, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(240,236,224,0.25)", marginTop: 2 }}>BEST</span>
-        </div>
-
-        {/* MONTH % */}
-        <div style={slot({ width: 52, height: 50 })}>
-          <span style={{ fontFamily: "'Oswald',Arial,sans-serif", fontSize: 16, fontWeight: 700, color: mthColor, lineHeight: 1 }}>{mthPct}%</span>
-          <span style={{ fontSize: 7, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(240,236,224,0.25)", marginTop: 2 }}>MONTH</span>
-        </div>
-
-        {/* FREQ BADGE */}
-        <div style={slot({ minWidth: 62, height: 50, padding: "4px 6px" })}>
-          <span style={{
-            fontFamily: "'Oswald',Arial,sans-serif",
-            fontSize: 10,
-            fontWeight: 700,
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-            color: "rgba(232,168,32,0.7)",
             lineHeight: 1.2,
-            textAlign: "center",
-          }}>{habit.frequency?.replace("_", " ") ?? "DAILY"}</span>
+          }}>
+            {habit.name}
+          </span>
         </div>
 
+        {/* ── DAY SLOTS (7-day full view) ── */}
+        <div style={{ display: "flex", flex: 1, gap: 4 }}>
+          {last7.map(dateStr => {
+            const isToday  = dateStr === todayStr;
+            const done     = doneSet.has(dateStr);
+            const missed   = dateStr < todayStr && !done;
+
+            return (
+              <div
+                key={dateStr}
+                onClick={isToday ? handleTodayClick : undefined}
+                title={
+                  isToday   ? (isDoneToday ? "Mark incomplete" : "Mark complete")
+                  : done    ? `Done ✓ ${dateStr}`
+                  : missed  ? `Missed ${dateStr}`
+                  : undefined
+                }
+                style={slot({
+                  flex: 1,
+                  height: 50,
+                  cursor: isToday ? "pointer" : "default",
+                  background: done
+                    ? isToday ? "rgba(232,168,32,0.22)" : "rgba(232,168,32,0.10)"
+                    : missed  ? "rgba(150,25,25,0.14)"
+                    : isToday ? "rgba(232,168,32,0.06)"
+                    : "rgba(0,0,0,0.45)",
+                  border: isToday
+                    ? `1.5px solid rgba(232,168,32,${isDoneToday ? "0.5" : "0.28"})`
+                    : "1.5px solid rgba(240,236,224,0.07)",
+                  boxShadow: done && isToday
+                    ? "inset 0 2px 8px rgba(0,0,0,0.35), 0 0 12px rgba(232,168,32,0.18)"
+                    : "inset 0 2px 8px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.03)",
+                })}
+              >
+                {done ? (
+                  <span style={{
+                    fontFamily: "'Oswald', Arial, sans-serif",
+                    fontSize: isToday ? 26 : 20,
+                    fontWeight: 900,
+                    lineHeight: 1,
+                    userSelect: "none",
+                    color: isToday ? "#f4c842" : "#c8962a",
+                    textShadow: isToday ? "0 0 14px rgba(244,200,66,0.6)" : "none",
+                  }}>✓</span>
+                ) : missed ? (
+                  <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1, userSelect: "none", color: "rgba(200,50,50,0.45)" }}>✗</span>
+                ) : isToday ? (
+                  <span style={{
+                    display: "inline-block",
+                    width: 15,
+                    height: 15,
+                    borderRadius: "50%",
+                    border: "2px solid rgba(232,168,32,0.42)",
+                    animation: "pulse-ring 2s ease-in-out infinite",
+                  }} />
+                ) : (
+                  <span style={{ fontSize: 10, color: "rgba(240,236,224,0.07)" }}>—</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* ── WHITE DIVIDER (matches scoreboard's R|H|E bar) ── */}
+        <div style={{ width: 3, height: 48, flexShrink: 0, background: "#dedad0", borderRadius: 1, opacity: 0.88 }} />
+
+        {/* ── STAT SLOTS: streak / best / month% ── */}
+        {[
+          { val: streak,        color: streakColor },
+          { val: best,          color: bestColor   },
+          { val: `${mthPct}%`,  color: mthColor    },
+        ].map(({ val, color }, i) => (
+          <div key={i} style={slot({ width: 54, height: 50 })}>
+            <span style={{
+              fontFamily: "'Oswald', Arial, sans-serif",
+              fontWeight: 900,
+              fontSize: typeof val === "string"
+                ? (parseInt(val) >= 100 ? 12 : 14)
+                : (val >= 100 ? 12 : val === 0 ? 14 : 20),
+              color,
+              letterSpacing: "0.02em",
+              lineHeight: 1,
+              userSelect: "none",
+            }}>{val}</span>
+          </div>
+        ))}
       </div>
+
       <HabitModal open={modalOpen} onClose={() => setModalOpen(false)} habit={habit} />
     </>
   );
