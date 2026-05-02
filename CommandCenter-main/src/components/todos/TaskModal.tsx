@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import type React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { tasksApi, projectsApi, categoriesApi, tagsApi } from "@/lib/api";
+import { CompletionDialog } from "./CompletionDialog";
 import { useActiveTimer } from "@/hooks/useTimer";
 import { useTimerStore, useCelebrationStore } from "@/store";
 import { calcPoints, formatDuration, formatMinutes } from "@/lib/utils";
@@ -237,6 +238,7 @@ interface Props {
 export function TaskModal({ open, onClose, task, projectId, parentId, defaultStatus, initialTitle, initialDueDate, initialDueTime }: Props) {
   const qc = useQueryClient();
   const isEdit = !!task;
+  const [completionOpen, setCompletionOpen] = useState(false);
   const { isRunning, activeTimer, elapsedSeconds, start, stop } = useActiveTimer();
   const { setActiveTimer } = useTimerStore();
   const { triggerCelebration } = useCelebrationStore();
@@ -513,7 +515,7 @@ export function TaskModal({ open, onClose, task, projectId, parentId, defaultSta
           {/* Footer */}
           <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 16px",borderTop:"2px solid #1e3629",background:"#1e3629",flexShrink:0,flexWrap:"wrap"}}>
             {isEdit&&(<button type="button" className={`btn ${isThisRunning?"btn-red":"btn-white"}`} onClick={handleTimer}>{isThisRunning?<><Square size={11} style={{fill:"currentColor"}}/>Stop</>:<><Play size={11} style={{fill:"currentColor"}}/>Timer</>}</button>)}
-            {isEdit&&task?.status!=="done"&&(<button type="button" className="btn btn-gold" onClick={()=>completeMut.mutate()} disabled={completeMut.isPending}><Check size={11}/>Complete</button>)}
+            {isEdit&&task?.status!=="done"&&(<button type="button" className="btn btn-gold" onClick={()=>setCompletionOpen(true)} disabled={completeMut.isPending}><Check size={11}/>Complete</button>)}
             <div style={{flex:1}}/>
             {isEdit&&(<button type="button" className="btn btn-red" onClick={()=>confirm("Delete this task?")&&deleteMut.mutate()}><Trash2 size={11}/></button>)}
             <button type="button" onClick={onClose} style={{padding:"5px 12px",background:"rgba(0,0,0,0.2)",border:"1px solid rgba(245,240,224,0.1)",color:"rgba(245,240,224,0.4)",fontSize:10,fontWeight:600,letterSpacing:"0.12em",textTransform:"uppercase",cursor:"pointer",fontFamily:"'Oswald',Arial,sans-serif"}}>Cancel</button>
@@ -528,5 +530,13 @@ export function TaskModal({ open, onClose, task, projectId, parentId, defaultSta
         <TaskModal open={subModalOpen} onClose={()=>{ setSubModalOpen(false); inv(); }} parentId={task.id} projectId={selProject||undefined} defaultStatus="today"/>
       )}
     </>
+      {completionOpen && task && (
+        <CompletionDialog
+          task={task}
+          onClose={() => setCompletionOpen(false)}
+          onDone={() => { setCompletionOpen(false); inv(); onClose(); }}
+        />
+      )}
   );
 }
+
