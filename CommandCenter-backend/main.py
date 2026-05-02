@@ -1110,3 +1110,39 @@ async def set_telegram_webhook():
             json={"url": webhook_url},
         )
     return resp.json()
+
+
+
+@app.get("/habits/debug-error")
+async def debug_habits_error(session: Session = Depends(db.get_session)):
+    import traceback
+    try:
+        habits = session.execute(select(Habit).order_by(Habit.sort_order)).scalars().all()
+        result = []
+        for h in habits:
+            comps = session.execute(
+                select(HabitCompletion).where(HabitCompletion.habit_id == h.id)
+            ).scalars().all()
+            result.append({
+                "id": h.id,
+                "name": h.title,
+                "color": h.color,
+                "icon": getattr(h, "icon", None),
+                "frequency": h.frequency,
+                "time_hour": getattr(h, "time_hour", None),
+                "time_minute": getattr(h, "time_minute", None),
+                "sort_order": getattr(h, "sort_order", 0),
+                "is_active": getattr(h, "is_active", True),
+                "completions": [
+                    {"id": c.id, "habit_id": c.habit_id, "completed_date": c.completed_date.isoformat() if c.completed_date else None, "created_at": c.created_at.isoformat() if c.created_at else None}
+                    for c in comps
+                ],
+                "description": getattr(h, "description", None),
+                "custom_days": None,
+                "target_minutes": getattr(h, "target_minutes", None),
+                "created_at": h.created_at.isoformat() if h.created_at else None,
+                "updated_at": h.updated_at.isoformat() if h.updated_at else None,
+            })
+        return {"ok": True, "count": len(result), "habits": result, "version": "v_debug_1"}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
