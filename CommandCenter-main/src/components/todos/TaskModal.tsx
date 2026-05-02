@@ -316,12 +316,13 @@ export function TaskModal({ open, onClose, task, projectId, parentId, defaultSta
   };
 
   const payload = () => {
-    // Combine date + time into a single due_date ISO string
+    // Always send a full ISO datetime string so FastAPI's Optional[datetime] can parse it.
+    // A bare "YYYY-MM-DD" is rejected by Pydantic datetime — append T00:00:00 when no time given.
     let due_date: string | undefined;
     if (dueDate && dueTime) {
       due_date = `${dueDate}T${dueTime}:00`;
     } else if (dueDate) {
-      due_date = dueDate;
+      due_date = `${dueDate}T00:00:00`;
     }
     return {
       title: title.trim(),
