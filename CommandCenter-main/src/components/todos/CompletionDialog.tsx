@@ -66,9 +66,9 @@ export function CompletionDialog({ task, onClose, onDone, elapsedSeconds = 0 }: 
   const completeMut = useMutation({
     mutationFn: async () => {
       const actualMin = selectedMin ?? (customMin ? parseInt(customMin) : undefined);
-      // Patch actual_time_minutes then complete
+      // Patch actual_time_minutes (best-effort — don't block completion if it fails)
       if (actualMin && actualMin > 0) {
-        await tasksApi.update(task.id, { actual_time_minutes: actualMin });
+        try { await tasksApi.update(task.id, { actual_time_minutes: actualMin }); } catch {}
       }
       return tasksApi.complete(task.id);
     },
@@ -152,11 +152,11 @@ export function CompletionDialog({ task, onClose, onDone, elapsedSeconds = 0 }: 
                 How long did this actually take?
               </div>
 
-              {/* Preset chips */}
+              {/* Preset chips — tap once to select AND advance */}
               <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 12 }}>
                 {PRESETS.map(p => (
                   <button key={p.value} type="button"
-                    onClick={() => { setSelectedMin(p.value); setCustomMin(""); }}
+                    onClick={() => { setSelectedMin(p.value); setCustomMin(""); setStep("followup"); }}
                     style={{
                       ...btnBase,
                       background: selectedMin === p.value ? "rgba(232,168,32,0.15)" : "transparent",
