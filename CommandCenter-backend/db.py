@@ -1,14 +1,13 @@
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.pool import NullPool
 from models import Base
 import os
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/commandcenter")
 
-# NullPool: no persistent connection pooling — each request opens and closes its
-# own connection. Required for DigitalOcean App Platform (stateless containers)
-# to prevent "QueuePool limit reached" exhaustion errors.
+# Fix legacy "postgres://" scheme emitted by some DigitalOcean connection strings.
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 # SSL: DigitalOcean Managed Databases require sslmode=require.
 # If the DATABASE_URL already contains ?sslmode=require, connect_args is redundant
@@ -17,7 +16,22 @@ _connect_args = {}
 if "localhost" not in DATABASE_URL and "127.0.0.1" not in DATABASE_URL:
     _connect_args = {"sslmode": "require"}
 
-engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True, poolclass=NullPool, connect_args=_connect_args)
+# QueuePool with a small pool size.
+# NullPool (previous) opened a fresh DB connection on every request, which
+# quickly exhausted DigitalOcean Managed Database's connection limit (~22 on
+# the smallest tier) under the frontend's 1-second polling interval.
+# pool_size=5 keeps 5 persistent connections; max_overflow=2 allows 2 burst
+# connections; pool_pre_ping=True drops stale connections before use.
+engine = create_engine(
+    DATABASE_URL,
+    echo=False,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=2,
+    pool_timeout=30,
+    pool_recycle=300,
+    connect_args=_connect_args,
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def get_session_direct() -> Session:
