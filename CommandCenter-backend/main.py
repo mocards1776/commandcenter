@@ -45,6 +45,11 @@ ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
 ]
 
+# NOTE: Starlette applies middleware in REVERSE registration order (last-added = outermost).
+# CredentialsCORSFixMiddleware must be added FIRST so it runs LAST (outermost wrap),
+# meaning its header injection fires after CORSMiddleware and wins.
+
+# Step 1: Add CORSMiddleware first (innermost)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -54,9 +59,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# DigitalOcean/Cloudflare proxy strips Access-Control-Allow-Credentials.
-# Pure ASGI middleware — does NOT buffer the response body (unlike BaseHTTPMiddleware),
-# so it safely injects headers without interfering with response streaming or content.
+# Step 2: Pure ASGI middleware that re-injects credentials header stripped by DO/Cloudflare proxy.
+# Added SECOND so it wraps outermost — its patched_send runs after CORSMiddleware sets headers,
+# overwriting any mangled values with the correct ones.
 class CredentialsCORSFixMiddleware:
     def __init__(self, app):
         self.app = app
@@ -92,7 +97,7 @@ class CredentialsCORSFixMiddleware:
 
         async def patched_send(message):
             if message["type"] == "http.response.start":
-                # Strip any mangled CORS headers from the proxy, then inject correct ones.
+                # Strip any mangled CORS headers, then inject correct ones.
                 filtered = [
                     (k, v) for k, v in message.get("headers", [])
                     if k.lower() not in inject_keys
