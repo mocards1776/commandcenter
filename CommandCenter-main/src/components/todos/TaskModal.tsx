@@ -529,7 +529,7 @@ export function TaskModal({ open, onClose, task, projectId, parentId, defaultSta
       {isEdit && task && (
         <TaskModal open={subModalOpen} onClose={()=>{ setSubModalOpen(false); inv(); }} parentId={task.id} projectId={selProject||undefined} defaultStatus="today"/>
       )}
-    </>
+
       {completionOpen && task && (
         <CompletionDialog
           task={task}
@@ -537,6 +537,6 @@ export function TaskModal({ open, onClose, task, projectId, parentId, defaultSta
           onDone={() => { setCompletionOpen(false); inv(); onClose(); }}
         />
       )}
+    </>
   );
 }
-
