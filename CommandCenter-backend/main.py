@@ -144,6 +144,75 @@ def _own(query, model, user: User):
 def _own_or_legacy(query, model, user: User):
     return query.where(or_(model.user_id == user.id, model.user_id == None))  # noqa: E711
 
+def _task_to_dict(task: Task) -> dict:
+    """Serialize a SQLAlchemy Task ORM object to a plain dict for DashboardSummary."""
+    tag_ids = task.tag_ids or ""
+    if isinstance(tag_ids, str):
+        s = tag_ids.strip()
+        if not s:
+            parsed_tags = []
+        elif s.startswith("["):
+            try:
+                parsed_tags = json.loads(s)
+            except Exception:
+                parsed_tags = [i.strip() for i in s.split(",") if i.strip()]
+        else:
+            parsed_tags = [i.strip() for i in s.split(",") if i.strip()]
+    elif isinstance(tag_ids, list):
+        parsed_tags = tag_ids
+    else:
+        parsed_tags = []
+
+    due_date = task.due_date
+    if isinstance(due_date, date) and not isinstance(due_date, datetime):
+        due_date = datetime(due_date.year, due_date.month, due_date.day)
+
+    return {
+        "id": task.id,
+        "title": task.title,
+        "description": task.description,
+        "notes": task.notes,
+        "status": task.status,
+        "priority": task.priority,
+        "importance": task.importance,
+        "difficulty": task.difficulty,
+        "focus_score": task.focus_score or 0,
+        "due_date": due_date,
+        "time_estimate_minutes": task.time_estimate_minutes,
+        "project_id": task.project_id,
+        "parent_id": task.parent_id,
+        "category_id": task.category_id,
+        "tag_ids": parsed_tags,
+        "show_in_daily": task.show_in_daily if task.show_in_daily is not None else True,
+        "actual_time_minutes": task.actual_time_minutes or 0,
+        "sort_order": task.sort_order or 0,
+        "subtasks": [],
+        "created_at": task.created_at,
+        "updated_at": task.updated_at,
+        "completed_at": task.completed_at,
+    }
+
+def _project_to_dict(project: Project) -> dict:
+    """Serialize a SQLAlchemy Project ORM object to a plain dict for DashboardSummary."""
+    due_date = project.due_date
+    if isinstance(due_date, date) and not isinstance(due_date, datetime):
+        due_date = datetime(due_date.year, due_date.month, due_date.day)
+
+    return {
+        "id": project.id,
+        "title": project.title,
+        "description": project.description,
+        "status": project.status,
+        "color": project.color,
+        "priority": project.priority or "medium",
+        "due_date": due_date,
+        "created_at": project.created_at,
+        "updated_at": project.updated_at,
+        "tasks": [],
+        "task_count": 0,
+        "completion_percentage": 0,
+    }
+
 # ─── Telegram Bot ────────────────────────────────────────────────────
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_BOT_USERNAME = os.getenv("TELEGRAM_BOT_USERNAME", "RUWT_bot")
@@ -899,12 +968,11 @@ async def dashboard(
             for h in habits
         ]
 
-        # Active projects — explicitly call .scalars().all() to ensure list
-        active_projects = list(
-            session.execute(
-                _own(select(Project), Project, user).where(Project.status == "active")
-            ).scalars().all()
-        )
+        # Active projects — serialize to dicts so Pydantic can handle them
+        active_projects_orm = session.execute(
+            _own(select(Project), Project, user).where(Project.status == "active")
+        ).scalars().all()
+        active_projects = [_project_to_dict(p) for p in active_projects_orm]
 
         # Time tracked today (sum of completed time entries)
         time_entries_today = session.execute(
@@ -950,14 +1018,19 @@ async def dashboard(
             len(completed_habit_ids) / len(habits) if habits else 0.0
         )
 
+        # Serialize ORM Task objects to dicts before passing to DashboardSummary
+        # to avoid PydanticSerializationError with List[Any] fields in Pydantic v2.
+        serialized_today_tasks = [_task_to_dict(t) for t in tasks_today_rows]
+        serialized_overdue_tasks = [_task_to_dict(t) for t in overdue_rows]
+
         return DashboardSummary(
             tasks_today=len(tasks_today_rows),
             completed_today=len(tasks_done_today),
             focus_score_today=focus_score_today,
             time_tracked_seconds=time_tracked_seconds,
             streak_days=streak_days,
-            today_tasks=tasks_today_rows,
-            overdue_tasks=overdue_rows,
+            today_tasks=serialized_today_tasks,
+            overdue_tasks=serialized_overdue_tasks,
             today_habits=today_habits_list,
             active_projects=active_projects,
             total_tasks_today=len(tasks_today_rows),
@@ -968,7 +1041,7 @@ async def dashboard(
     except Exception as e:
         # DB connection exhausted or query failure — return safe empty dashboard
         # rather than crashing with a 500. Frontend will show zeros instead of error.
-        print(f"Dashboard query error (likely DB connection exhaustion): {e}")
+        print(f"Dashboard query error: {e}")
         return DashboardSummary(
             tasks_today=0,
             completed_today=0,
