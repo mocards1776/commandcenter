@@ -24,13 +24,11 @@ function getCookie(name: string): string | null {
 }
 
 function getStoredToken(): string | null {
-  // Try cookie first
   const cookieToken  = getCookie(GC_TOKEN_COOKIE);
   const cookieExpiry = getCookie(GC_EXPIRY_COOKIE);
   if (cookieToken) {
     if (!cookieExpiry || Date.now() < parseInt(cookieExpiry)) return cookieToken;
   }
-  // Fallback: localStorage (works in direct browser tab, not in Vercel iframe)
   try {
     const token  = localStorage.getItem("gcal_access_token");
     const expiry = localStorage.getItem("gcal_token_expiry");
@@ -380,7 +378,10 @@ function SHead({ icon, label }: { icon: string; label: string }) {
   );
 }
 
-export function NextUpPanel({ tasks }: { tasks: Task[] }) {
+export function NextUpPanel({ tasks: tasksProp }: { tasks: Task[] }) {
+  // Guard against undefined during initial render before data loads
+  const tasks = Array.isArray(tasksProp) ? tasksProp : [];
+
   const navigate = useNavigate();
   const apiBase = import.meta.env.VITE_API_BASE_URL || "";
   const today   = todayStr();
@@ -438,7 +439,6 @@ export function NextUpPanel({ tasks }: { tasks: Task[] }) {
   const nextTask   = validTop;
 
   const pickableForTop  = pending.filter(t => t.id !== onDeckTask?.id);
-  // clear stale pin if the pinned task no longer exists in pending
   if (pinnedTaskId && !pending.find(t => t.id === pinnedTaskId)) {
     setTimeout(() => setPinnedTask(null), 0);
   }
@@ -465,4 +465,3 @@ export function NextUpPanel({ tasks }: { tasks: Task[] }) {
     </div>
   );
 }
-
