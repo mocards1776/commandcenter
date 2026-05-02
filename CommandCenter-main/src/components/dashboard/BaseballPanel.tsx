@@ -328,11 +328,24 @@ function StandingsRow({ row, rank }: { row: Row; rank: number }) {
 }
 
 // ─── Game block ──────────────────────────────────────────────────────────────
+// Small muted label used for "Current Game — Final", "Next Game — ...", etc.
+function GameLabel({ text }: { text: string }) {
+  return (
+    <div style={{
+      fontFamily: FONT, fontSize: 8, fontWeight: 600,
+      letterSpacing: "0.18em", textTransform: "uppercase" as const,
+      color: "rgba(200,195,160,0.40)",
+      padding: "5px 0 3px",
+      textAlign: "center" as const,
+      borderTop: "1px solid rgba(0,0,0,0.35)",
+    }}>{text}</div>
+  );
+}
+
 function GameBlock({ game, label }: { game: any; label: string }) {
   if (!game) return (
-    <div>
-      <SBHead label={label} />
-      <div style={{ padding: "8px 10px", fontFamily: FONT, fontSize: 10, color: DIM }}>Loading…</div>
+    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <span style={{ fontFamily: FONT, fontSize: 9, color: DIM }}>Loading…</span>
     </div>
   );
 
@@ -340,67 +353,83 @@ function GameBlock({ game, label }: { game: any; label: string }) {
   const isLive  = game.status === "Live";
   const stlWon  = isFinal && game.stl_score > game.opp_score;
 
-  const headerLabel = isFinal
-    ? `${label} — Final`
-    : isLive
-    ? `${label} — Live`
-    : `${label} — ${game.date_label ?? ""}`;
+  const statusSuffix = isFinal ? "Final" : isLive ? "Live" : (game.date_label ?? "");
+  const headerText   = statusSuffix ? `${label} — ${statusSuffix}` : label;
 
   return (
-    <div>
-      <SBHead label={headerLabel} />
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 20px 1fr", gap: 4, padding: "5px 8px 3px", alignItems: "center" }}>
+    <div style={{ padding: "0 8px 6px" }}>
+      <GameLabel text={headerText} />
+
+      {/* Team rows — centered grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 18px 1fr", gap: 4, alignItems: "center", marginTop: 2 }}>
+
+        {/* STL box */}
         <div style={{
-          background: "#0e1f14", border: `1px solid ${isFinal && stlWon ? "rgba(232,168,32,0.4)" : isFinal ? "rgba(217,64,64,0.25)" : "rgba(232,168,32,0.25)"}`,
-          borderRadius: 3, boxShadow: "inset 0 2px 4px rgba(0,0,0,0.45)",
-          padding: "5px 8px", display: "flex", justifyContent: "space-between", alignItems: "center",
+          background: PANEL,
+          border: `1px solid ${isFinal && stlWon ? "rgba(201,168,50,0.45)" : isFinal ? "rgba(200,48,48,0.20)" : "rgba(201,168,50,0.22)"}`,
+          borderRadius: 3,
+          boxShadow: "inset 0 2px 5px rgba(0,0,0,0.65)",
+          padding: "6px 8px",
+          display: "flex", justifyContent: "space-between", alignItems: "center",
         }}>
           <span style={{ fontFamily: FONT, fontSize: 11, fontWeight: 800, letterSpacing: "0.08em",
-            color: isFinal && stlWon ? GOLD : isFinal ? "rgba(245,240,224,0.55)" : GOLD }}>
+            color: isFinal && stlWon ? GOLD : isFinal ? "rgba(200,195,160,0.45)" : GOLD }}>
             STL · CARDINALS
           </span>
           {(isFinal || isLive) && (
-            <span style={{ fontFamily: FONT, fontSize: 20, fontWeight: 800,
-              color: isFinal && stlWon ? GOLD : "rgba(245,240,224,0.55)",
-              fontVariantNumeric: "tabular-nums" as const }}>{game.stl_score}</span>
+            <span style={{ fontFamily: FONT, fontSize: 22, fontWeight: 900,
+              color: isFinal && stlWon ? GOLD : "rgba(200,195,160,0.55)",
+              fontVariantNumeric: "tabular-nums" as const, lineHeight: 1 }}>{game.stl_score}</span>
           )}
         </div>
+
+        {/* vs / @ */}
         <div style={{ fontFamily: FONT, fontSize: 8, color: DIM, textAlign: "center" as const }}>
           {!isFinal && !isLive ? (game.stl_is_home ? "vs" : "@") : ""}
         </div>
+
+        {/* OPP box */}
         <div style={{
-          background: "#0e1f14", border: "1px solid rgba(0,0,0,0.5)",
-          borderRadius: 3, boxShadow: "inset 0 2px 4px rgba(0,0,0,0.4)",
-          padding: "5px 8px", display: "flex", justifyContent: "space-between", alignItems: "center",
+          background: PANEL,
+          border: "1px solid rgba(0,0,0,0.5)",
+          borderRadius: 3,
+          boxShadow: "inset 0 2px 5px rgba(0,0,0,0.65)",
+          padding: "6px 8px",
+          display: "flex", justifyContent: "space-between", alignItems: "center",
         }}>
           <span style={{ fontFamily: FONT, fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", color: MUTED }}>
             {game.opp_abbr} · {(game.opp_name ?? "").toUpperCase()}
           </span>
           {(isFinal || isLive) && (
-            <span style={{ fontFamily: FONT, fontSize: 20, fontWeight: 700,
-              color: isFinal && !stlWon ? "#d94040" : "rgba(245,240,224,0.5)",
-              fontVariantNumeric: "tabular-nums" as const }}>{game.opp_score}</span>
+            <span style={{ fontFamily: FONT, fontSize: 22, fontWeight: 700,
+              color: isFinal && !stlWon ? LOSS_RD : "rgba(200,195,160,0.45)",
+              fontVariantNumeric: "tabular-nums" as const, lineHeight: 1 }}>{game.opp_score}</span>
           )}
         </div>
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 8px 6px" }}>
+
+      {/* Footer row: W/L badge + result + venue */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 5 }}>
         {isFinal ? (
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <div style={{
-              fontFamily: FONT, fontSize: 11, fontWeight: 800,
-              background: stlWon ? "rgba(76,175,80,0.12)" : "rgba(217,64,64,0.12)",
+              fontFamily: FONT, fontSize: 10, fontWeight: 800,
+              background: stlWon ? "rgba(58,145,64,0.15)" : "rgba(200,48,48,0.15)",
               color: stlWon ? WIN_GRN : LOSS_RD,
-              border: `1px solid ${stlWon ? "rgba(76,175,80,0.4)" : "rgba(217,64,64,0.4)"}`,
-              borderRadius: 3, padding: "1px 8px",
+              border: `1px solid ${stlWon ? "rgba(58,145,64,0.45)" : "rgba(200,48,48,0.40)"}`,
+              borderRadius: 2, padding: "1px 8px",
+              textShadow: stlWon ? "0 0 8px rgba(58,145,64,0.5)" : "0 0 8px rgba(200,48,48,0.4)",
             }}>{stlWon ? "W" : "L"}</div>
-            <span style={{ fontFamily: FONT, fontSize: 9, color: stlWon ? "rgba(76,175,80,0.65)" : "rgba(217,64,64,0.65)" }}>
+            <span style={{ fontFamily: FONT, fontSize: 9,
+              color: stlWon ? "rgba(58,145,64,0.60)" : "rgba(200,48,48,0.55)" }}>
               {game.result}
             </span>
           </div>
         ) : isLive ? (
           <span style={{ fontFamily: FONT, fontSize: 11, fontWeight: 700, color: WIN_GRN }}>{game.result}</span>
         ) : (
-          <span style={{ fontFamily: FONT, fontSize: 11, fontWeight: 700, color: GOLD }}>{game.game_time}</span>
+          <span style={{ fontFamily: FONT, fontSize: 13, fontWeight: 800, color: GOLD,
+            letterSpacing: "0.04em" }}>{game.game_time}</span>
         )}
         <span style={{ fontFamily: FONT, fontSize: 8, color: DIM, textAlign: "right" as const }}>
           {game.venue}{game.city ? ` · ${game.city}` : ""}
@@ -543,10 +572,9 @@ export function BaseballPanel() {
         <div style={{ background: "#122016" }} />
 
         {/* RIGHT: Cardinals games */}
-        <div style={{ display: "flex", flexDirection: "column" }}>
-          <SBHead label="St. Louis Cardinals" />
+        <div style={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
           <GameBlock game={currentGame} label="Current Game" />
-          <div style={{ height: 1, background: "rgba(232,168,32,0.10)" }} />
+          <div style={{ height: 1, background: "rgba(0,0,0,0.35)", margin: "2px 8px" }} />
           <GameBlock game={nextGame} label="Next Game" />
         </div>
       </div>
