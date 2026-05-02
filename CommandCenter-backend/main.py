@@ -61,8 +61,6 @@ app.add_middleware(
 )
 
 # Step 2: Pure ASGI middleware that re-injects credentials header stripped by DO/Cloudflare proxy.
-# Added SECOND so it wraps outermost — its patched_send runs after CORSMiddleware sets headers,
-# overwriting any mangled values with the correct ones.
 class CredentialsCORSFixMiddleware:
     def __init__(self, app):
         self.app = app
@@ -98,7 +96,6 @@ class CredentialsCORSFixMiddleware:
 
         async def patched_send(message):
             if message["type"] == "http.response.start":
-                # Strip any mangled CORS headers, then inject correct ones.
                 filtered = [
                     (k, v) for k, v in message.get("headers", [])
                     if k.lower() not in inject_keys
@@ -146,7 +143,6 @@ def _own_or_legacy(query, model, user: User):
     return query.where(or_(model.user_id == user.id, model.user_id == None))  # noqa: E711
 
 def _task_to_dict(task: Task) -> dict:
-    """Serialize a SQLAlchemy Task ORM object to a plain dict for DashboardSummary."""
     tag_ids = task.tag_ids or ""
     if isinstance(tag_ids, str):
         s = tag_ids.strip()
@@ -194,7 +190,6 @@ def _task_to_dict(task: Task) -> dict:
     }
 
 def _project_to_dict(project: Project) -> dict:
-    """Serialize a SQLAlchemy Project ORM object to a plain dict for DashboardSummary."""
     due_date = project.due_date
     if isinstance(due_date, date) and not isinstance(due_date, datetime):
         due_date = datetime(due_date.year, due_date.month, due_date.day)
@@ -672,6 +667,64 @@ async def list_time_entries(
         _own(select(TimeEntry), TimeEntry, user).order_by(TimeEntry.started_at.desc())
     ).scalars().all()
 
+# ─── Time Blocks ───────────────────────────────────────────────────────
+# Registered under BOTH /time-blocks/ AND /api/time-blocks/ so the
+# frontend calling /api/time-blocks/?date=... gets a 200 instead of 404.
+@app.get("/time-blocks/", response_model=List[TimeBlockResponse])
+@app.get("/api/time-blocks/", response_model=List[TimeBlockResponse])
+async def list_time_blocks(
+    date: Optional[str] = None,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    query = _own(select(TimeBlock), TimeBlock, user)
+    if date:
+        query = query.where(TimeBlock.date == date)
+    return session.execute(query.order_by(TimeBlock.start_time)).scalars().all()
+
+@app.post("/time-blocks/", response_model=TimeBlockResponse)
+@app.post("/api/time-blocks/", response_model=TimeBlockResponse)
+async def create_time_block(
+    data: TimeBlockCreate,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    block = TimeBlock(**data.dict())
+    block.user_id = user.id
+    session.add(block)
+    session.commit()
+    session.refresh(block)
+    return block
+
+@app.patch("/time-blocks/{block_id}", response_model=TimeBlockResponse)
+async def update_time_block(
+    block_id: str,
+    data: TimeBlockUpdate,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    block = session.execute(_own(select(TimeBlock), TimeBlock, user).where(TimeBlock.id == block_id)).scalar()
+    if not block:
+        raise HTTPException(status_code=404)
+    for k, v in data.dict(exclude_unset=True).items():
+        setattr(block, k, v)
+    session.commit()
+    session.refresh(block)
+    return block
+
+@app.delete("/time-blocks/{block_id}")
+async def delete_time_block(
+    block_id: str,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    block = session.execute(_own(select(TimeBlock), TimeBlock, user).where(TimeBlock.id == block_id)).scalar()
+    if not block:
+        raise HTTPException(status_code=404)
+    session.delete(block)
+    session.commit()
+    return {"ok": True}
+
 # ─── Notes ────────────────────────────────────────────────────────────
 @app.get("/notes/", response_model=List[NoteResponse])
 async def list_notes(
@@ -923,12 +976,10 @@ async def dashboard(
     midnight_utc = _ct_midnight_as_utc()
 
     try:
-        # Tasks due/active today
         tasks_today_rows = session.execute(
             _own(select(Task), Task, user).where(Task.status.in_(["today", "in_progress"]))
         ).scalars().all()
 
-        # Tasks completed today
         tasks_done_today = session.execute(
             _own(select(Task), Task, user).where(
                 Task.status == "done",
@@ -936,7 +987,6 @@ async def dashboard(
             )
         ).scalars().all()
 
-        # Overdue tasks (due before today, not done)
         overdue_rows = session.execute(
             _own(select(Task), Task, user).where(
                 Task.due_date < today,
@@ -944,7 +994,6 @@ async def dashboard(
             )
         ).scalars().all()
 
-        # Habits
         habits = session.execute(
             _own(select(Habit), Habit, user).where(Habit.is_active == True)  # noqa: E712
         ).scalars().all()
@@ -957,7 +1006,6 @@ async def dashboard(
         ).scalars().all() if habits else []
         completed_habit_ids = {c.habit_id for c in habit_completions_today}
 
-        # Build today_habits list with completed flag
         today_habits_list = [
             {
                 "id": h.id,
@@ -969,13 +1017,11 @@ async def dashboard(
             for h in habits
         ]
 
-        # Active projects — serialize to dicts so Pydantic can handle them
         active_projects_orm = session.execute(
             _own(select(Project), Project, user).where(Project.status == "active")
         ).scalars().all()
         active_projects = [_project_to_dict(p) for p in active_projects_orm]
 
-        # Time tracked today (sum of completed time entries)
         time_entries_today = session.execute(
             _own(select(TimeEntry), TimeEntry, user).where(
                 TimeEntry.started_at >= midnight_utc,
@@ -992,10 +1038,8 @@ async def dashboard(
                 if delta > 0:
                     time_tracked_seconds += int(delta)
 
-        # Focus score today = sum of focus_score for completed tasks today
         focus_score_today = sum(t.focus_score or 0 for t in tasks_done_today)
 
-        # Streak: consecutive days with at least 1 task completed
         streak_days = 0
         check = today
         while True:
@@ -1019,8 +1063,6 @@ async def dashboard(
             len(completed_habit_ids) / len(habits) if habits else 0.0
         )
 
-        # Serialize ORM Task objects to dicts before passing to DashboardSummary
-        # to avoid PydanticSerializationError with List[Any] fields in Pydantic v2.
         serialized_today_tasks = [_task_to_dict(t) for t in tasks_today_rows]
         serialized_overdue_tasks = [_task_to_dict(t) for t in overdue_rows]
 
@@ -1040,8 +1082,6 @@ async def dashboard(
         )
 
     except Exception as e:
-        # DB connection exhausted or query failure — return safe empty dashboard
-        # rather than crashing with a 500. Frontend will show zeros instead of error.
         print(f"Dashboard query error: {e}")
         return DashboardSummary(
             tasks_today=0,
@@ -1069,7 +1109,6 @@ async def gamification_history(
     window_start = datetime.combine(today - timedelta(days=limit - 1), datetime.min.time())
     window_end = datetime.combine(today + timedelta(days=1), datetime.min.time())
 
-    # Query 1: all completed tasks in the window — group by date in Python
     all_tasks = session.execute(
         _own(select(Task), Task, user).where(
             Task.status == "done",
@@ -1083,14 +1122,12 @@ async def gamification_history(
             completed_dt = t.completed_at if isinstance(t.completed_at, datetime) else datetime.fromisoformat(str(t.completed_at))
             tasks_by_date[completed_dt.date()].append(t)
 
-    # Query 2: fetch all user habit IDs in one shot
     habit_ids = [
         h.id for h in session.execute(
             _own(select(Habit), Habit, user)
         ).scalars().all()
     ]
 
-    # Query 3: all habit completions in the window — group by date in Python
     completions_by_date: dict = defaultdict(int)
     if habit_ids:
         all_completions = session.execute(
@@ -1103,7 +1140,6 @@ async def gamification_history(
         for c in all_completions:
             completions_by_date[c.completed_date] += 1
 
-    # Build results from in-memory dicts — zero DB hits in the loop
     results = []
     for i in range(limit):
         day = today - timedelta(days=i)
@@ -1155,6 +1191,144 @@ async def remove_favorite(
     session.commit()
     return {"ok": True}
 
+# ─── MLB Live Data (via MLB Stats API — no key required) ────────────────
+# Proxies calls to statsapi.mlb.com so the frontend never touches it directly.
+# Routes match exactly what the frontend requests:
+#   GET /sports/mlb/{team_slug}                — today's game + standings
+#   GET /sports/mlb/{team_slug}/projections    — probable pitchers / lineup
+
+_MLB_TEAM_IDS = {
+    "cardinals": 138, "cubs": 112, "brewers": 158, "reds": 113, "pirates": 134,
+    "braves": 144, "mets": 121, "phillies": 143, "marlins": 146, "nationals": 120,
+    "dodgers": 119, "giants": 137, "padres": 135, "rockies": 115, "diamondbacks": 109,
+    "yankees": 147, "redsox": 111, "bluejays": 141, "orioles": 110, "rays": 139,
+    "astros": 117, "athletics": 133, "mariners": 136, "angels": 108, "rangers": 140,
+    "twins": 142, "whitesox": 145, "guardians": 114, "tigers": 116, "royals": 118,
+}
+
+_MLB_BASE = "https://statsapi.mlb.com/api/v1"
+
+async def _mlb_get(path: str) -> dict:
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        r = await client.get(f"{_MLB_BASE}{path}")
+        r.raise_for_status()
+        return r.json()
+
+@app.get("/sports/mlb/{team_slug}")
+async def mlb_team_today(
+    team_slug: str,
+    user: User = Depends(get_current_user),
+):
+    """Return today's game (score/status) + NL Central standings for the team."""
+    team_id = _MLB_TEAM_IDS.get(team_slug.lower())
+    if not team_id:
+        raise HTTPException(status_code=404, detail=f"Unknown team slug: {team_slug}")
+
+    today_str = datetime.now(_CT).strftime("%Y-%m-%d")
+
+    try:
+        # Fetch today's schedule for this team
+        schedule = await _mlb_get(
+            f"/schedule?sportId=1&teamId={team_id}&date={today_str}"
+            f"&hydrate=linescore,probablePitcher"
+        )
+        games = []
+        for date_entry in schedule.get("dates", []):
+            for g in date_entry.get("games", []):
+                linescore = g.get("linescore", {})
+                games.append({
+                    "game_pk": g.get("gamePk"),
+                    "status": g.get("status", {}).get("detailedState"),
+                    "away_team": g.get("teams", {}).get("away", {}).get("team", {}).get("name"),
+                    "home_team": g.get("teams", {}).get("home", {}).get("team", {}).get("name"),
+                    "away_score": g.get("teams", {}).get("away", {}).get("score"),
+                    "home_score": g.get("teams", {}).get("home", {}).get("score"),
+                    "inning": linescore.get("currentInning"),
+                    "inning_half": linescore.get("inningHalf"),
+                    "start_time": g.get("gameDate"),
+                    "venue": g.get("venue", {}).get("name"),
+                })
+
+        # Fetch NL Central standings (league 104 = NL, division 205 = NL Central)
+        standings_data = await _mlb_get("/standings?leagueId=104&season=2026&standingsTypes=regularSeason")
+        division_records = []
+        for record in standings_data.get("records", []):
+            div = record.get("division", {})
+            if div.get("id") == 205:  # NL Central
+                for tr in record.get("teamRecords", []):
+                    division_records.append({
+                        "team": tr.get("team", {}).get("name"),
+                        "team_id": tr.get("team", {}).get("id"),
+                        "wins": tr.get("wins"),
+                        "losses": tr.get("losses"),
+                        "pct": tr.get("winningPercentage"),
+                        "gb": tr.get("gamesBack"),
+                        "streak": tr.get("streak", {}).get("streakCode"),
+                        "last10": tr.get("records", {}).get("splitRecords", [{}])[0].get("wins", ""),
+                    })
+                break
+
+        return {
+            "team_id": team_id,
+            "team_slug": team_slug,
+            "date": today_str,
+            "games": games,
+            "standings": division_records,
+        }
+
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"MLB API error: {e}")
+
+@app.get("/sports/mlb/{team_slug}/projections")
+async def mlb_team_projections(
+    team_slug: str,
+    user: User = Depends(get_current_user),
+):
+    """Return probable pitchers and next game info for the team."""
+    team_id = _MLB_TEAM_IDS.get(team_slug.lower())
+    if not team_id:
+        raise HTTPException(status_code=404, detail=f"Unknown team slug: {team_slug}")
+
+    today_str = datetime.now(_CT).strftime("%Y-%m-%d")
+    # Look ahead 7 days for next scheduled game
+    end_str = (datetime.now(_CT) + timedelta(days=7)).strftime("%Y-%m-%d")
+
+    try:
+        schedule = await _mlb_get(
+            f"/schedule?sportId=1&teamId={team_id}"
+            f"&startDate={today_str}&endDate={end_str}"
+            f"&hydrate=probablePitcher,lineups"
+        )
+
+        games = []
+        for date_entry in schedule.get("dates", []):
+            for g in date_entry.get("games", []):
+                away = g.get("teams", {}).get("away", {})
+                home = g.get("teams", {}).get("home", {})
+                away_pitcher = away.get("probablePitcher", {}) or {}
+                home_pitcher = home.get("probablePitcher", {}) or {}
+                games.append({
+                    "game_pk": g.get("gamePk"),
+                    "game_date": g.get("gameDate"),
+                    "status": g.get("status", {}).get("detailedState"),
+                    "away_team": away.get("team", {}).get("name"),
+                    "home_team": home.get("team", {}).get("name"),
+                    "away_probable_pitcher": away_pitcher.get("fullName"),
+                    "home_probable_pitcher": home_pitcher.get("fullName"),
+                    "venue": g.get("venue", {}).get("name"),
+                })
+
+        return {
+            "team_id": team_id,
+            "team_slug": team_slug,
+            "window_start": today_str,
+            "window_end": end_str,
+            "upcoming_games": games,
+        }
+
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"MLB API error: {e}")
+
 # ─── Telegram Webhook ──────────────────────────────────────────────────
 @app.post("/telegram/webhook/")
 async def telegram_webhook(request: Request, session: Session = Depends(db.get_session)):
@@ -1201,12 +1375,12 @@ async def telegram_webhook(request: Request, session: Session = Depends(db.get_s
         if not tasks:
             await telegram_send_message(chat_id, "No tasks for today.")
         else:
-            lines = [f"• {t.title} [{t.priority}]" for t in tasks]
+            lines = [f"\u2022 {t.title} [{t.priority}]" for t in tasks]
             await telegram_send_message(chat_id, "Today's tasks:\n" + "\n".join(lines))
     elif text.lower() == "/help":
         await telegram_send_message(
             chat_id,
-            "/task <title> — create a task\n/tasks — list today's tasks\n/help — show commands",
+            "/task <title> \u2014 create a task\n/tasks \u2014 list today's tasks\n/help \u2014 show commands",
         )
     else:
         await telegram_send_message(chat_id, "Unknown command. Try /help")
