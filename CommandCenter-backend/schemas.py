@@ -360,3 +360,20 @@ class DashboardSummary(BaseModel):
     completed_tasks_today: int = 0
     habit_completion_rate: float = 0.0
     gamification: Optional[Any] = None
+
+
+# ─── Sports ──────────────────────────────────────────────────────────
+class FavoriteSportsTeamCreate(BaseModel):
+    team_name: str
+    league: Optional[str] = None
+    sport: Optional[str] = None
+
+class FavoriteSportsTeamResponse(BaseModel):
+    id: str
+    team_name: str
+    league: Optional[str] = None
+    sport: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

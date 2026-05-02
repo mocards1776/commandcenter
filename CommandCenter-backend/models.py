@@ -215,3 +215,13 @@ class BraindumpEntry(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="braindump")
+
+
+class FavoriteSportsTeam(Base):
+    __tablename__ = "favorite_sports_teams"
+    id = Column(String(36), primary_key=True, default=gen_id)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
+    team_name = Column(String(255), nullable=False)
+    league = Column(String(100), nullable=True)
+    sport = Column(String(100), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
