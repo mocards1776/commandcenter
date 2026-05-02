@@ -1288,3 +1288,81 @@ async def get_cardinals_data():
             "current_game": current_game,
             "next_game":    next_game,
         }
+
+
+# ─── Cardinals Playoff Projections (Baseball Reference) ──────────────────────
+import httpx
+from functools import lru_cache
+import time as _time
+
+_proj_cache: dict = {"data": None, "ts": 0}
+
+@app.get("/sports/mlb/cardinals/projections")
+async def get_cardinals_projections():
+    """
+    Scrapes Baseball Reference playoff odds page for Cardinals projection data.
+    Cached for 30 minutes to be polite to BBRef.
+    """
+    now = _time.time()
+    if _proj_cache["data"] and now - _proj_cache["ts"] < 1800:
+        return _proj_cache["data"]
+
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+            r = await client.get(
+                "https://www.baseball-reference.com/leagues/majors/2026-playoff-odds.shtml",
+                headers=headers,
+            )
+        html = r.text
+
+        import re
+        idx = html.find("St. Louis Cardinals")
+        if idx == -1:
+            raise ValueError("Cardinals row not found")
+
+        chunk = html[idx: idx + 2000]
+        stats = dict(re.findall(r'data-stat="([^"]+)"[^>]*>([^<]*)<', chunk))
+
+        def pct(key: str) -> float | None:
+            v = stats.get(key, "").replace("%", "").strip()
+            try:
+                return round(float(v), 1)
+            except ValueError:
+                return None
+
+        def num(key: str) -> float | None:
+            v = stats.get(key, "").strip()
+            try:
+                return round(float(v), 1)
+            except ValueError:
+                return None
+
+        proj_wins_raw = num("ppr_avg_w")
+        proj_wins = int(round(proj_wins_raw)) if proj_wins_raw else None
+
+        result = {
+            "record":      f"{stats.get('ppr_cur_w','?')}-{stats.get('ppr_cur_l','?')}",
+            "proj_wins":   proj_wins,
+            "proj_losses": int(round(num("ppr_avg_l"))) if num("ppr_avg_l") else None,
+            "best":        stats.get("ppr_best", ""),
+            "worst":       stats.get("ppr_worst", ""),
+            "playoff_pct": pct("ppr_postseason"),
+            "div_pct":     pct("ppr_division"),
+            "wc_pct":      pct("ppr_wildcard"),
+            "ws_pct":      pct("ppr_champs"),
+            "source":      "baseball-reference.com",
+        }
+
+        _proj_cache["data"] = result
+        _proj_cache["ts"]   = now
+        return result
+
+    except Exception as e:
+        # Return last cached data if available, else error
+        if _proj_cache["data"]:
+            return _proj_cache["data"]
+        return {"error": str(e), "proj_wins": None, "playoff_pct": None, "div_pct": None, "wc_pct": None, "ws_pct": None}
