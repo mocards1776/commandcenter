@@ -1054,6 +1054,7 @@ async def get_gamification_history(limit: int = 30, session: Session = Depends(d
 async def telegram_webhook(request: Request, session: Session = Depends(db.get_session)):
     """
     Receives Telegram Bot webhook updates and creates tasks from messages.
+    Auto-tags the task with the sender's first name.
     """
     try:
         body = await request.json()
@@ -1070,13 +1071,30 @@ async def telegram_webhook(request: Request, session: Session = Depends(db.get_s
     if not text or not chat_id:
         return {"ok": True}
 
+    # ── Resolve sender name → tag ────────────────────────────────
+    sender_first = (message.get("from") or {}).get("first_name", "").strip()
+    sender_tag_id = ""
+    if sender_first:
+        tag_name = sender_first.capitalize()
+        existing_tag = session.execute(
+            select(Tag).where(Tag.name == tag_name)
+        ).scalar()
+        if existing_tag:
+            sender_tag_id = existing_tag.id
+        else:
+            new_tag = Tag(name=tag_name, color="#4f98a3")
+            session.add(new_tag)
+            session.commit()
+            session.refresh(new_tag)
+            sender_tag_id = new_tag.id
+
     try:
         task_data = parse_telegram_task(text)
     except ValueError as e:
         await telegram_send_message(chat_id, str(e))
         return {"ok": True}
 
-    task_data["tag_ids"] = ""
+    task_data["tag_ids"] = sender_tag_id
     task_data["focus_score"] = calc_focus_score(
         task_data.get("importance", 3),
         task_data.get("difficulty", 3),
@@ -1086,9 +1104,10 @@ async def telegram_webhook(request: Request, session: Session = Depends(db.get_s
     session.commit()
     session.refresh(task)
 
+    tag_note = f" [tagged: {sender_first}]" if sender_first else ""
     await telegram_send_message(
         chat_id,
-        f"✅ Task created: \"{task.title}\" (priority: {task.priority})"
+        f"✅ Task created: \"{task.title}\" (priority: {task.priority}){tag_note}"
     )
     return {"ok": True}
 
@@ -1366,3 +1385,4 @@ async def get_cardinals_projections():
         if _proj_cache["data"]:
             return _proj_cache["data"]
         return {"error": str(e), "proj_wins": None, "playoff_pct": None, "div_pct": None, "wc_pct": None, "ws_pct": None}
+
