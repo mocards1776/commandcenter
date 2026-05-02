@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { tasksApi } from "@/lib/api";
 import { useActiveTimer } from "@/hooks/useTimer";
-import { useTimerStore, useCelebrationStore, useFocusStore } from "@/store";
+import { useTimerStore, useCelebrationStore, useFocusStore, usePinnedTaskStore } from "@/store";
 import { TaskModal } from "./TaskModal";
 import { TaskContextMenu } from "./TaskContextMenu";
 import { calcPoints, formatDuration, formatMinutes, isOverdue } from "@/lib/utils";
@@ -148,7 +148,7 @@ function TimerPanel({ seconds }: { seconds: number }) {
 }
 
 // ─── Completed task row ───────────────────────────────────────
-export function TaskCard({ task }: { task: Task }) {
+export function TaskCard({ task, isPinned = false, onPin, onUnpin }: { task: Task; isPinned?: boolean; onPin?: () => void; onUnpin?: () => void }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [subsOpen, setSubsOpen]   = useState(false);
   const qc = useQueryClient();
@@ -162,9 +162,12 @@ export function TaskCard({ task }: { task: Task }) {
   const activeSubs    = task.subtasks.filter(s => s.status !== "done");
   const priColor      = PRIORITY_COLOR[task.priority] ?? MUTED;
 
+  const { setPinnedTask, pinnedTaskId } = usePinnedTaskStore();
+
   const completeMut = useMutation({
     mutationFn: () => tasksApi.complete(task.id),
     onSuccess: () => {
+      if (pinnedTaskId === task.id) setPinnedTask(null);
       triggerCelebration(task, calcPoints(task));
       qc.invalidateQueries({ queryKey: ["tasks"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
@@ -174,6 +177,7 @@ export function TaskCard({ task }: { task: Task }) {
   const deleteMut = useMutation({
     mutationFn: () => tasksApi.delete(task.id),
     onSuccess: () => {
+      if (pinnedTaskId === task.id) setPinnedTask(null);
       qc.invalidateQueries({ queryKey: ["tasks"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       toast.success("Deleted");
@@ -233,6 +237,7 @@ export function TaskCard({ task }: { task: Task }) {
   return (
     <>
       <TaskContextMenu task={task} isTimerRunning={isThisRunning}
+        isPinned={isPinned} onPin={onPin} onUnpin={onUnpin}
         onEdit={() => setModalOpen(true)} onComplete={() => completeMut.mutate()}
         onToggleTimer={toggleTimer} onDelete={handleDelete}>
         <div style={{ margin: "0 10px 5px" }}>
@@ -257,6 +262,11 @@ export function TaskCard({ task }: { task: Task }) {
                 disabled={completeMut.isPending} title="Mark complete" style={{ flexShrink: 0 }}>
                 {completeMut.isPending && "✓"}
               </button>
+
+              {/* Pin indicator */}
+              {isPinned && !isThisRunning && (
+                <span title="Pinned to top" style={{ fontSize: 10, color: GOLD, flexShrink: 0, opacity: 0.8 }}>📌</span>
+              )}
 
               {/* Title */}
               <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }}
