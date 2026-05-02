@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { tasksApi } from "@/lib/api";
+import { tasksApi, tagsApi } from "@/lib/api";
 import { useActiveTimer } from "@/hooks/useTimer";
 import { useTimerStore, useCelebrationStore, useFocusStore, usePinnedTaskStore } from "@/store";
 import { TaskModal } from "./TaskModal";
@@ -155,6 +155,9 @@ export function TaskCard({ task, isPinned = false, onPin, onUnpin }: { task: Tas
   const [completionOpen, setCompletionOpen] = useState(false);
   const qc = useQueryClient();
   const { isRunning, activeTimer, elapsedSeconds, start, stop } = useActiveTimer();
+  const { data: allTags = [] } = useQuery({ queryKey: ["tags"], queryFn: tagsApi.list, staleTime: 5 * 60_000 });
+  const tagMap = Object.fromEntries(allTags.map((t: any) => [t.id, t]));
+  const resolvedTags = (task.tag_ids ?? []).map((id: any) => tagMap[id]?.name ?? id).filter(Boolean);
   const { setActiveTimer }     = useTimerStore();
   const { setFocus }           = useFocusStore();
 
@@ -302,8 +305,8 @@ export function TaskCard({ task, isPinned = false, onPin, onUnpin }: { task: Tas
 
               {/* RIGHT: scoreboard stat panels — vertical divider then cells */}
               <div style={{
-                display: "flex", alignItems: "center", gap: 5,
-                padding: "5px 10px 5px 8px",
+                display: "flex", alignItems: "center", gap: 10,
+                padding: "6px 14px 6px 12px",
                 borderLeft: "1px solid rgba(0,0,0,0.35)",
                 flexShrink: 0,
               }}>
@@ -334,12 +337,12 @@ export function TaskCard({ task, isPinned = false, onPin, onUnpin }: { task: Tas
                   color={(task as any).category_name ? "muted" : "dim"}
                 />
 
-                {/* Tags — always show up to 2, dash if none */}
-                {(task.tag_ids?.length ?? 0) > 0 ? (
-                  task.tag_ids.slice(0, 2).map((tag: any, i: number) => (
+                {/* Tags — resolved names, always show, dash if none */}
+                {resolvedTags.length > 0 ? (
+                  resolvedTags.slice(0, 2).map((name: string, i: number) => (
                     <PanelCell
                       key={i}
-                      value={typeof tag === "string" && tag.length > 9 ? tag.slice(0, 9) + "…" : tag}
+                      value={name.length > 9 ? name.slice(0, 9) + "…" : name}
                       sub={i === 0 ? "TAG" : ""}
                       color="dim"
                     />
