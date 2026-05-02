@@ -1157,3 +1157,134 @@ async def get_webhook_info():
             f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getWebhookInfo"
         )
     return resp.json()
+
+# ─── MLB Live Data — Cardinals ────────────────────────────────────────────────
+@app.get("/sports/mlb/cardinals")
+async def get_cardinals_data():
+    """
+    Returns Cardinals current/next game and NL Central standings from MLB Stats API.
+    Time logic (America/Chicago):
+      - Before 10:00 AM CDT  → current_game = yesterday's final, next_game = today
+      - 10:00 AM CDT or later → current_game = today's game,    next_game = tomorrow
+    """
+    CT = ZoneInfo("America/Chicago")
+    now_ct = datetime.now(CT)
+    STL_TEAM_ID = 138
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+
+        # ── 1. NL Central standings ─────────────────────────────────────────
+        standings_resp = await client.get(
+            "https://statsapi.mlb.com/api/v1/standings",
+            params={"leagueId": "104", "season": str(now_ct.year), "standingsTypes": "regularSeason"},
+        )
+        nl_central = []
+        for division in standings_resp.json().get("records", []):
+            if division.get("division", {}).get("id") == 205:  # NL Central
+                for tr in division.get("teamRecords", []):
+                    team = tr.get("team", {})
+                    wins   = tr.get("wins", 0)
+                    losses = tr.get("losses", 0)
+                    pct_raw = tr.get("winningPercentage", "0")
+                    gb_raw  = tr.get("gamesBack", "-")
+                    strk    = tr.get("streak", {}).get("streakCode", "")
+                    l10_rec = tr.get("records", {}).get("splitRecords", [])
+                    l10     = next((f"{r['wins']}-{r['losses']}" for r in l10_rec if r.get("type") == "lastTen"), "")
+                    try:
+                        pct_fmt = f".{int(float(pct_raw) * 1000):03d}"
+                    except Exception:
+                        pct_fmt = ".000"
+                    nl_central.append({
+                        "abbr":    team.get("abbreviation", ""),
+                        "full":    team.get("name", ""),
+                        "team_id": team.get("id"),
+                        "wl":      f"{wins}-{losses}",
+                        "pct":     pct_fmt,
+                        "gb":      "—" if str(gb_raw) in ["-", "0.0", "0"] else str(gb_raw),
+                        "strk":    strk,
+                        "l10":     l10,
+                        "cards":   team.get("id") == STL_TEAM_ID,
+                    })
+
+        # ── 2. Date logic ────────────────────────────────────────────────────
+        if now_ct.hour < 10:
+            current_date = (now_ct - timedelta(days=1)).date()
+            next_date    = now_ct.date()
+        else:
+            current_date = now_ct.date()
+            next_date    = (now_ct + timedelta(days=1)).date()
+
+        # ── 3. Fetch schedule ────────────────────────────────────────────────
+        async def fetch_games(game_date: date):
+            r = await client.get(
+                "https://statsapi.mlb.com/api/v1/schedule",
+                params={
+                    "sportId": "1",
+                    "teamId":  STL_TEAM_ID,
+                    "date":    game_date.strftime("%Y-%m-%d"),
+                    "hydrate": "linescore,team",
+                },
+            )
+            return r.json().get("dates", [{}])[0].get("games", [])
+
+        current_games, next_games = await asyncio.gather(
+            fetch_games(current_date), fetch_games(next_date)
+        )
+
+        # ── 4. Parse a game record ───────────────────────────────────────────
+        def parse_game(game, label: str):
+            if not game:
+                return None
+            away = game.get("teams", {}).get("away", {})
+            home = game.get("teams", {}).get("home", {})
+            stl_is_home = home.get("team", {}).get("id") == STL_TEAM_ID
+            opp_side    = away if stl_is_home else home
+            stl_side    = home if stl_is_home else away
+            opp_team    = opp_side.get("team", {})
+            stl_score   = stl_side.get("score", 0) or 0
+            opp_score   = opp_side.get("score", 0) or 0
+            status      = game.get("status", {}).get("abstractGameState", "")
+            detailed    = game.get("status", {}).get("detailedState", "")
+            venue       = game.get("venue", {}).get("name", "")
+            city        = game.get("venue", {}).get("location", {}).get("city", "")
+            game_time   = ""
+            game_dt_str = game.get("gameDate", "")
+            if game_dt_str:
+                try:
+                    gdt = datetime.fromisoformat(game_dt_str.replace("Z", "+00:00"))
+                    game_time = gdt.astimezone(CT).strftime("%-I:%M %p CDT")
+                except Exception:
+                    pass
+            result = ""
+            if status == "Final":
+                result = f"Cardinals win {stl_score}-{opp_score}" if stl_score > opp_score else f"Cardinals fall {stl_score}-{opp_score}"
+            elif status == "Live":
+                ls = game.get("linescore", {})
+                inning      = ls.get("currentInning", "")
+                inning_half = ls.get("inningHalf", "")
+                result = f"{inning_half} {inning}".strip() if inning else "In Progress"
+            return {
+                "status":       status,
+                "detailed_state": detailed,
+                "stl_score":    stl_score,
+                "opp_score":    opp_score,
+                "opp_abbr":     opp_team.get("abbreviation", ""),
+                "opp_name":     opp_team.get("teamName", opp_team.get("name", "")),
+                "stl_is_home":  stl_is_home,
+                "game_time":    game_time,
+                "venue":        venue,
+                "city":         city,
+                "result":       result,
+                "date_label":   label,
+            }
+
+        current_game = parse_game(current_games[0] if current_games else None,
+                                   current_date.strftime("Today · %b %-d") if now_ct.hour >= 10 else current_date.strftime("%b %-d"))
+        next_game    = parse_game(next_games[0] if next_games else None,
+                                   next_date.strftime("%A · %b %-d"))
+
+        return {
+            "nl_central":   nl_central,
+            "current_game": current_game,
+            "next_game":    next_game,
+        }
