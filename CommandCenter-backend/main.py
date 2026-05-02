@@ -55,25 +55,52 @@ app.add_middleware(
 )
 
 # DigitalOcean/Cloudflare proxy strips Access-Control-Allow-Credentials.
-# This middleware re-injects it so the browser doesn't block credentialed requests.
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request as StarletteRequest
+# Pure ASGI middleware — does NOT buffer the response body (unlike BaseHTTPMiddleware),
+# so it safely injects headers without interfering with response streaming or content.
+class CredentialsCORSFixMiddleware:
+    def __init__(self, app):
+        self.app = app
 
-class CredentialsCORSFixMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: StarletteRequest, call_next):
-        response = await call_next(request)
-        origin = request.headers.get("origin", "")
+    async def __call__(self, scope, receive, send):
+        if scope["type"] not in ("http", "websocket"):
+            await self.app(scope, receive, send)
+            return
+
+        origin = ""
+        for name, value in scope.get("headers", []):
+            if name == b"origin":
+                origin = value.decode("latin-1")
+                break
+
         is_allowed = (
             origin in ALLOWED_ORIGINS
             or (origin.startswith("https://command-center") and origin.endswith(".vercel.app"))
         )
-        if is_allowed:
-            response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Credentials"] = "true"
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-            response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Accept"
-            response.headers["Vary"] = "Origin"
-        return response
+
+        if not is_allowed:
+            await self.app(scope, receive, send)
+            return
+
+        inject = [
+            (b"access-control-allow-origin", origin.encode("latin-1")),
+            (b"access-control-allow-credentials", b"true"),
+            (b"access-control-allow-methods", b"GET, POST, PUT, PATCH, DELETE, OPTIONS"),
+            (b"access-control-allow-headers", b"Authorization, Content-Type, Accept"),
+            (b"vary", b"Origin"),
+        ]
+        inject_keys = {k for k, _ in inject}
+
+        async def patched_send(message):
+            if message["type"] == "http.response.start":
+                # Strip any mangled CORS headers from the proxy, then inject correct ones.
+                filtered = [
+                    (k, v) for k, v in message.get("headers", [])
+                    if k.lower() not in inject_keys
+                ]
+                message = {**message, "headers": filtered + inject}
+            await send(message)
+
+        await self.app(scope, receive, patched_send)
 
 app.add_middleware(CredentialsCORSFixMiddleware)
 
