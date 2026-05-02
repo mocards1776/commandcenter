@@ -1,11 +1,15 @@
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.pool import NullPool
 from models import Base
 import os
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/commandcenter")
 
-engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
+# NullPool: no persistent connection pooling — each request opens and closes its
+# own connection. Required for DigitalOcean App Platform (stateless containers)
+# to prevent "QueuePool limit reached" exhaustion errors.
+engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True, poolclass=NullPool)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def get_session_direct() -> Session:
