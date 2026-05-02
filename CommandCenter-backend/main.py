@@ -1146,3 +1146,14 @@ async def debug_habits_error(session: Session = Depends(db.get_session)):
         return {"ok": True, "count": len(result), "habits": result, "version": "v_debug_1"}
     except Exception as e:
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+
+@app.get("/telegram/webhook-info")
+async def get_webhook_info():
+    """Query Telegram for current webhook status and recent errors."""
+    if not TELEGRAM_BOT_TOKEN:
+        return {"ok": False, "error": "TELEGRAM_BOT_TOKEN not set"}
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.get(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getWebhookInfo"
+        )
+    return resp.json()
