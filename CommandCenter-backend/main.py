@@ -34,15 +34,11 @@ from auth import get_current_user, create_access_token, verify_token
 
 app = FastAPI(title="CommandCenter API")
 
-# CORS
-# allow_origins=["*"] + allow_credentials=True is illegal — browsers reject it.
-# Use an explicit list of allowed origins instead.
+# CORS — allow_origins=["*"] + allow_credentials=True is illegal; use explicit list.
 ALLOWED_ORIGINS = [
     "https://command-center-flax-gamma.vercel.app",
     "https://command-center-git-main-mocards1776s-projects.vercel.app",
-    # Allow any Vercel preview deploy for this project
     "https://command-center-mocards1776s-projects.vercel.app",
-    # Local dev
     "http://localhost:5173",
     "http://localhost:3000",
     "http://127.0.0.1:5173",
@@ -58,7 +54,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Run schema migrations + ownership backfill on startup
 @app.on_event("startup")
 def _on_startup():
     try:
@@ -89,14 +84,9 @@ def calc_focus_score(importance: int, difficulty: int) -> int:
     return importance * difficulty
 
 def _own(query, model, user: User):
-    """Restrict a query to the current user's rows."""
     return query.where(model.user_id == user.id)
 
 def _own_or_legacy(query, model, user: User):
-    """
-    For shared lookup tables (tags, categories) where legacy NULL-owner rows
-    might still exist: return the user's rows OR rows with no owner.
-    """
     return query.where(or_(model.user_id == user.id, model.user_id == None))  # noqa: E711
 
 # ─── Telegram Bot ────────────────────────────────────────────────────
@@ -120,30 +110,22 @@ def parse_telegram_task(text: str) -> dict:
         raw = ""
     if not raw:
         raise ValueError("Usage: /task Your task title here")
-
     priority = "medium"
     status = "today"
     importance = 3
     difficulty = 3
-
     if raw.startswith("!"):
         priority = "high"
         importance = 5
         raw = raw[1:].strip()
-
     if raw.lower().startswith("today "):
         status = "today"
         raw = raw[6:].strip()
-
     if not raw:
         raise ValueError("Task title cannot be empty after prefix")
-
     return {
-        "title": raw,
-        "status": status,
-        "priority": priority,
-        "importance": importance,
-        "difficulty": difficulty,
+        "title": raw, "status": status, "priority": priority,
+        "importance": importance, "difficulty": difficulty,
         "notes": "Created via Telegram bot",
     }
 
@@ -186,11 +168,9 @@ async def change_password(
         raise HTTPException(status_code=401, detail="Current password is incorrect")
     if len(new) < 8:
         raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
-    # Reattach to session
     fresh = session.execute(select(User).where(User.id == user.id)).scalar()
     fresh.set_password(new)
     session.commit()
-    # Issue a new token so the client can swap immediately
     token = create_access_token(fresh.id)
     return {"ok": True, "access_token": token, "token_type": "bearer"}
 
@@ -346,17 +326,11 @@ async def list_projects(
         done = sum(1 for t in proj_tasks if t.status == "done")
         pct = int((done / total) * 100) if total else 0
         result.append({
-            "id": p.id,
-            "title": p.title,
-            "description": p.description,
-            "status": p.status,
-            "color": p.color,
-            "due_date": p.due_date,
-            "created_at": p.created_at,
-            "updated_at": p.updated_at,
+            "id": p.id, "title": p.title, "description": p.description,
+            "status": p.status, "color": p.color, "due_date": p.due_date,
+            "created_at": p.created_at, "updated_at": p.updated_at,
             "tasks": [json.loads(TaskResponse.from_orm(t).json()) for t in proj_tasks],
-            "task_count": total,
-            "completion_percentage": pct,
+            "task_count": total, "completion_percentage": pct,
         })
     return result
 
@@ -551,7 +525,6 @@ async def complete_habit(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    # Confirm habit ownership
     habit = session.execute(
         _own(select(Habit), Habit, user).where(Habit.id == habit_id)
     ).scalar()
@@ -564,7 +537,6 @@ async def complete_habit(
         completed_date = datetime.fromisoformat(completed_date_str).date()
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format")
-
     existing = session.execute(
         select(HabitCompletion).where(
             (HabitCompletion.habit_id == habit_id) &
@@ -639,7 +611,7 @@ async def get_habit_streak(
             break
     return {"habit_id": habit_id, "streak": streak}
 
-# ─── Time Entries ───────────────────────────────────────────────
+# ─── Time Entries ───────────────────────────────────────────────────
 @app.get("/time-entries/", response_model=List[TimeEntryResponse])
 async def list_time_entries(
     user: User = Depends(get_current_user),
@@ -666,7 +638,6 @@ async def start_timer(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    # Stop any existing active timer first
     active = session.execute(
         _own(select(TimeEntry), TimeEntry, user).where(TimeEntry.ended_at == None)  # noqa
     ).scalar()
@@ -694,7 +665,6 @@ async def stop_timer(
     entry.ended_at = datetime.fromisoformat(data["ended_at"]) if isinstance(data["ended_at"], str) else data["ended_at"]
     if "note" in data:
         entry.note = data["note"]
-    # Update actual_time_minutes on the task
     if entry.task_id:
         task = session.execute(
             _own(select(Task), Task, user).where(Task.id == entry.task_id)
@@ -706,7 +676,7 @@ async def stop_timer(
     session.refresh(entry)
     return entry
 
-# ─── Notes ─────────────────────────────────────────────────────────────
+# ─── Notes ──────────────────────────────────────────────────────────
 @app.get("/notes/", response_model=List[NoteResponse])
 async def list_notes(
     search: Optional[str] = None,
@@ -764,7 +734,7 @@ async def delete_note(
     session.commit()
     return {"ok": True}
 
-# ─── Tags ──────────────────────────────────────────────────────────────
+# ─── Tags ──────────────────────────────────────────────────────────
 @app.get("/tags/", response_model=List[TagResponse])
 async def list_tags(
     user: User = Depends(get_current_user),
@@ -803,7 +773,7 @@ async def delete_tag(
     session.commit()
     return {"ok": True}
 
-# ─── Categories ────────────────────────────────────────────────────────
+# ─── Categories ───────────────────────────────────────────────────
 @app.get("/categories/", response_model=List[CategoryResponse])
 async def list_categories(
     user: User = Depends(get_current_user),
@@ -842,7 +812,7 @@ async def delete_category(
     session.commit()
     return {"ok": True}
 
-# ─── CRM ───────────────────────────────────────────────────────────────
+# ─── CRM ──────────────────────────────────────────────────────────
 @app.get("/crm/", response_model=List[CRMPersonResponse])
 async def list_crm(
     user: User = Depends(get_current_user),
@@ -928,7 +898,7 @@ async def mark_contacted(
     session.refresh(person)
     return person
 
-# ─── Time Blocks ───────────────────────────────────────────────────────
+# ─── Time Blocks ──────────────────────────────────────────────────
 @app.get("/time-blocks/", response_model=List[TimeBlockResponse])
 async def list_time_blocks(
     user: User = Depends(get_current_user),
@@ -985,7 +955,7 @@ async def delete_time_block(
     session.commit()
     return {"ok": True}
 
-# ─── Braindump ─────────────────────────────────────────────────────────
+# ─── Braindump ────────────────────────────────────────────────────
 @app.get("/braindump/", response_model=List[BraindumpEntryResponse])
 async def list_braindump(
     user: User = Depends(get_current_user),
@@ -1025,19 +995,20 @@ async def process_braindump(
     session.refresh(entry)
     return entry
 
-# ─── Dashboard ─────────────────────────────────────────────────────────
+# ─── Dashboard ────────────────────────────────────────────────────
 @app.get("/dashboard/", response_model=DashboardSummary)
 async def dashboard(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    today = _today_ct()
+    today = _today_ct()  # date object
     ct_midnight_utc = _ct_midnight_as_utc()
 
+    # FIX: Task.due_date is a Date column — compare against date, not datetime.
     today_tasks_q = session.execute(
         _own(select(Task), Task, user).where(
             Task.status.in_(["today", "in_progress"]) |
-            ((Task.due_date != None) & (Task.due_date <= datetime.combine(today, datetime.max.time())) & (Task.status != "done"))  # noqa
+            ((Task.due_date != None) & (Task.due_date <= today) & (Task.status != "done"))  # noqa
         )
     ).scalars().all()
 
@@ -1050,10 +1021,6 @@ async def dashboard(
 
     focus_score_today = sum(t.focus_score for t in completed_today)
 
-    active_timer = session.execute(
-        _own(select(TimeEntry), TimeEntry, user).where(TimeEntry.ended_at == None)  # noqa
-    ).scalar()
-
     finished_entries = session.execute(
         _own(select(TimeEntry), TimeEntry, user).where(
             (TimeEntry.ended_at != None) &  # noqa
@@ -1065,7 +1032,6 @@ async def dashboard(
         int((e.ended_at - e.started_at).total_seconds()) for e in finished_entries
     )
 
-    # Streak: consecutive days with at least one completed task
     all_completed = session.execute(
         _own(select(Task), Task, user).where(Task.status == "done")
     ).scalars().all()
@@ -1094,9 +1060,11 @@ async def dashboard(
 
     habit_completion_rate = (completed_habit_count / len(habits) * 100) if habits else 0
 
+    # FIX: compare Date column against date, not datetime
     overdue = session.execute(
         _own(select(Task), Task, user).where(
-            (Task.due_date < datetime.combine(today, datetime.min.time())) &
+            (Task.due_date != None) &  # noqa
+            (Task.due_date < today) &
             (Task.status != "done")
         )
     ).scalars().all()
@@ -1121,14 +1089,13 @@ async def dashboard(
         "gamification": None,
     }
 
-# ─── Gamification ──────────────────────────────────────────────────────
+# ─── Gamification ─────────────────────────────────────────────────
 @app.get("/gamification/")
 async def gamification_history(
     limit: int = Query(30, ge=1, le=365),
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    """Return per-day gamification stats for the last `limit` days."""
     today = _today_ct()
     result = []
     for i in range(limit - 1, -1, -1):
@@ -1160,7 +1127,7 @@ async def gamification_history(
         })
     return result
 
-# ─── Sports ──────────────────────────────────────────────────────────
+# ─── Sports ───────────────────────────────────────────────────────
 @app.get("/sports/favorites/", response_model=List[FavoriteSportsTeamResponse])
 async def list_favorite_teams(
     user: User = Depends(get_current_user),
@@ -1199,7 +1166,7 @@ async def remove_favorite_team(
     session.commit()
     return {"ok": True}
 
-# ─── Telegram Webhook ────────────────────────────────────────────────
+# ─── Telegram Webhook ─────────────────────────────────────────────
 @app.post("/telegram/webhook")
 async def telegram_webhook(
     request: Request,
@@ -1210,28 +1177,20 @@ async def telegram_webhook(
     text = message.get("text", "")
     chat_id = message.get("chat", {}).get("id")
     from_id = str(message.get("from", {}).get("id", ""))
-
     if not chat_id:
         return {"ok": True}
-
-    # Security: only respond to the configured owner
     if TELEGRAM_OWNER_USER_ID and from_id != TELEGRAM_OWNER_USER_ID:
         await telegram_send_message(chat_id, "Unauthorized.")
         return {"ok": True}
-
     if not text:
         return {"ok": True}
-
     if text.lower() in ("/start", "/help"):
         await telegram_send_message(
             chat_id,
-            f"CommandCenter Bot\n\nCommands:\n/task <title> — create a task\n!/task <title> — create urgent task"
+            "CommandCenter Bot\n\nCommands:\n/task <title> — create a task\n!/task <title> — create urgent task"
         )
         return {"ok": True}
-
     if text.lower().startswith("/task"):
-        # Find the user by telegram owner ID mapping — for now use the first user
-        # (single-user deployment assumption)
         user = session.execute(select(User)).scalar()
         if not user:
             await telegram_send_message(chat_id, "No users found in the system.")
@@ -1246,11 +1205,10 @@ async def telegram_webhook(
             session.commit()
             await telegram_send_message(
                 chat_id,
-                f"✅ Task created: {task.title}\nPriority: {task.priority} | Status: {task.status}"
+                f"\u2705 Task created: {task.title}\nPriority: {task.priority} | Status: {task.status}"
             )
         except ValueError as e:
-            await telegram_send_message(chat_id, f"❌ {e}")
+            await telegram_send_message(chat_id, f"\u274c {e}")
         return {"ok": True}
-
-    await telegram_send_message(chat_id, f"Unknown command. Send /help for available commands.")
+    await telegram_send_message(chat_id, "Unknown command. Send /help for available commands.")
     return {"ok": True}
