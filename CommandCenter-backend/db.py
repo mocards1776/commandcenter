@@ -9,7 +9,15 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localho
 # NullPool: no persistent connection pooling — each request opens and closes its
 # own connection. Required for DigitalOcean App Platform (stateless containers)
 # to prevent "QueuePool limit reached" exhaustion errors.
-engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True, poolclass=NullPool)
+
+# SSL: DigitalOcean Managed Databases require sslmode=require.
+# If the DATABASE_URL already contains ?sslmode=require, connect_args is redundant
+# but harmless. This acts as a safety net if the URL omits the SSL param.
+_connect_args = {}
+if "localhost" not in DATABASE_URL and "127.0.0.1" not in DATABASE_URL:
+    _connect_args = {"sslmode": "require"}
+
+engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True, poolclass=NullPool, connect_args=_connect_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def get_session_direct() -> Session:
