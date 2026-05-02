@@ -10,25 +10,24 @@ if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 # SSL: DigitalOcean Managed Databases require sslmode=require.
-# If the DATABASE_URL already contains ?sslmode=require, connect_args is redundant
-# but harmless. This acts as a safety net if the URL omits the SSL param.
 _connect_args = {}
 if "localhost" not in DATABASE_URL and "127.0.0.1" not in DATABASE_URL:
     _connect_args = {"sslmode": "require"}
 
-# QueuePool with a small pool size.
-# NullPool (previous) opened a fresh DB connection on every request, which
-# quickly exhausted DigitalOcean Managed Database's connection limit (~22 on
-# the smallest tier) under the frontend's 1-second polling interval.
-# pool_size=5 keeps 5 persistent connections; max_overflow=2 allows 2 burst
-# connections; pool_pre_ping=True drops stale connections before use.
+# Pool sizing:
+# DO Managed DB basic plan allows ~22 connections total.
+# pool_size=10 keeps 10 persistent connections.
+# max_overflow=5 allows 5 burst connections (total max: 15).
+# pool_timeout=10 fails fast instead of queuing for 30s, preventing
+# request pile-ups when the frontend polls multiple endpoints in parallel.
+# pool_recycle=300 drops connections older than 5 min to prevent stale sockets.
 engine = create_engine(
     DATABASE_URL,
     echo=False,
     pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=2,
-    pool_timeout=30,
+    pool_size=10,
+    max_overflow=5,
+    pool_timeout=10,
     pool_recycle=300,
     connect_args=_connect_args,
 )
@@ -60,9 +59,6 @@ _OWNED_TABLES = (
 def _backfill_user_ownership():
     """
     One-time backfill: assign all rows with NULL user_id to a default owner.
-    The owner is selected by:
-      1. BACKFILL_OWNER_EMAIL env var, if set
-      2. Otherwise, the oldest user in the users table
     Runs every boot but is idempotent (no-op once nothing is NULL).
     """
     target_email = os.getenv("BACKFILL_OWNER_EMAIL", "").strip().lower()
@@ -78,7 +74,7 @@ def _backfill_user_ownership():
                     text("SELECT id FROM users ORDER BY created_at ASC LIMIT 1")
                 ).fetchone()
             if not row:
-                return  # No user exists — nothing to backfill against
+                return
             owner_id = row[0]
 
             for tbl in _OWNED_TABLES:
