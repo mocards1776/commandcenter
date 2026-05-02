@@ -7,6 +7,7 @@ import { TaskModal } from "./TaskModal";
 import { TaskContextMenu } from "./TaskContextMenu";
 import { calcPoints, formatDuration, formatMinutes, isOverdue } from "@/lib/utils";
 import { ChevronDown, ChevronRight, Trash2 } from "lucide-react";
+import { CompletionDialog } from "./CompletionDialog";
 import type { Task } from "@/types";
 import toast from "react-hot-toast";
 
@@ -151,10 +152,10 @@ function TimerPanel({ seconds }: { seconds: number }) {
 export function TaskCard({ task, isPinned = false, onPin, onUnpin }: { task: Task; isPinned?: boolean; onPin?: () => void; onUnpin?: () => void }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [subsOpen, setSubsOpen]   = useState(false);
+  const [completionOpen, setCompletionOpen] = useState(false);
   const qc = useQueryClient();
   const { isRunning, activeTimer, elapsedSeconds, start, stop } = useActiveTimer();
   const { setActiveTimer }     = useTimerStore();
-  const { triggerCelebration } = useCelebrationStore();
   const { setFocus }           = useFocusStore();
 
   const isThisRunning = isRunning && activeTimer?.task_id === task.id;
@@ -164,15 +165,13 @@ export function TaskCard({ task, isPinned = false, onPin, onUnpin }: { task: Tas
 
   const { setPinnedTask, pinnedTaskId } = usePinnedTaskStore();
 
-  const completeMut = useMutation({
-    mutationFn: () => tasksApi.complete(task.id),
-    onSuccess: () => {
-      if (pinnedTaskId === task.id) setPinnedTask(null);
-      triggerCelebration(task, calcPoints(task));
-      qc.invalidateQueries({ queryKey: ["tasks"] });
-      qc.invalidateQueries({ queryKey: ["dashboard"] });
-    },
-  });
+  const openCompletion = () => setCompletionOpen(true);
+  const handleCompletionDone = () => {
+    if (pinnedTaskId === task.id) setPinnedTask(null);
+    setCompletionOpen(false);
+    qc.invalidateQueries({ queryKey: ["tasks"] });
+    qc.invalidateQueries({ queryKey: ["dashboard"] });
+  };
 
   const deleteMut = useMutation({
     mutationFn: () => tasksApi.delete(task.id),
@@ -238,7 +237,7 @@ export function TaskCard({ task, isPinned = false, onPin, onUnpin }: { task: Tas
     <>
       <TaskContextMenu task={task} isTimerRunning={isThisRunning}
         isPinned={isPinned} onPin={onPin} onUnpin={onUnpin}
-        onEdit={() => setModalOpen(true)} onComplete={() => completeMut.mutate()}
+        onEdit={() => setModalOpen(true)} onComplete={() => openCompletion()}
         onToggleTimer={toggleTimer} onDelete={handleDelete}>
         <div style={{ margin: "0 10px 5px" }}>
 
@@ -260,10 +259,10 @@ export function TaskCard({ task, isPinned = false, onPin, onUnpin }: { task: Tas
               <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8, padding: "7px 8px 7px 10px" }}>
                 {/* Checkbox */}
                 <button type="button"
-                  className={`sb-check ${completeMut.isPending ? "done" : ""}`}
-                  onClick={e => { e.stopPropagation(); completeMut.mutate(); }}
-                  disabled={completeMut.isPending} title="Mark complete" style={{ flexShrink: 0 }}>
-                  {completeMut.isPending && "✓"}
+                  className={`sb-check ${false ? "done" : ""}`}
+                  onClick={e => { e.stopPropagation(); openCompletion(); }}
+                  disabled={false} title="Mark complete" style={{ flexShrink: 0 }}>
+                  {false && "✓"}
                 </button>
 
                 {/* Pin indicator */}
@@ -379,6 +378,14 @@ export function TaskCard({ task, isPinned = false, onPin, onUnpin }: { task: Tas
         </div>
       </TaskContextMenu>
       <TaskModal open={modalOpen} onClose={() => setModalOpen(false)} task={task} />
+      {completionOpen && (
+        <CompletionDialog
+          task={task}
+          elapsedSeconds={isThisRunning ? elapsedSeconds : 0}
+          onClose={() => setCompletionOpen(false)}
+          onDone={handleCompletionDone}
+        />
+      )}
     </>
   );
 }
