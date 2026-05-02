@@ -1,21 +1,19 @@
 import { useEffect, useState } from "react";
 
 const API       = (import.meta as any).env?.VITE_API_URL ?? "https://orca-app-v7oew.ondigitalocean.app";
-const BG        = "#0f1e12";
-const ROW_BG    = "#152018";
-const HEADER_BG = "#0a1510";
+const BG        = "#243d28";   // same medium green as batting avg rows
+const ROW_BG    = "#1e3422";   // slightly darker alt row
+const HEADER_BG = "#182c1c";   // section header
+const PANEL     = "#111f14";   // dark inset panel — same as flip-digit boxes
 const GOLD      = "#c9a832";
-const DIM       = "rgba(200,195,160,0.28)";
-const MUTED     = "rgba(200,195,160,0.60)";
+const DIM       = "rgba(200,195,160,0.30)";
+const MUTED     = "rgba(200,195,160,0.65)";
 const FG        = "#d8d0b8";
-const WIN_GRN   = "#3a9140";  // muted scoreboard green
+const WIN_GRN   = "#3a9140";
 const LOSS_RD   = "#c83030";
 const FONT      = "'Oswald',Arial,sans-serif";
 
-const LABEL: React.CSSProperties = {
-  fontFamily: FONT, fontSize: 8, fontWeight: 700,
-  letterSpacing: "0.15em", textTransform: "uppercase", color: DIM,
-};
+
 
 // ─── LED Ribbon Board ────────────────────────────────────────────────────────
 // Static ribbon board — dark LED matrix, Cardinals logo, patriotic red/white/blue,
@@ -212,108 +210,118 @@ function SBHead({ label }: { label: string }) {
 // ─── Standings row ──────────────────────────────────────────────────────────
 type Row = { abbr?: string; full?: string; teamName?: string; team_id?: number; wl: string; pct: string; gb: string; strk: string; l10: string; cards?: boolean };
 
-// Abbr + short name fallback (team_id → [abbr, shortName])
+// Abbr + short name fallback keyed by team_id
 const ID_MAP: Record<number,[string,string]> = {
-  112:["CHC","Cubs"],    113:["CIN","Reds"],     138:["STL","Cardinals"],
-  158:["MIL","Brewers"], 134:["PIT","Pirates"],  137:["SF","Giants"],
-  119:["LAD","Dodgers"], 135:["SD","Padres"],    109:["ARI","D-backs"],
-  115:["COL","Rockies"], 144:["ATL","Braves"],   121:["NYM","Mets"],
-  143:["PHI","Phillies"],146:["MIA","Marlins"],  120:["WSH","Nats"],
-  147:["NYY","Yankees"], 111:["BOS","Red Sox"],  141:["TOR","Blue Jays"],
-  139:["TB","Rays"],     110:["BAL","Orioles"],  117:["HOU","Astros"],
-  140:["TEX","Rangers"], 136:["SEA","Mariners"], 108:["LAA","Angels"],
-  133:["OAK","Athletics"],145:["CHW","White Sox"],114:["CLE","Guardians"],
-  116:["DET","Tigers"],  118:["KC","Royals"],    142:["MIN","Twins"],
+  112:["CHC","Cubs"],     113:["CIN","Reds"],      138:["STL","Cardinals"],
+  158:["MIL","Brewers"],  134:["PIT","Pirates"],   137:["SF","Giants"],
+  119:["LAD","Dodgers"],  135:["SD","Padres"],     109:["ARI","D-backs"],
+  115:["COL","Rockies"],  144:["ATL","Braves"],    121:["NYM","Mets"],
+  143:["PHI","Phillies"], 146:["MIA","Marlins"],   120:["WSH","Nats"],
+  147:["NYY","Yankees"],  111:["BOS","Red Sox"],   141:["TOR","Blue Jays"],
+  139:["TB","Rays"],      110:["BAL","Orioles"],   117:["HOU","Astros"],
+  140:["TEX","Rangers"],  136:["SEA","Mariners"],  108:["LAA","Angels"],
+  133:["OAK","Athletics"],145:["CHW","White Sox"], 114:["CLE","Guardians"],
+  116:["DET","Tigers"],   118:["KC","Royals"],     142:["MIN","Twins"],
 };
 
 function StandingsRow({ row, rank }: { row: Row; rank: number }) {
-  const win  = row.strk?.startsWith("W");
-  const tid  = row.team_id as number;
-  const abbr = row.abbr || (ID_MAP[tid]?.[0] ?? "???");
-  // teamName from backend (short e.g. "Cubs"), else derive from full name
-  const shortName = row.teamName
-    || (row.full ? row.full.replace(/^[A-Za-z.]+ /, "") : "")
-    || (ID_MAP[tid]?.[1] ?? "");
+  const win     = row.strk?.startsWith("W");
+  const tid     = row.team_id as number;
+  // Always use ID_MAP for abbr and short name — avoids any backend inconsistency
+  const abbr      = ID_MAP[tid]?.[0] ?? row.abbr ?? "???";
+  const shortName = ID_MAP[tid]?.[1] ?? row.full ?? "";
 
-  // Shared inset panel style (scoreboard flip-digit aesthetic)
-  const panelBox: React.CSSProperties = {
-    background: "#07100a",
-    border: "1px solid rgba(255,255,255,0.08)",
-    borderRadius: 2,
-    boxShadow: "inset 0 2px 5px rgba(0,0,0,0.7), inset 0 -1px 0 rgba(255,255,255,0.03)",
-    display: "flex", alignItems: "center", justifyContent: "center",
-    padding: "3px 6px", minHeight: 26,
-  };
+  // Shared dark inset panel — matches the flip-digit boxes at top of dashboard
+  const statPanel = (content: React.ReactNode, gold = false) => (
+    <div style={{
+      background: PANEL,
+      border: `1px solid ${gold ? "rgba(201,168,50,0.28)" : "rgba(0,0,0,0.55)"}`,
+      borderRadius: 2,
+      boxShadow: "inset 0 2px 5px rgba(0,0,0,0.7), inset 0 -1px 0 rgba(255,255,255,0.03)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      padding: "3px 6px", minHeight: 28,
+    }}>{content}</div>
+  );
 
   return (
     <div style={{
       display: "grid",
-      gridTemplateColumns: "18px 40px 1fr 58px 38px 32px 42px 36px",
+      gridTemplateColumns: "22px 44px 1fr 62px 46px 36px 46px 38px",
       alignItems: "center",
-      columnGap: 5,
-      padding: "3px 8px",
+      columnGap: 6,
+      padding: "4px 10px 4px 8px",
       background: row.cards
-        ? "linear-gradient(90deg,rgba(201,168,50,0.09),rgba(201,168,50,0.03))"
+        ? "linear-gradient(90deg,rgba(201,168,50,0.10),rgba(201,168,50,0.04))"
         : rank % 2 === 0 ? ROW_BG : BG,
-      borderBottom: "1px solid rgba(0,0,0,0.45)",
-      borderLeft: row.cards ? "2px solid rgba(201,168,50,0.55)" : "2px solid transparent",
-      minHeight: 38,
+      borderBottom: "1px solid rgba(0,0,0,0.4)",
+      borderLeft: row.cards ? "3px solid rgba(201,168,50,0.6)" : "3px solid transparent",
+      minHeight: 40,
     }}>
 
       {/* Rank */}
-      <span style={{ fontFamily:FONT, fontSize:10, fontWeight:700, textAlign:"center" as const,
+      <span style={{ fontFamily:FONT, fontSize:11, fontWeight:700, textAlign:"center" as const,
         color: row.cards ? GOLD : DIM }}>{rank}</span>
 
-      {/* Abbr — inset panel */}
-      <div style={{ ...panelBox, border: `1px solid ${row.cards ? "rgba(201,168,50,0.35)" : "rgba(255,255,255,0.08)"}` }}>
-        <span style={{ fontFamily:FONT, fontSize:11, fontWeight:800,
+      {/* Abbr — dark inset panel */}
+      {statPanel(
+        <span style={{ fontFamily:FONT, fontSize:12, fontWeight:800,
           letterSpacing:"0.08em", textTransform:"uppercase" as const,
-          color: row.cards ? GOLD : MUTED }}>{abbr}</span>
-      </div>
+          color: row.cards ? GOLD : MUTED }}>{abbr}</span>,
+        row.cards
+      )}
 
-      {/* Short team name */}
-      <span style={{ fontFamily:FONT, fontSize:11, fontWeight: row.cards ? 700 : 500,
-        letterSpacing:"0.05em", textTransform:"uppercase" as const,
-        color: row.cards ? FG : "rgba(200,195,160,0.38)",
-        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{shortName}</span>
+      {/* Short team name — plain text, full visibility */}
+      <span style={{
+        fontFamily:FONT, fontSize:12, fontWeight: row.cards ? 700 : 600,
+        letterSpacing:"0.07em", textTransform:"uppercase" as const,
+        color: row.cards ? FG : "rgba(200,195,160,0.55)",
+        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const,
+        paddingLeft: 2,
+      }}>{shortName}</span>
 
-      {/* W-L — inset panel */}
-      <div style={{ ...panelBox, border: `1px solid ${row.cards ? "rgba(201,168,50,0.25)" : "rgba(255,255,255,0.07)"}` }}>
-        <span style={{ fontFamily:FONT, fontSize: row.cards ? 13 : 12, fontWeight: row.cards ? 900 : 700,
+      {/* W-L — dark inset panel */}
+      {statPanel(
+        <span style={{ fontFamily:FONT, fontSize: row.cards ? 14 : 13, fontWeight: row.cards ? 900 : 700,
           fontVariantNumeric:"tabular-nums" as const, letterSpacing:"0.02em",
-          color: row.cards ? FG : "rgba(200,195,160,0.65)" }}>{row.wl}</span>
+          color: row.cards ? FG : "rgba(200,195,160,0.70)" }}>{row.wl}</span>,
+        row.cards
+      )}
+
+      {/* PCT — dark inset panel */}
+      {statPanel(
+        <span style={{ fontFamily:FONT, fontSize:11, fontWeight: row.cards ? 700 : 500,
+          fontVariantNumeric:"tabular-nums" as const,
+          color: row.cards ? GOLD : "rgba(200,195,160,0.50)" }}>{row.pct}</span>
+      )}
+
+      {/* GB — dark inset panel */}
+      {statPanel(
+        <span style={{ fontFamily:FONT, fontSize:11,
+          fontVariantNumeric:"tabular-nums" as const,
+          color:"rgba(200,195,160,0.38)" }}>{row.gb}</span>
+      )}
+
+      {/* STRK — dark inset panel with color tint */}
+      <div style={{
+        background: win ? "rgba(10,40,14,0.9)" : "rgba(60,10,10,0.8)",
+        border:`1px solid ${win ? "rgba(58,145,64,0.5)" : "rgba(200,48,48,0.45)"}`,
+        borderRadius: 2,
+        boxShadow: "inset 0 2px 5px rgba(0,0,0,0.65)",
+        display:"flex", alignItems:"center", justifyContent:"center",
+        padding:"3px 6px", minHeight:28,
+      }}>
+        <span style={{ fontFamily:FONT, fontSize:13, fontWeight:800, letterSpacing:"0.05em",
+          color: win ? WIN_GRN : LOSS_RD,
+          textShadow: win ? "0 0 8px rgba(58,145,64,0.65)" : "0 0 8px rgba(200,48,48,0.55)",
+        }}>{row.strk}</span>
       </div>
 
-      {/* PCT */}
-      <span style={{ fontFamily:FONT, fontSize: row.cards ? 11 : 10, fontWeight: row.cards ? 700 : 500,
-        textAlign:"center" as const, fontVariantNumeric:"tabular-nums" as const,
-        color: row.cards ? GOLD : "rgba(200,195,160,0.40)" }}>{row.pct}</span>
-
-      {/* GB */}
-      <span style={{ fontFamily:FONT, fontSize:10, textAlign:"center" as const,
-        fontVariantNumeric:"tabular-nums" as const,
-        color:"rgba(200,195,160,0.28)" }}>{row.gb}</span>
-
-      {/* STRK badge */}
-      <div style={{ display:"flex", justifyContent:"center" }}>
-        <div style={{
-          background: win ? "rgba(15,55,20,0.8)" : "rgba(70,12,12,0.65)",
-          border:`1px solid ${win ? "rgba(58,145,64,0.45)" : "rgba(200,48,48,0.4)"}`,
-          borderRadius:2,
-          boxShadow:"inset 0 1px 4px rgba(0,0,0,0.6)",
-          padding:"2px 6px", minWidth:32, textAlign:"center" as const,
-        }}>
-          <span style={{ fontFamily:FONT, fontSize:12, fontWeight:800, letterSpacing:"0.05em",
-            color: win ? WIN_GRN : LOSS_RD,
-            textShadow: win ? "0 0 8px rgba(58,145,64,0.6)" : "0 0 8px rgba(200,48,48,0.5)",
-          }}>{row.strk}</span>
-        </div>
-      </div>
-
-      {/* L10 — right aligned */}
-      <span style={{ fontFamily:FONT, fontSize:10, textAlign:"right" as const,
-        fontVariantNumeric:"tabular-nums" as const,
-        color:"rgba(200,195,160,0.32)" }}>{row.l10}</span>
+      {/* L10 — dark inset panel */}
+      {statPanel(
+        <span style={{ fontFamily:FONT, fontSize:11,
+          fontVariantNumeric:"tabular-nums" as const,
+          color:"rgba(200,195,160,0.40)" }}>{row.l10}</span>
+      )}
 
     </div>
   );
@@ -500,30 +508,30 @@ export function BaseballPanel() {
           <SBHead label={`NL Central Standings · ${today}`} />
           <div style={{
             display: "grid",
-            gridTemplateColumns: "18px 40px 1fr 58px 38px 32px 42px 36px",
+            gridTemplateColumns: "22px 44px 1fr 62px 46px 36px 46px 38px",
             alignItems: "center",
-            columnGap: 5,
-            padding: "3px 8px",
+            columnGap: 6,
+            padding: "3px 10px 3px 8px",
             background: HEADER_BG,
-            borderBottom: "1px solid rgba(0,0,0,0.45)",
+            borderBottom: "1px solid rgba(0,0,0,0.5)",
           }}>
             {[
-              {l:"",     a:"center"},{l:"TEAM",a:"center"},{l:"",     a:"left"},
-              {l:"W-L",  a:"center"},{l:"PCT", a:"center"},{l:"GB",   a:"center"},
-              {l:"STRK", a:"center"},{l:"L10", a:"right"},
+              {l:"",     a:"center"},{l:"TEAM", a:"center"},{l:"",    a:"left"},
+              {l:"W-L",  a:"center"},{l:"PCT",  a:"center"},{l:"GB",  a:"center"},
+              {l:"STRK", a:"center"},{l:"L10",  a:"center"},
             ].map((h,i) => (
               <div key={i} style={{
                 fontFamily:FONT, fontSize:8, fontWeight:700,
                 letterSpacing:"0.16em", textTransform:"uppercase" as const,
-                color:"rgba(201,168,50,0.38)", textAlign:h.a as any,
+                color:"rgba(201,168,50,0.40)", textAlign:h.a as any,
               }}>{h.l}</div>
             ))}
           </div>
-          {standings.length > 0
+                    {standings.length > 0
             ? standings.map((row: Row, i: number) => <StandingsRow key={row.team_id ?? row.abbr ?? i} row={row} rank={i + 1} />)
             : [1,2,3,4,5].map(i => (
                 <div key={i} style={{ height: 36, background: i % 2 === 0 ? ROW_BG : BG,
-                  borderBottom: "1px solid rgba(0,0,0,0.3)",
+                  borderBottom: "1px solid rgba(0,0,0,0.4)",
                   display: "flex", alignItems: "center", padding: "0 8px" }}>
                   <div style={{ width: "60%", height: 8, background: "rgba(255,255,255,0.05)", borderRadius: 2 }} />
                 </div>
