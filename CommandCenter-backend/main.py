@@ -9,6 +9,7 @@ import json
 import httpx
 from typing import Optional, List
 import asyncio
+from collections import defaultdict
 
 import db
 from models import (
@@ -1065,30 +1066,54 @@ async def gamification_history(
     session: Session = Depends(db.get_session),
 ):
     today = _today_ct()
+    window_start = datetime.combine(today - timedelta(days=limit - 1), datetime.min.time())
+    window_end = datetime.combine(today + timedelta(days=1), datetime.min.time())
+
+    # Query 1: all completed tasks in the window — group by date in Python
+    all_tasks = session.execute(
+        _own(select(Task), Task, user).where(
+            Task.status == "done",
+            Task.completed_at >= window_start,
+            Task.completed_at < window_end,
+        )
+    ).scalars().all()
+    tasks_by_date: dict = defaultdict(list)
+    for t in all_tasks:
+        if t.completed_at:
+            completed_dt = t.completed_at if isinstance(t.completed_at, datetime) else datetime.fromisoformat(str(t.completed_at))
+            tasks_by_date[completed_dt.date()].append(t)
+
+    # Query 2: fetch all user habit IDs in one shot
+    habit_ids = [
+        h.id for h in session.execute(
+            _own(select(Habit), Habit, user)
+        ).scalars().all()
+    ]
+
+    # Query 3: all habit completions in the window — group by date in Python
+    completions_by_date: dict = defaultdict(int)
+    if habit_ids:
+        all_completions = session.execute(
+            select(HabitCompletion).where(
+                HabitCompletion.habit_id.in_(habit_ids),
+                HabitCompletion.completed_date >= str(today - timedelta(days=limit - 1)),
+                HabitCompletion.completed_date <= str(today),
+            )
+        ).scalars().all()
+        for c in all_completions:
+            completions_by_date[c.completed_date] += 1
+
+    # Build results from in-memory dicts — zero DB hits in the loop
     results = []
     for i in range(limit):
         day = today - timedelta(days=i)
-        tasks_done = session.execute(
-            _own(select(Task), Task, user).where(
-                Task.status == "done",
-                Task.completed_at >= datetime.combine(day, datetime.min.time()),
-                Task.completed_at < datetime.combine(day + timedelta(days=1), datetime.min.time()),
-            )
-        ).scalars().all()
-        habits_done = session.execute(
-            select(HabitCompletion).where(
-                HabitCompletion.completed_date == str(day),
-                HabitCompletion.habit_id.in_(
-                    [h.id for h in session.execute(_own(select(Habit), Habit, user)).scalars().all()]
-                ),
-            )
-        ).scalars().all()
-        xp = len(tasks_done) * 10 + len(habits_done) * 5
+        tc = len(tasks_by_date.get(day, []))
+        hc = completions_by_date.get(str(day), 0)
         results.append({
             "date": str(day),
-            "tasks_completed": len(tasks_done),
-            "habits_completed": len(habits_done),
-            "xp_earned": xp,
+            "tasks_completed": tc,
+            "habits_completed": hc,
+            "xp_earned": tc * 10 + hc * 5,
         })
     return results
 
