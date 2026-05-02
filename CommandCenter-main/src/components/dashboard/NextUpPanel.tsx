@@ -40,9 +40,16 @@ function getStoredToken(): string | null {
 function getSelectedCalIds(): string[] {
   try {
     const fromCookie = getCookie(GC_SELECTED_COOKIE);
-    if (fromCookie) return JSON.parse(fromCookie);
+    if (fromCookie) {
+      const parsed = JSON.parse(fromCookie);
+      if (Array.isArray(parsed)) return parsed;
+    }
     const saved = localStorage.getItem("gcal_selected_calendar_ids");
-    return saved ? JSON.parse(saved) : ["primary"];
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) return parsed;
+    }
+    return ["primary"];
   } catch { return ["primary"]; }
 }
 
@@ -208,6 +215,9 @@ interface SlotPickerProps {
 
 function SlotPicker({ x, y, tasks, currentId, onSelect, onClose }: SlotPickerProps) {
   const ref = useRef<HTMLDivElement>(null);
+  // Guard: ensure tasks is always an array
+  const safeTasks = Array.isArray(tasks) ? tasks : [];
+
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
@@ -217,7 +227,7 @@ function SlotPicker({ x, y, tasks, currentId, onSelect, onClose }: SlotPickerPro
   }, [onClose]);
 
   const menuW = 240;
-  const menuH = Math.min(tasks.length * 36 + 8, 320);
+  const menuH = Math.min(safeTasks.length * 36 + 8, 320);
   const left  = Math.min(x, window.innerWidth - menuW - 8);
   const top   = Math.min(y, window.innerHeight - menuH - 8);
 
@@ -229,7 +239,7 @@ function SlotPicker({ x, y, tasks, currentId, onSelect, onClose }: SlotPickerPro
         <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:8, fontWeight:700,
           letterSpacing:"0.18em", textTransform:"uppercase", color:"rgba(232,168,32,0.5)" }}>SELECT TASK</span>
       </div>
-      {tasks.map(t => {
+      {safeTasks.map(t => {
         const accent = ACCENT[t.priority];
         const isCurrent = t.id === currentId;
         const overdue = isOverdue(t.due_date);
@@ -292,6 +302,9 @@ function TaskSlot({ task, size, allTasks, onTaskClick, onOverride }: TaskSlotPro
     e.stopPropagation();
     setMenu({ x: e.clientX, y: e.clientY });
   };
+
+  // Guard allTasks prop before passing to SlotPicker
+  const safeAllTasks = Array.isArray(allTasks) ? allTasks : [];
 
   return (
     <>
@@ -361,7 +374,7 @@ function TaskSlot({ task, size, allTasks, onTaskClick, onOverride }: TaskSlotPro
           ⌥ right-click to swap
         </div>
       </div>
-      {menu && <SlotPicker x={menu.x} y={menu.y} tasks={allTasks} currentId={task.id}
+      {menu && <SlotPicker x={menu.x} y={menu.y} tasks={safeAllTasks} currentId={task.id}
         onSelect={onOverride} onClose={() => setMenu(null)} />}
     </>
   );
@@ -406,12 +419,19 @@ export function NextUpPanel({ tasks: tasksProp }: { tasks: Task[] }) {
     queryFn: async () => {
       const timeMin = new Date(`${today}T00:00:00`).toISOString();
       const timeMax = new Date(`${today}T23:59:59`).toISOString();
+      const safeCalIds = Array.isArray(calIds) ? calIds : ["primary"];
       const results = await Promise.all(
-        calIds.map(calId =>
+        safeCalIds.map(calId =>
           fetch(
             `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events?timeMin=${timeMin}&timeMax=${timeMax}&singleEvents=true&orderBy=startTime`,
             { headers: { Authorization: `Bearer ${gcalToken}` } }
-          ).then(r => r.json()).then(d => (d.items ?? []) as any[])
+          )
+            .then(r => r.json())
+            .then(d => {
+              const items = d?.items;
+              return Array.isArray(items) ? (items as any[]) : [];
+            })
+            .catch(() => [] as any[])
         )
       );
       return results.flat().map(ev => ({
@@ -422,8 +442,10 @@ export function NextUpPanel({ tasks: tasksProp }: { tasks: Task[] }) {
   });
 
   const nowMs      = Date.now();
-  const localEvts: NextEvent[] = localBlocks.map(b => ({ title: b.title, startMs: new Date(b.start_time).getTime() }));
-  const allEvents  = [...localEvts, ...gcalEvents]
+  const safeLocalBlocks = Array.isArray(localBlocks) ? localBlocks : [];
+  const safeGcalEvents  = Array.isArray(gcalEvents)  ? gcalEvents  : [];
+  const localEvts: NextEvent[] = safeLocalBlocks.map(b => ({ title: b.title, startMs: new Date(b.start_time).getTime() }));
+  const allEvents  = [...localEvts, ...safeGcalEvents]
     .filter(e => e.startMs > nowMs - 5 * 60_000)
     .sort((a, b) => a.startMs - b.startMs);
   const nextEvent  = allEvents[0] ?? null;
