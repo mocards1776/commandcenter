@@ -16,18 +16,17 @@ if "localhost" not in DATABASE_URL and "127.0.0.1" not in DATABASE_URL:
 
 # Pool sizing:
 # DO Managed DB basic plan allows ~22 connections total.
-# pool_size=10 keeps 10 persistent connections.
-# max_overflow=5 allows 5 burst connections (total max: 15).
-# pool_timeout=10 fails fast instead of queuing for 30s, preventing
-# request pile-ups when the frontend polls multiple endpoints in parallel.
-# pool_recycle=300 drops connections older than 5 min to prevent stale sockets.
+# With App Platform potentially running 2 workers, cap at 4 persistent + 2 burst
+# to leave headroom and avoid QueuePool exhaustion under concurrent polling.
+# pool_timeout=5 fails fast to prevent request pile-ups.
+# pool_recycle=300 drops stale connections every 5 min.
 engine = create_engine(
     DATABASE_URL,
     echo=False,
     pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=5,
-    pool_timeout=10,
+    pool_size=4,
+    max_overflow=2,
+    pool_timeout=5,
     pool_recycle=300,
     connect_args=_connect_args,
 )
