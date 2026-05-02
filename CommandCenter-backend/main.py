@@ -1176,7 +1176,7 @@ async def get_cardinals_data():
         # ── 1. NL Central standings ─────────────────────────────────────────
         standings_resp = await client.get(
             "https://statsapi.mlb.com/api/v1/standings",
-            params={"leagueId": "104", "season": str(now_ct.year), "standingsTypes": "regularSeason"},
+            params={"leagueId": "104", "season": str(now_ct.year), "standingsTypes": "regularSeason", "hydrate": "team"},
         )
         nl_central = []
         for division in standings_resp.json().get("records", []):
