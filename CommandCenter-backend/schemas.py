@@ -29,7 +29,7 @@ class TaskCreate(BaseModel):
     priority: str = "medium"
     importance: int = 3
     difficulty: int = 3
-    due_date: Optional[date] = None
+    due_date: Optional[datetime] = None
     time_estimate_minutes: Optional[int] = None
     project_id: Optional[str] = None
     parent_id: Optional[str] = None
@@ -45,7 +45,7 @@ class TaskUpdate(BaseModel):
     priority: Optional[str] = None
     importance: Optional[int] = None
     difficulty: Optional[int] = None
-    due_date: Optional[date] = None
+    due_date: Optional[datetime] = None
     time_estimate_minutes: Optional[int] = None
     project_id: Optional[str] = None
     category_id: Optional[str] = None
@@ -64,7 +64,7 @@ class TaskResponse(BaseModel):
     importance: int
     difficulty: int
     focus_score: int = 0
-    due_date: Optional[date] = None
+    due_date: Optional[datetime] = None
     time_estimate_minutes: Optional[int] = None
     project_id: Optional[str] = None
     parent_id: Optional[str] = None
@@ -112,7 +112,7 @@ class ProjectCreate(BaseModel):
     status: str = "active"
     color: Optional[str] = None
     priority: Optional[str] = "medium"
-    due_date: Optional[str] = None
+    due_date: Optional[datetime] = None
 
 class ProjectUpdate(BaseModel):
     title: Optional[str] = None
@@ -120,7 +120,7 @@ class ProjectUpdate(BaseModel):
     status: Optional[str] = None
     color: Optional[str] = None
     priority: Optional[str] = None
-    due_date: Optional[str] = None
+    due_date: Optional[datetime] = None
 
 class ProjectResponse(BaseModel):
     id: str

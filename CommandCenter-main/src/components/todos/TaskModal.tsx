@@ -196,7 +196,7 @@ function CategoryPicker({ selCategory, setSelCategory, categories, onCreateCateg
             <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
               {SWATCHES.map(c => (
                 <button key={c} type="button" onClick={()=>setNewColor(c)}
-                  style={{width:20,height:20,borderRadius:"50%",background:c,border:newColor===c?"2px solid #f5f0e0":"2px solid transparent",padding:0,cursor:"pointer"}}/>
+                  style={{width:16,height:16,borderRadius:"50%",background:c,border:newColor===c?"2px solid #f5f0e0":"2px solid transparent",padding:0,cursor:"pointer"}}/>
               ))}
             </div>
           </div>
@@ -352,7 +352,11 @@ export function TaskModal({ open, onClose, task, projectId, parentId, defaultSta
     onError: (e:any) => { toast.error(`Save failed: ${e?.response?.data?.detail ?? e?.message ?? "unknown"}`); },
   });
 
-  const updateMut   = useMutation({ mutationFn:()=>tasksApi.update(task!.id,payload()), onSuccess:()=>{inv();toast.success("Updated!");onClose();} });
+  const updateMut = useMutation({
+    mutationFn: () => tasksApi.update(task!.id, payload()),
+    onSuccess: () => { inv(); toast.success("Updated!"); onClose(); },
+    onError: (e:any) => { toast.error(`Save failed: ${e?.response?.data?.detail ?? e?.message ?? "unknown"}`); },
+  });
   const completeMut = useMutation({ mutationFn:()=>tasksApi.complete(task!.id), onSuccess:()=>{ triggerCelebration({...task!,focus_score:focusScore,importance,difficulty},calcPoints({focus_score:focusScore})); inv(); onClose(); } });
   const deleteMut   = useMutation({ mutationFn:()=>tasksApi.delete(task!.id), onSuccess:()=>{inv();toast.success("Deleted");onClose();}, onError:(e:any)=>{toast.error(`Delete failed: ${e?.response?.data?.detail??e?.message??"unknown"}`);} });
 
@@ -385,129 +389,113 @@ export function TaskModal({ open, onClose, task, projectId, parentId, defaultSta
               autoFocus={!isEdit}
               style={{flex:1,background:"transparent",border:"none",fontSize:18,fontWeight:700,letterSpacing:"0.04em",textTransform:"uppercase",color:"#f5f0e0",caretColor:"#e8a820",padding:0,fontFamily:"'Oswald',Arial,sans-serif"}}
               onKeyDown={e=>e.key==="Enter"&&!isEdit&&title.trim()&&createMut.mutate()}/>
-            <button type="button" onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:"rgba(245,240,224,0.3)",padding:4}} onMouseEnter={e=>(e.currentTarget.style.color="#d94040")} onMouseLeave={e=>(e.currentTarget.style.color="rgba(245,240,224,0.3)")}><X size={18}/></button>
+            <button type="button" onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:"rgba(245,240,224,0.3)",padding:4}} onMouseEnter={e=>(e.currentTarget.style.color="rgba(245,240,224,0.8)")} onMouseLeave={e=>(e.currentTarget.style.color="rgba(245,240,224,0.3)")}><X size={16}/></button>
           </div>
 
           {/* Body */}
-          <div style={{flex:1,overflowY:"auto",padding:"14px 16px",display:"flex",flexDirection:"column",gap:14}}>
+          <div style={{flex:1,overflowY:"auto",padding:"16px",display:"flex",flexDirection:"column",gap:14}}>
 
-            {/* Status / Due Date / Due Time / Est */}
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:10}}>
-              <div style={FIELD}>{SHEAD("Status")}<select value={status} onChange={e=>setStatus(e.target.value as TaskStatus)} style={INP}>{[["inbox","📥 Inbox"],["today","📌 Today"],["in_progress","⚡ Active"],["waiting","⏳ Waiting"],["done","✅ Done"],["cancelled","🚫 Cancelled"]].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
+            {/* Row 1: Status + Due Date + Time */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+              <div style={FIELD}>{SHEAD("Status")}
+                <select value={status} onChange={e=>setStatus(e.target.value as TaskStatus)} style={INP}>
+                  <option value="inbox">Inbox</option>
+                  <option value="today">Today</option>
+                  <option value="upcoming">Upcoming</option>
+                  <option value="someday">Someday</option>
+                  <option value="done">Done</option>
+                </select>
+              </div>
               <div style={FIELD}>{SHEAD("Due Date")}<input type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)} style={INP}/></div>
-              <div style={FIELD}>{SHEAD("Due Time")}<input type="time" value={dueTime} onChange={e=>setDueTime(e.target.value)} style={INP} placeholder="--:--"/></div>
-              <div style={FIELD}>{SHEAD("Est. (min)")}<input type="number" value={timeEst} onChange={e=>setTimeEst(e.target.value)} placeholder="e.g. 45" min="1" style={INP}/></div>
+              <div style={FIELD}>{SHEAD("Due Time")}<input type="time" value={dueTime} onChange={e=>setDueTime(e.target.value)} style={INP}/></div>
             </div>
 
-            {/* Stars + Focus Score */}
-            <div style={{background:"rgba(0,0,0,0.25)",border:"1px solid #1e3629",padding:"12px 14px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+            {/* Row 2: Importance + Difficulty */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
               <Stars value={importance} onChange={setImportance} color={LABEL_COLOR[urgLabel]} label="Importance" sublabel={urgLabel}/>
               <Stars value={difficulty} onChange={setDifficulty} color="#d94040" label="Difficulty"/>
-              <div style={{gridColumn:"1/-1",height:1,background:"rgba(232,168,32,0.15)"}}/>
-              <div style={{gridColumn:"1/-1",display:"flex",alignItems:"center",gap:8}}>
-                <span style={{fontSize:9,fontWeight:600,letterSpacing:"0.18em",textTransform:"uppercase",color:"rgba(245,240,224,0.3)"}}>Focus Score = Importance × Difficulty</span>
-                <div className="panel panel-sm" style={{marginLeft:"auto",flexShrink:0}}>
-                  <span className="panel-num" style={{fontSize:22,color:focusScore>=20?"#d94040":focusScore>=12?"#e8a820":"#f5f0e0"}}>{focusScore}</span>
-                </div>
-              </div>
             </div>
 
-            {/* Description */}
-            <div style={FIELD}>{SHEAD("Description")}<textarea value={description} onChange={e=>setDescription(e.target.value)} placeholder="What needs to get done…" rows={2} style={{...INP,resize:"none",lineHeight:1.5}}/></div>
+            {/* Row 3: Time Estimate */}
+            <div style={FIELD}>{SHEAD("Time Estimate (min)")}<input type="number" min="0" step="5" value={timeEst} onChange={e=>setTimeEst(e.target.value)} placeholder="e.g. 30" style={INP}/></div>
 
-            {/* Campaign (Project) */}
-            <div style={FIELD}>{SHEAD("Campaign (Project)")}<select value={selProject} onChange={e=>setSelProject(e.target.value)} style={INP}><option value="">— No Campaign —</option>{projects.map((p:any)=><option key={p.id} value={p.id}>{p.title}</option>)}</select></div>
-
-            {/* Category — select + inline create */}
-            <div style={FIELD}>
-              {SHEAD("Category")}
-              <CategoryPicker
-                selCategory={selCategory}
-                setSelCategory={setSelCategory}
-                categories={categories}
-                onCreateCategory={handleCreateCategory}
-              />
+            {/* Row 4: Project */}
+            <div style={FIELD}>{SHEAD("Project")}
+              <select value={selProject} onChange={e=>setSelProject(e.target.value)} style={INP}>
+                <option value="">— None —</option>
+                {projects.map((p:any)=>(<option key={p.id} value={p.id}>{p.title}</option>))}
+              </select>
             </div>
 
-            {/* Tags — type-to-filter + inline create */}
-            <div style={FIELD}>
-              {SHEAD("Tags")}
-              <TagPicker
-                selTagIds={selTagIds}
-                setSelTagIds={setSelTagIds}
-                allTags={allTags}
-                onCreateTag={handleCreateTag}
-              />
+            {/* Row 5: Category */}
+            <div style={FIELD}>{SHEAD("Category")}
+              <CategoryPicker selCategory={selCategory} setSelCategory={setSelCategory} categories={categories} onCreateCategory={handleCreateCategory}/>
             </div>
 
-            {/* Notes */}
-            <div style={FIELD}>{SHEAD("Notes")}<textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Private notes, links, context…" rows={2} style={{...INP,resize:"none",lineHeight:1.5}}/></div>
+            {/* Row 6: Tags */}
+            <div style={FIELD}>{SHEAD("Tags")}
+              <TagPicker selTagIds={selTagIds} setSelTagIds={setSelTagIds} allTags={allTags} onCreateTag={handleCreateTag}/>
+            </div>
 
-            {/* ── SUBTASKS ── */}
+            {/* Row 7: Description */}
+            <div style={FIELD}>{SHEAD("Description")}<textarea value={description} onChange={e=>setDescription(e.target.value)} rows={3} placeholder="Notes, context, links…" style={{...INP,resize:"vertical",minHeight:72}}/></div>
+
+            {/* Row 8: Notes */}
+            <div style={FIELD}>{SHEAD("Notes")}<textarea value={notes} onChange={e=>setNotes(e.target.value)} rows={2} placeholder="Quick notes…" style={{...INP,resize:"vertical",minHeight:52}}/></div>
+
+            {/* Subtasks (edit mode only, non-subtask tasks) */}
             {!isSubtaskItself && (
-              <div style={{background:"rgba(0,0,0,0.2)",border:"1px solid #1e3629",padding:"12px 14px"}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-                  <div style={{fontSize:9,fontWeight:600,letterSpacing:"0.18em",textTransform:"uppercase",color:"rgba(232,168,32,0.6)"}}>
-                    Subtasks
-                    {isEdit && subtasks.length>0 && ` · ${subtasks.filter(s=>s.status==="done").length}/${subtasks.length} done`}
-                    {!isEdit && pendingSubtasks.length>0 && ` · ${pendingSubtasks.length} queued`}
+              <div style={FIELD}>
+                {SHEAD(`Subtasks${subtasks.length+pendingSubtasks.length>0?` (${subtasks.length+pendingSubtasks.length})`:""}`)} 
+                {/* Existing subtasks */}
+                {subtasks.length > 0 && (
+                  <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:6}}>
+                    {subtasks.map((sub:any)=>(
+                      <div key={sub.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 10px",background:"rgba(0,0,0,0.2)",border:"1px solid rgba(245,240,224,0.08)"}}>
+                        <div style={{width:6,height:6,borderRadius:"50%",background:sub.status==="done"?"#4a8a5a":"rgba(245,240,224,0.2)",flexShrink:0}}/>
+                        <span style={{flex:1,fontSize:12,color:sub.status==="done"?"rgba(245,240,224,0.3)":"#f5f0e0",textDecoration:sub.status==="done"?"line-through":"none"}}>{sub.title}</span>
+                        <span style={{fontSize:9,color:"rgba(245,240,224,0.3)",letterSpacing:"0.1em"}}>{sub.status.toUpperCase()}</span>
+                      </div>
+                    ))}
                   </div>
-                  <button type="button" className="btn btn-gold" onClick={()=>isEdit?setSubModalOpen(true):setAddingDraft(true)} style={{padding:"3px 10px"}}><Plus size={11}/>Add</button>
-                </div>
-
-                {isEdit && subtasks.length===0 && !subModalOpen && (<p style={{fontFamily:"'IM Fell English',Georgia,serif",fontStyle:"italic",fontSize:11,color:"rgba(245,240,224,0.2)",padding:"6px 0"}}>No subtasks — break this order into steps</p>)}
-                {isEdit && subtasks.map(sub=>{ const sl=impToLabel(sub.importance); const sc=LABEL_COLOR[sl]??"#e8a820"; return (
-                  <div key={sub.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",marginBottom:3,background:sub.status==="done"?"rgba(0,0,0,0.25)":"#1e3629",border:"1px solid rgba(0,0,0,0.35)",opacity:sub.status==="done"?0.55:1}}>
-                    <div className={`sb-check ${sub.status==="done"?"done":""}`} style={{cursor:"default",flexShrink:0}}>{sub.status==="done"&&"✓"}</div>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:12,fontWeight:600,letterSpacing:"0.04em",textTransform:"uppercase",color:sub.status==="done"?"rgba(245,240,224,0.3)":"#f5f0e0",textDecoration:sub.status==="done"?"line-through":"none",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{sub.title}</div>
-                      <div style={{display:"flex",gap:8,marginTop:2,flexWrap:"wrap"}}>
-                        <span style={{fontSize:9,color:sc,fontWeight:700,letterSpacing:"0.08em"}}>{sl}</span>
-                        <span style={{fontSize:9,color:sub.focus_score>=20?"#d94040":sub.focus_score>=12?"#e8a820":"rgba(245,240,224,0.35)"}}> FS:{sub.focus_score}</span>
-                        {sub.time_estimate_minutes&&<span style={{fontSize:9,color:"rgba(245,240,224,0.3)"}}>{formatMinutes(sub.time_estimate_minutes)}</span>}
+                )}
+                {/* Pending new subtasks */}
+                {pendingSubtasks.length > 0 && (
+                  <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:6}}>
+                    {pendingSubtasks.map(sub=>(
+                      <div key={sub._id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 10px",background:"rgba(232,168,32,0.05)",border:"1px solid rgba(232,168,32,0.15)"}}>
+                        <div style={{width:6,height:6,borderRadius:"50%",background:"rgba(232,168,32,0.4)",flexShrink:0}}/>
+                        <span style={{flex:1,fontSize:12,color:"rgba(245,240,224,0.8)"}}>{sub.title}</span>
+                        <span style={{fontSize:9,color:"rgba(232,168,32,0.4)",letterSpacing:"0.1em"}}>NEW</span>
+                        <button type="button" onClick={()=>setPendingSubtasks(p=>p.filter(s=>s._id!==sub._id))} style={{background:"none",border:"none",cursor:"pointer",color:"rgba(245,240,224,0.2)",fontSize:12,padding:"0 2px"}}>×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {/* Add subtask button / inline form */}
+                {isEdit ? (
+                  <button type="button" className="btn btn-white" onClick={()=>setSubModalOpen(true)} style={{alignSelf:"flex-start",padding:"4px 10px",fontSize:10}}><Plus size={10}/>Add Subtask</button>
+                ) : (
+                  addingDraft ? (
+                    <div style={{padding:"10px 12px",background:"rgba(0,0,0,0.2)",border:"1px solid rgba(232,168,32,0.15)",display:"flex",flexDirection:"column",gap:8}}>
+                      <input value={draftTitle} onChange={e=>setDraftTitle(e.target.value)} autoFocus placeholder="Subtask title…"
+                        style={{padding:"6px 10px",fontSize:13,background:"rgba(0,0,0,0.25)",border:"1px solid rgba(245,240,224,0.1)",color:"#f5f0e0",caretColor:"#e8a820",fontFamily:"'Oswald',Arial,sans-serif",letterSpacing:"0.04em"}}
+                        onKeyDown={e=>{ if(e.key==="Enter"&&draftTitle.trim()) commitDraft(); if(e.key==="Escape") resetDraft(); }}/>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                        <Stars value={draftImportance} onChange={setDraftImportance} color={LABEL_COLOR[impToLabel(draftImportance)]} label="Importance" sublabel={impToLabel(draftImportance)}/>
+                        <Stars value={draftDifficulty} onChange={setDraftDifficulty} color="#d94040" label="Difficulty"/>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                        <span style={{fontSize:9,color:"rgba(245,240,224,0.3)",letterSpacing:"0.1em"}}>FS: {draftFS} · Enter to add, Esc to cancel</span>
+                        <div style={{display:"flex",gap:6}}>
+                          <button type="button" className="btn btn-red" onClick={resetDraft} style={{padding:"3px 10px"}}>Done</button>
+                          <button type="button" className="btn btn-gold" onClick={commitDraft} disabled={!draftTitle.trim()} style={{padding:"3px 10px"}}>+ Add</button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ); })}
-
-                {!isEdit && pendingSubtasks.length===0 && !addingDraft && (<p style={{fontFamily:"'IM Fell English',Georgia,serif",fontStyle:"italic",fontSize:11,color:"rgba(245,240,224,0.2)",padding:"6px 0"}}>No subtasks — break this order into steps</p>)}
-                {!isEdit && pendingSubtasks.map(sub=>{ const sl=impToLabel(sub.importance); const sc=LABEL_COLOR[sl]??"#e8a820"; return (
-                  <div key={sub._id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",marginBottom:3,background:"#1e3629",border:"1px solid rgba(0,0,0,0.35)"}}>
-                    <span style={{color:"rgba(232,168,32,0.5)",fontSize:10,flexShrink:0}}>◦</span>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:12,fontWeight:600,letterSpacing:"0.04em",textTransform:"uppercase",color:"#f5f0e0",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{sub.title}</div>
-                      <div style={{display:"flex",gap:8,marginTop:2}}>
-                        <span style={{fontSize:9,color:sc,fontWeight:700}}>{sl}</span>
-                        <span style={{fontSize:9,color:"rgba(245,240,224,0.35)"}}>FS:{sub.importance*sub.difficulty}</span>
-                        {sub.timeEst&&<span style={{fontSize:9,color:"rgba(245,240,224,0.3)"}}>{formatMinutes(parseInt(sub.timeEst))}</span>}
-                      </div>
-                    </div>
-                    <button type="button" onClick={()=>setPendingSubtasks(p=>p.filter(s=>s._id!==sub._id))} style={{background:"none",border:"none",cursor:"pointer",color:"rgba(217,64,64,0.4)",padding:"2px 4px"}} onMouseEnter={e=>(e.currentTarget.style.color="#d94040")} onMouseLeave={e=>(e.currentTarget.style.color="rgba(217,64,64,0.4)")}>✕</button>
-                  </div>
-                ); })}
-
-                {!isEdit && addingDraft && (
-                  <div style={{marginTop:6,padding:"10px 12px",background:"rgba(0,0,0,0.2)",border:"1px solid rgba(232,168,32,0.2)"}}>
-                    <div style={{fontSize:9,fontWeight:600,letterSpacing:"0.15em",textTransform:"uppercase",color:"rgba(232,168,32,0.5)",marginBottom:8}}>New Subtask</div>
-                    <input value={draftTitle} onChange={e=>setDraftTitle(e.target.value)} placeholder="Subtask title…" autoFocus
-                      style={{width:"100%",padding:"6px 10px",fontSize:13,fontWeight:600,letterSpacing:"0.04em",textTransform:"uppercase",fontFamily:"'Oswald',Arial,sans-serif",background:"rgba(0,0,0,0.25)",border:"1px solid rgba(245,240,224,0.1)",color:"#f5f0e0",caretColor:"#e8a820",marginBottom:8}}
-                      onKeyDown={e=>{ if(e.key==="Enter"&&draftTitle.trim()) commitDraft(); if(e.key==="Escape") resetDraft(); }}/>
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
-                      <div><div style={{fontSize:9,letterSpacing:"0.15em",textTransform:"uppercase",color:"rgba(245,240,224,0.3)",marginBottom:3}}>Status</div><select value={draftStatus} onChange={e=>setDraftStatus(e.target.value as TaskStatus)} style={{width:"100%",padding:"5px 8px",fontSize:12,background:"rgba(0,0,0,0.25)",border:"1px solid rgba(245,240,224,0.1)",color:"#f5f0e0"}}>{[["inbox","📥 Inbox"],["today","📌 Today"],["in_progress","⚡ Active"],["waiting","⏳ Waiting"]].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
-                      <div><div style={{fontSize:9,letterSpacing:"0.15em",textTransform:"uppercase",color:"rgba(245,240,224,0.3)",marginBottom:3}}>Est. (min)</div><input type="number" value={draftTimeEst} onChange={e=>setDraftTimeEst(e.target.value)} placeholder="e.g. 30" min="1" style={{width:"100%",padding:"5px 8px",fontSize:12,background:"rgba(0,0,0,0.25)",border:"1px solid rgba(245,240,224,0.1)",color:"#f5f0e0"}}/></div>
-                    </div>
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:8}}>
-                      <Stars value={draftImportance} onChange={setDraftImportance} color={LABEL_COLOR[impToLabel(draftImportance)]} label="Importance" sublabel={impToLabel(draftImportance)}/>
-                      <Stars value={draftDifficulty} onChange={setDraftDifficulty} color="#d94040" label="Difficulty"/>
-                    </div>
-                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                      <span style={{fontSize:9,color:"rgba(245,240,224,0.3)",letterSpacing:"0.1em"}}>FS: {draftFS} · Enter to add, Esc to cancel</span>
-                      <div style={{display:"flex",gap:6}}>
-                        <button type="button" className="btn btn-red" onClick={resetDraft} style={{padding:"3px 10px"}}>Done</button>
-                        <button type="button" className="btn btn-gold" onClick={commitDraft} disabled={!draftTitle.trim()} style={{padding:"3px 10px"}}>+ Add</button>
-                      </div>
-                    </div>
-                  </div>
+                  ) : (
+                    <button type="button" className="btn btn-white" onClick={()=>setAddingDraft(true)} style={{alignSelf:"flex-start",padding:"4px 10px",fontSize:10}}><Plus size={10}/>Add Subtask</button>
+                  )
                 )}
               </div>
             )}
