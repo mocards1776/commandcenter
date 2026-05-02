@@ -143,7 +143,7 @@ class HabitCompletionResponse(BaseModel):
     habit_id: str
     completed_date: date
     note: Optional[str] = None
-        created_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -188,8 +188,8 @@ class HabitResponse(BaseModel):
     sort_order: int = 0
     is_active: bool = True
     completions: List[HabitCompletionResponse] = []
-        created_at: Optional[datetime] = None
-        updated_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     @validator("custom_days", pre=True, always=True)
     def parse_custom_days(cls, v):
