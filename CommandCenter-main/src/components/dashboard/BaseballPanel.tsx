@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
 
 const API       = (import.meta as any).env?.VITE_API_URL ?? "https://orca-app-v7oew.ondigitalocean.app";
-const BG        = "#162a1c";
-const ROW_BG    = "#1e3629";
-const HEADER_BG = "#122016";
-const GOLD      = "#e8a820";
-const DIM       = "rgba(245,240,224,0.22)";
-const MUTED     = "rgba(245,240,224,0.55)";
-const FG        = "#f5f0e0";
-const WIN_GRN   = "#4caf50";
+const BG        = "#111d14";          // matches scoreboard panel bg
+const ROW_BG    = "#172219";          // alternating row — just a hair lighter
+const HEADER_BG = "#0c1810";          // section header, darkest
+const GOLD      = "#c9a832";          // Cardinals gold — matches reference screenshot
+const DIM       = "rgba(210,200,170,0.28)";
+const MUTED     = "rgba(210,200,170,0.60)";
+const FG        = "#ddd8c4";          // off-white cream text
+const WIN_GRN   = "#4db858";          // STRK green — matches reference badge
 const LOSS_RD   = "#d94040";
 const FONT      = "'Oswald',Arial,sans-serif";
 
@@ -212,60 +212,132 @@ function SBHead({ label }: { label: string }) {
 // ─── Standings row ──────────────────────────────────────────────────────────
 type Row = { abbr: string; wl: string; pct: string; gb: string; strk: string; l10: string; cards?: boolean };
 
+// Full team name map
+const TEAM_NAMES: Record<string, string> = {
+  STL: "Cardinals", MIL: "Brewers", CHC: "Cubs", CIN: "Reds", PIT: "Pirates",
+  LAD: "Dodgers", SF: "Giants", SD: "Padres", ARI: "D-backs", COL: "Rockies",
+  ATL: "Braves", NYM: "Mets", PHI: "Phillies", MIA: "Marlins", WSH: "Nationals",
+  NYY: "Yankees", BOS: "Red Sox", TOR: "Blue Jays", TB: "Rays", BAL: "Orioles",
+  HOU: "Astros", TEX: "Rangers", SEA: "Mariners", LAA: "Angels", OAK: "Athletics",
+  CHW: "White Sox", CLE: "Guardians", DET: "Tigers", KC: "Royals", MIN: "Twins",
+};
+
 function StandingsRow({ row, rank }: { row: Row; rank: number }) {
   const win = row.strk?.startsWith("W");
+  const teamName = TEAM_NAMES[row.abbr] ?? row.abbr;
+
+  // Flip-panel style box used for W-L
+  const Panel = ({ children, highlight = false }: { children: React.ReactNode; highlight?: boolean }) => (
+    <div style={{
+      background: "#090f0b",
+      border: `1px solid ${highlight ? "rgba(201,168,50,0.3)" : "rgba(255,255,255,0.07)"}`,
+      borderRadius: 2,
+      boxShadow: "inset 0 2px 4px rgba(0,0,0,0.6), inset 0 -1px 0 rgba(255,255,255,0.03)",
+      padding: "3px 7px",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      minHeight: 26,
+    }}>{children}</div>
+  );
+
   return (
     <div style={{
-      display: "grid", gridTemplateColumns: "16px 52px 56px 40px 34px 40px 36px",
-      alignItems: "center", padding: "3px 6px",
-      background: row.cards ? "rgba(232,168,32,0.06)" : rank % 2 === 0 ? ROW_BG : BG,
-      borderBottom: "1px solid rgba(0,0,0,0.35)",
-      minHeight: 36,
+      display: "grid",
+      // rank | team-abbr+name (flex) | W-L | PCT | GB | STRK | L10
+      gridTemplateColumns: "20px 1fr 64px 42px 36px 48px 36px",
+      alignItems: "center",
+      padding: "4px 10px 4px 6px",
+      gap: "0 6px",
+      background: row.cards
+        ? `linear-gradient(90deg, rgba(201,168,50,0.07) 0%, rgba(201,168,50,0.03) 100%)`
+        : rank % 2 === 0 ? ROW_BG : BG,
+      borderBottom: "1px solid rgba(0,0,0,0.4)",
+      borderLeft: row.cards ? "2px solid rgba(201,168,50,0.5)" : "2px solid transparent",
+      minHeight: 40,
     }}>
-      <span style={{ fontFamily: FONT, fontSize: 9, color: row.cards ? GOLD : DIM, textAlign: "center" as const }}>{rank}</span>
-      <div style={{
-        background: "#0e1f14", border: `1px solid ${row.cards ? "rgba(232,168,32,0.35)" : "rgba(0,0,0,0.5)"}`,
-        borderRadius: 3, boxShadow: "inset 0 2px 3px rgba(0,0,0,0.45)",
-        padding: "2px 5px", display: "flex", alignItems: "center", justifyContent: "center",
-      }}>
-        <span style={{ fontFamily: FONT, fontSize: 10, fontWeight: row.cards ? 800 : 600,
-          letterSpacing: "0.08em", textTransform: "uppercase" as const,
-          color: row.cards ? GOLD : MUTED }}>{row.abbr}</span>
+
+      {/* Rank */}
+      <span style={{
+        fontFamily: FONT, fontSize: 10, fontWeight: 700,
+        color: row.cards ? GOLD : DIM,
+        textAlign: "center" as const,
+      }}>{rank}</span>
+
+      {/* Team — abbr + full name */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+        <Panel highlight={row.cards}>
+          <span style={{
+            fontFamily: FONT, fontSize: 11, fontWeight: row.cards ? 900 : 700,
+            letterSpacing: "0.1em", textTransform: "uppercase" as const,
+            color: row.cards ? GOLD : MUTED,
+            whiteSpace: "nowrap" as const,
+          }}>{row.abbr}</span>
+        </Panel>
+        <span style={{
+          fontFamily: FONT, fontSize: 11, fontWeight: row.cards ? 700 : 500,
+          letterSpacing: "0.06em", textTransform: "uppercase" as const,
+          color: row.cards ? FG : "rgba(210,200,170,0.45)",
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const,
+        }}>{teamName}</span>
       </div>
+
+      {/* W-L — flip panel */}
+      <Panel highlight={row.cards}>
+        <span style={{
+          fontFamily: FONT, fontSize: row.cards ? 13 : 12,
+          fontWeight: row.cards ? 900 : 700,
+          color: row.cards ? FG : "rgba(210,200,170,0.7)",
+          fontVariantNumeric: "tabular-nums" as const,
+          letterSpacing: "0.04em",
+        }}>{row.wl}</span>
+      </Panel>
+
+      {/* PCT */}
+      <div style={{ textAlign: "center" as const }}>
+        <span style={{
+          fontFamily: FONT, fontSize: row.cards ? 12 : 11,
+          fontWeight: row.cards ? 700 : 500,
+          color: row.cards ? GOLD : "rgba(210,200,170,0.42)",
+          fontVariantNumeric: "tabular-nums" as const,
+        }}>{row.pct}</span>
+      </div>
+
+      {/* GB */}
+      <div style={{ textAlign: "center" as const }}>
+        <span style={{
+          fontFamily: FONT, fontSize: 11,
+          color: "rgba(210,200,170,0.30)",
+          fontVariantNumeric: "tabular-nums" as const,
+        }}>{row.gb}</span>
+      </div>
+
+      {/* STRK — flip-panel badge, scoreboard style */}
       <div style={{ display: "flex", justifyContent: "center" }}>
         <div style={{
-          background: "#0e1f14", border: "1px solid rgba(0,0,0,0.45)", borderRadius: 3,
-          boxShadow: "inset 0 2px 3px rgba(0,0,0,0.4)",
-          padding: "2px 5px", minWidth: 40, textAlign: "center" as const,
+          background: win ? "rgba(30,80,36,0.55)" : "rgba(100,20,20,0.45)",
+          border: `1px solid ${win ? "rgba(77,184,88,0.35)" : "rgba(217,64,64,0.35)"}`,
+          borderRadius: 2,
+          boxShadow: win
+            ? "inset 0 1px 3px rgba(0,0,0,0.5), 0 0 6px rgba(77,184,88,0.12)"
+            : "inset 0 1px 3px rgba(0,0,0,0.5), 0 0 6px rgba(217,64,64,0.08)",
+          padding: "3px 8px", minWidth: 34, textAlign: "center" as const,
         }}>
-          <span style={{ fontFamily: FONT, fontSize: row.cards ? 12 : 11,
-            fontWeight: row.cards ? 800 : 600, color: row.cards ? FG : "rgba(245,240,224,0.6)",
-            fontVariantNumeric: "tabular-nums" as const }}>{row.wl}</span>
+          <span style={{
+            fontFamily: FONT, fontSize: 12, fontWeight: 800, letterSpacing: "0.06em",
+            color: win ? WIN_GRN : LOSS_RD,
+            textShadow: win ? `0 0 8px rgba(77,184,88,0.5)` : `0 0 8px rgba(217,64,64,0.4)`,
+          }}>{row.strk}</span>
         </div>
       </div>
-      <div style={{ textAlign: "center" as const }}>
-        <span style={{ fontFamily: FONT, fontSize: row.cards ? 11 : 10,
-          fontWeight: row.cards ? 700 : 500, color: row.cards ? GOLD : "rgba(245,240,224,0.38)",
-          fontVariantNumeric: "tabular-nums" as const }}>{row.pct}</span>
+
+      {/* L10 — right-justified */}
+      <div style={{ textAlign: "right" as const }}>
+        <span style={{
+          fontFamily: FONT, fontSize: 11,
+          color: "rgba(210,200,170,0.38)",
+          fontVariantNumeric: "tabular-nums" as const,
+        }}>{row.l10}</span>
       </div>
-      <div style={{ textAlign: "center" as const }}>
-        <span style={{ fontFamily: FONT, fontSize: 10, color: "rgba(245,240,224,0.3)",
-          fontVariantNumeric: "tabular-nums" as const }}>{row.gb}</span>
-      </div>
-      <div style={{ display: "flex", justifyContent: "center" }}>
-        <div style={{
-          background: win ? "rgba(76,175,80,0.10)" : "rgba(217,64,64,0.10)",
-          border: `1px solid ${win ? "rgba(76,175,80,0.25)" : "rgba(217,64,64,0.25)"}`,
-          borderRadius: 3, padding: "2px 5px", minWidth: 26, textAlign: "center" as const,
-        }}>
-          <span style={{ fontFamily: FONT, fontSize: 10, fontWeight: 700,
-            color: win ? WIN_GRN : LOSS_RD }}>{row.strk}</span>
-        </div>
-      </div>
-      <div style={{ textAlign: "center" as const }}>
-        <span style={{ fontFamily: FONT, fontSize: 10, color: "rgba(245,240,224,0.32)",
-          fontVariantNumeric: "tabular-nums" as const }}>{row.l10}</span>
-      </div>
+
     </div>
   );
 }
