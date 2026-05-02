@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, func
 from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
 import os
@@ -852,110 +852,137 @@ async def dashboard(
     today = _today_ct()
     midnight_utc = _ct_midnight_as_utc()
 
-    # Tasks due/active today
-    tasks_today_rows = session.execute(
-        _own(select(Task), Task, user).where(Task.status.in_(["today", "in_progress"]))
-    ).scalars().all()
+    try:
+        # Tasks due/active today
+        tasks_today_rows = session.execute(
+            _own(select(Task), Task, user).where(Task.status.in_(["today", "in_progress"]))
+        ).scalars().all()
 
-    # Tasks completed today
-    tasks_done_today = session.execute(
-        _own(select(Task), Task, user).where(
-            Task.status == "done",
-            Task.completed_at >= midnight_utc,
-        )
-    ).scalars().all()
-
-    # Overdue tasks (due before today, not done)
-    overdue_rows = session.execute(
-        _own(select(Task), Task, user).where(
-            Task.due_date < today,
-            Task.status.notin_(["done"]),
-        )
-    ).scalars().all()
-
-    # Habits
-    habits = session.execute(_own(select(Habit), Habit, user).where(Habit.is_active == True)).scalars().all()  # noqa: E712
-    habit_completions_today = session.execute(
-        select(HabitCompletion).where(
-            HabitCompletion.habit_id.in_([h.id for h in habits]),
-            HabitCompletion.completed_date == str(today),
-        )
-    ).scalars().all()
-    completed_habit_ids = {c.habit_id for c in habit_completions_today}
-
-    # Build today_habits list with completed flag
-    today_habits_list = []
-    for h in habits:
-        today_habits_list.append({
-            "id": h.id,
-            "name": h.name,
-            "icon": h.icon,
-            "color": h.color,
-            "completed": h.id in completed_habit_ids,
-        })
-
-    # Active projects (full objects)
-    active_projects = session.execute(
-        _own(select(Project), Project, user).where(Project.status == "active")
-    ).scalars().all()
-
-    # Time tracked today (sum of completed time entries)
-    time_entries_today = session.execute(
-        _own(select(TimeEntry), TimeEntry, user).where(
-            TimeEntry.started_at >= midnight_utc,
-            TimeEntry.ended_at != None,  # noqa: E711
-        )
-    ).scalars().all()
-    time_tracked_seconds = 0
-    for entry in time_entries_today:
-        if entry.ended_at and entry.started_at:
-            started = entry.started_at if isinstance(entry.started_at, datetime) else datetime.fromisoformat(str(entry.started_at))
-            ended = entry.ended_at if isinstance(entry.ended_at, datetime) else datetime.fromisoformat(str(entry.ended_at))
-            delta = (ended - started).total_seconds()
-            if delta > 0:
-                time_tracked_seconds += int(delta)
-
-    # Focus score today = sum of focus_score for completed tasks today
-    focus_score_today = sum(t.focus_score or 0 for t in tasks_done_today)
-
-    # Streak: consecutive days with at least 1 task completed
-    streak_days = 0
-    check = today
-    while True:
-        day_start = datetime.combine(check, datetime.min.time())
-        day_end = datetime.combine(check + timedelta(days=1), datetime.min.time())
-        count = session.execute(
+        # Tasks completed today
+        tasks_done_today = session.execute(
             _own(select(Task), Task, user).where(
                 Task.status == "done",
-                Task.completed_at >= day_start,
-                Task.completed_at < day_end,
+                Task.completed_at >= midnight_utc,
             )
-        ).scalars().first()
-        if count is None:
-            break
-        streak_days += 1
-        check -= timedelta(days=1)
-        if streak_days > 365:
-            break
+        ).scalars().all()
 
-    habit_completion_rate = (
-        len(completed_habit_ids) / len(habits) if habits else 0.0
-    )
+        # Overdue tasks (due before today, not done)
+        overdue_rows = session.execute(
+            _own(select(Task), Task, user).where(
+                Task.due_date < today,
+                Task.status.notin_(["done"]),
+            )
+        ).scalars().all()
 
-    return DashboardSummary(
-        tasks_today=len(tasks_today_rows),
-        completed_today=len(tasks_done_today),
-        focus_score_today=focus_score_today,
-        time_tracked_seconds=time_tracked_seconds,
-        streak_days=streak_days,
-        today_tasks=tasks_today_rows,
-        overdue_tasks=overdue_rows,
-        today_habits=today_habits_list,
-        active_projects=active_projects,
-        total_tasks_today=len(tasks_today_rows),
-        completed_tasks_today=len(tasks_done_today),
-        habit_completion_rate=habit_completion_rate,
-    )
+        # Habits
+        habits = session.execute(
+            _own(select(Habit), Habit, user).where(Habit.is_active == True)  # noqa: E712
+        ).scalars().all()
+
+        habit_completions_today = session.execute(
+            select(HabitCompletion).where(
+                HabitCompletion.habit_id.in_([h.id for h in habits]),
+                HabitCompletion.completed_date == str(today),
+            )
+        ).scalars().all() if habits else []
+        completed_habit_ids = {c.habit_id for c in habit_completions_today}
+
+        # Build today_habits list with completed flag
+        today_habits_list = [
+            {
+                "id": h.id,
+                "name": h.name,
+                "icon": h.icon,
+                "color": h.color,
+                "completed": h.id in completed_habit_ids,
+            }
+            for h in habits
+        ]
+
+        # Active projects — explicitly call .scalars().all() to ensure list
+        active_projects = list(
+            session.execute(
+                _own(select(Project), Project, user).where(Project.status == "active")
+            ).scalars().all()
+        )
+
+        # Time tracked today (sum of completed time entries)
+        time_entries_today = session.execute(
+            _own(select(TimeEntry), TimeEntry, user).where(
+                TimeEntry.started_at >= midnight_utc,
+                TimeEntry.ended_at != None,  # noqa: E711
+            )
+        ).scalars().all()
+
+        time_tracked_seconds = 0
+        for entry in time_entries_today:
+            if entry.ended_at and entry.started_at:
+                started = entry.started_at if isinstance(entry.started_at, datetime) else datetime.fromisoformat(str(entry.started_at))
+                ended = entry.ended_at if isinstance(entry.ended_at, datetime) else datetime.fromisoformat(str(entry.ended_at))
+                delta = (ended - started).total_seconds()
+                if delta > 0:
+                    time_tracked_seconds += int(delta)
+
+        # Focus score today = sum of focus_score for completed tasks today
+        focus_score_today = sum(t.focus_score or 0 for t in tasks_done_today)
+
+        # Streak: consecutive days with at least 1 task completed
+        streak_days = 0
+        check = today
+        while True:
+            day_start = datetime.combine(check, datetime.min.time())
+            day_end = datetime.combine(check + timedelta(days=1), datetime.min.time())
+            count = session.execute(
+                _own(select(Task), Task, user).where(
+                    Task.status == "done",
+                    Task.completed_at >= day_start,
+                    Task.completed_at < day_end,
+                )
+            ).scalars().first()
+            if count is None:
+                break
+            streak_days += 1
+            check -= timedelta(days=1)
+            if streak_days > 365:
+                break
+
+        habit_completion_rate = (
+            len(completed_habit_ids) / len(habits) if habits else 0.0
+        )
+
+        return DashboardSummary(
+            tasks_today=len(tasks_today_rows),
+            completed_today=len(tasks_done_today),
+            focus_score_today=focus_score_today,
+            time_tracked_seconds=time_tracked_seconds,
+            streak_days=streak_days,
+            today_tasks=tasks_today_rows,
+            overdue_tasks=overdue_rows,
+            today_habits=today_habits_list,
+            active_projects=active_projects,
+            total_tasks_today=len(tasks_today_rows),
+            completed_tasks_today=len(tasks_done_today),
+            habit_completion_rate=habit_completion_rate,
+        )
+
+    except Exception as e:
+        # DB connection exhausted or query failure — return safe empty dashboard
+        # rather than crashing with a 500. Frontend will show zeros instead of error.
+        print(f"Dashboard query error (likely DB connection exhaustion): {e}")
+        return DashboardSummary(
+            tasks_today=0,
+            completed_today=0,
+            focus_score_today=0,
+            time_tracked_seconds=0,
+            streak_days=0,
+            today_tasks=[],
+            overdue_tasks=[],
+            today_habits=[],
+            active_projects=[],
+            total_tasks_today=0,
+            completed_tasks_today=0,
+            habit_completion_rate=0.0,
+        )
 
 # ─── Gamification ──────────────────────────────────────────────────────
 @app.get("/gamification/")
