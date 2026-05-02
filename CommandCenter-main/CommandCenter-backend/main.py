@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, Query, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from datetime import datetime, timedelta, date
 import os
 from typing import Optional, List
@@ -93,7 +93,7 @@ async def today_tasks(
         (Task.status.in_(["today", "in_progress"])) |
         ((Task.due_date == today) & (Task.status != "done"))
     )
-    return session.execute(query.order_by(Task.priority_order)).scalars().all()
+    return session.execute(query.order_by(Task.order)).scalars().all()
 
 @router.post("/tasks/", response_model=TaskResponse)
 async def create_task(
@@ -435,7 +435,7 @@ async def start_timer(
     user: User = Depends(get_current_user),
 ):
     session.execute(
-        db.update(TimeEntry)
+        Task.orderupdate(TimeEntry)
         .where((TimeEntry.user_id == user.id) & (TimeEntry.ended_at.is_(None)))
         .values(ended_at=datetime.now())
     )
@@ -480,7 +480,7 @@ async def get_dashboard(
         select(Task).where(
             (Task.user_id == user.id) &
             (Task.status.in_(["today", "in_progress"]))
-        ).order_by(Task.priority_order)
+        ).order_by(Task.order)
     ).scalars().all()
 
     overdue_rows = session.execute(
@@ -515,6 +515,11 @@ async def get_dashboard(
             "name": h.name,
             "icon": getattr(h, "icon", None),
             "frequency": h.frequency,
+                        "color": getattr(h, "color", "#e8a820"),
+            "sort_order": getattr(h, "sort_order", 0),
+            "is_active": getattr(h, "is_active", True),
+            "time_hour": getattr(h, "time_hour", None),
+            "time_minute": getattr(h, "time_minute", None),
             "completions": [{"completed_date": str(c.completed_date)} for c in completions],
         })
 
@@ -600,6 +605,22 @@ async def get_dashboard(
                 "priority": getattr(t, "priority", None),
                 "due_date": str(t.due_date) if t.due_date else None,
                 "project_id": getattr(t, "project_id", None),
+                            "focus_score": getattr(t, "focus_score", 0),
+            "importance": getattr(t, "importance", 3),
+            "difficulty": getattr(t, "difficulty", 3),
+            "sort_order": getattr(t, "order", 0),
+            "actual_time_minutes": getattr(t, "time_estimate_minutes", 0) or 0,
+            "subtasks": [],
+            "completed_at": t.completed_at.isoformat() if t.completed_at else None,
+            "notes": getattr(t, "notes", None),
+            "description": getattr(t, "description", None),
+            "tag_ids": [],
+            "show_in_daily": True,
+            "time_estimate_minutes": getattr(t, "time_estimate_minutes", None),
+            "parent_id": None,
+            "category_id": getattr(t, "category_id", None),
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+            "updated_at": t.updated_at.isoformat() if t.updated_at else None,
             }
             for t in today_task_rows
         ],
