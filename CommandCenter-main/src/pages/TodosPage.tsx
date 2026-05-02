@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { tasksApi, dashboardApi, gamificationApi } from "@/lib/api";
 import { TaskCard } from "@/components/todos/TaskCard";
 import { QuickAdd } from "@/components/todos/QuickAdd";
 import { TaskModal } from "@/components/todos/TaskModal";
-import { Loader2 } from "lucide-react";
+import { Loader2, Pin, PinOff } from "lucide-react";
 import type { TaskStatus } from "@/types";
-import { useTimerStore, useUIStore } from "@/store";
+import { useTimerStore, useUIStore, usePinnedTaskStore } from "@/store";
 import { battingAvgStr } from "@/lib/utils";
 
 const FILTERS: [string, string][] = [["today","📌 Today"],["inbox","📥 Inbox"],["in_progress","⚡ Active"],["waiting","⏳ Waiting"],["all","All"],["done","✅ Done"]];
@@ -69,6 +69,8 @@ export function TodosPage() {
   const [search, setSearch] = useState("");
   const { activeTimer } = useTimerStore();
   const { addTaskOpen, setAddTaskOpen } = useUIStore();
+  const { pinnedTaskId, setPinnedTask } = usePinnedTaskStore();
+  const qc = useQueryClient();
 
   const [modalOpen, setModalOpen] = useState(false);
   useEffect(() => {
@@ -77,6 +79,25 @@ export function TodosPage() {
       setAddTaskOpen(false);
     }
   }, [addTaskOpen, setAddTaskOpen]);
+
+  const reorderMut = useMutation({
+    mutationFn: (ids: string[]) => tasksApi.reorder(ids),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
+  });
+
+  const pinTask = (task: import("@/types").Task, allTasks: import("@/types").Task[]) => {
+    setPinnedTask(task.id);
+    // Persist: put pinned task at sort_order 0, shift others
+    const others = allTasks.filter(t => t.id !== task.id && t.status !== "done");
+    reorderMut.mutate([task.id, ...others.map(t => t.id)]);
+  };
+
+  const unpinTask = (allTasks: import("@/types").Task[]) => {
+    setPinnedTask(null);
+    // Restore natural order (by current sort_order)
+    const sorted = [...allTasks].filter(t => t.status !== "done").sort((a, b) => a.sort_order - b.sort_order);
+    reorderMut.mutate(sorted.map(t => t.id));
+  };
 
   const { data: tasks, isLoading } = useQuery({
     queryKey: ["tasks", filter, search],
@@ -132,9 +153,21 @@ export function TodosPage() {
 
   const filtered = tasks?.filter(t => filter === "done" ? t.status === "done" : t.status !== "done") ?? [];
   const activeTaskId = activeTimer?.task_id;
-  const visible = activeTaskId
-    ? [...filtered].sort((a, b) => (a.id === activeTaskId ? -1 : b.id === activeTaskId ? 1 : 0))
-    : filtered;
+
+  // Clear pin if pinned task no longer exists in filtered list
+  const pinnedExists = pinnedTaskId && filtered.some(t => t.id === pinnedTaskId);
+
+  const visible = (() => {
+    const base = [...filtered];
+    // Active timer always floats to top first
+    if (activeTaskId) {
+      base.sort((a, b) => (a.id === activeTaskId ? -1 : b.id === activeTaskId ? 1 : 0));
+    } else if (pinnedExists) {
+      // No active timer — respect manual pin
+      base.sort((a, b) => (a.id === pinnedTaskId ? -1 : b.id === pinnedTaskId ? 1 : 0));
+    }
+    return base;
+  })();
 
   return (
     <div>
@@ -224,7 +257,15 @@ export function TodosPage() {
           <p style={{ fontFamily: "'Oswald',Arial,sans-serif", fontSize: 11, fontWeight: 600, letterSpacing: "0.15em", textTransform: "uppercase", color: "rgba(245,240,224,0.2)" }}>No Tasks In This Category</p>
           <p style={{ fontFamily: "'IM Fell English',Georgia,serif", fontStyle: "italic", fontSize: 10, marginTop: 6, color: "rgba(245,240,224,0.1)" }}>Post a new order above to begin</p>
         </div>
-      ) : visible.map(t => <TaskCard key={t.id} task={t} />)}
+      ) : visible.map(t => (
+        <TaskCard
+          key={t.id}
+          task={t}
+          isPinned={t.id === pinnedTaskId && !activeTaskId}
+          onPin={() => pinTask(t, filtered)}
+          onUnpin={() => unpinTask(filtered)}
+        />
+      ))}
     </div>
   );
 }
