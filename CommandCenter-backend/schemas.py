@@ -78,6 +78,16 @@ class TaskResponse(BaseModel):
     updated_at: datetime
     completed_at: Optional[datetime] = None
 
+    @validator("due_date", pre=True, always=True)
+    def coerce_due_date(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, datetime):
+            return v
+        if isinstance(v, date):
+            return datetime(v.year, v.month, v.day)
+        return v
+
     @validator("tag_ids", pre=True, always=True)
     def parse_tag_ids(cls, v):
         if v is None:
@@ -133,6 +143,18 @@ class ProjectResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     tasks: List[TaskResponse] = []
+    task_count: int = 0
+    completion_percentage: int = 0
+
+    @validator("due_date", pre=True, always=True)
+    def coerce_due_date(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, datetime):
+            return v
+        if isinstance(v, date):
+            return datetime(v.year, v.month, v.day)
+        return v
 
     class Config:
         from_attributes = True
