@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { tasksApi, tagsApi } from "@/lib/api";
 import { useActiveTimer } from "@/hooks/useTimer";
 import { useTimerStore, useCelebrationStore, useFocusStore, usePinnedTaskStore } from "@/store";
