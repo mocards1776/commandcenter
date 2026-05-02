@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 
 const API       = (import.meta as any).env?.VITE_API_URL ?? "https://orca-app-v7oew.ondigitalocean.app";
 const BG        = "#162a1c";
@@ -18,137 +18,169 @@ const LABEL: React.CSSProperties = {
 };
 
 // ─── LED Ribbon Board ────────────────────────────────────────────────────────
-// Styled after real stadium LED ribbon boards — dark matrix background,
-// amber LED text, scrolling ticker with discrete stat segments.
-
-function LedDot({ lit, color = "#e8a820" }: { lit: boolean; color?: string }) {
-  return (
-    <div style={{
-      width: 3, height: 3, borderRadius: "50%",
-      background: lit ? color : "rgba(255,255,255,0.04)",
-      boxShadow: lit ? `0 0 4px ${color}99` : "none",
-      flexShrink: 0,
-    }} />
-  );
-}
+// Static ribbon board — dark LED matrix, Cardinals logo, patriotic red/white/blue,
+// stat blocks for projected wins / playoff % / division title.
 
 interface RibbonStat {
   label: string;
   value: string;
-  color?: string;
-  separator?: boolean;
+  valueColor: string;
+  glowColor: string;
 }
 
-function RibbonSegment({ stat }: { stat: RibbonStat }) {
-  const c = stat.color ?? GOLD;
+// Cardinals SVG logo (inline — the STL birds-on-bat wordmark silhouette)
+function CardinalsLogo({ size = 36 }: { size?: number }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, padding: "0 14px" }}>
-      {stat.separator && (
-        <div style={{ display: "flex", gap: 2, alignItems: "center", marginRight: 6 }}>
-          {[0,1,2].map(i => <LedDot key={i} lit color={GOLD} />)}
-        </div>
-      )}
+    <svg width={size} height={size} viewBox="0 0 36 36" fill="none" aria-label="St. Louis Cardinals">
+      {/* Cardinal bird silhouette */}
+      <circle cx="18" cy="18" r="17" fill="#c41e3a" stroke="#8b0000" strokeWidth="1" />
+      {/* Stylized STL text */}
+      <text x="18" y="16" textAnchor="middle"
+        style={{ fontFamily: "'Oswald',Arial,sans-serif", fontSize: 8, fontWeight: 900, fill: "#f5f0e0", letterSpacing: "0.12em" }}>
+        STL
+      </text>
+      {/* Cardinals script underline */}
+      <text x="18" y="23" textAnchor="middle"
+        style={{ fontFamily: "Georgia,serif", fontSize: 5, fontStyle: "italic", fontWeight: 700, fill: "#e8a820", letterSpacing: "0.06em" }}>
+        Cardinals
+      </text>
+      {/* Small star */}
+      <text x="18" y="29" textAnchor="middle"
+        style={{ fontFamily: "Arial,sans-serif", fontSize: 6, fill: "#e8a820" }}>★</text>
+    </svg>
+  );
+}
+
+// Patriotic stripe: repeating red / white / blue pixel columns
+function PatrioticStripe({ height = 4 }: { height?: number }) {
+  // 3-pixel repeating pattern via gradient
+  return (
+    <div style={{
+      height,
+      background: "repeating-linear-gradient(90deg, #c41e3a 0px, #c41e3a 3px, #f5f0e0 3px, #f5f0e0 6px, #002868 6px, #002868 9px)",
+      opacity: 0.85,
+    }} />
+  );
+}
+
+// Vertical divider between stat blocks
+function RibbonDivider() {
+  return (
+    <div style={{
+      width: 1, alignSelf: "stretch", margin: "6px 0",
+      background: "linear-gradient(to bottom, transparent, rgba(255,255,255,0.12) 30%, rgba(255,255,255,0.12) 70%, transparent)",
+    }} />
+  );
+}
+
+function RibbonStatBlock({ stat }: { stat: RibbonStat }) {
+  return (
+    <div style={{
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+      padding: "0 18px", gap: 2, flex: 1,
+    }}>
       <span style={{
-        fontFamily: FONT, fontSize: 10, fontWeight: 700,
-        letterSpacing: "0.16em", textTransform: "uppercase",
-        color: "rgba(232,168,32,0.5)",
+        fontFamily: FONT, fontSize: 8, fontWeight: 700,
+        letterSpacing: "0.18em", textTransform: "uppercase" as const,
+        color: "rgba(245,240,224,0.38)",
       }}>{stat.label}</span>
-      <span style={{ width: 1, height: 12, background: "rgba(232,168,32,0.2)", flexShrink: 0 }} />
       <span style={{
-        fontFamily: FONT, fontSize: 13, fontWeight: 800,
-        letterSpacing: "0.04em",
-        color: c,
-        textShadow: `0 0 8px ${c}88`,
-        fontVariantNumeric: "tabular-nums",
+        fontFamily: FONT, fontSize: 16, fontWeight: 900,
+        letterSpacing: "0.03em",
+        color: stat.valueColor,
+        textShadow: `0 0 10px ${stat.glowColor}`,
+        fontVariantNumeric: "tabular-nums" as const,
+        lineHeight: 1,
       }}>{stat.value}</span>
     </div>
   );
 }
 
 function LedRibbonBoard({ stats, loading }: { stats: RibbonStat[]; loading: boolean }) {
-  const trackRef = useRef<HTMLDivElement>(null);
-  const [offset, setOffset] = useState(0);
-  const animRef  = useRef<number>(0);
-  const speedPx  = 0.6; // px per frame
-
-  useEffect(() => {
-    const track = trackRef.current;
-    if (!track) return;
-    let pos = 0;
-    const half = track.scrollWidth / 2;
-
-    const tick = () => {
-      pos += speedPx;
-      if (pos >= half) pos = 0;
-      setOffset(pos);
-      animRef.current = requestAnimationFrame(tick);
-    };
-    animRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(animRef.current);
-  }, [stats.length]);
-
-  const items = [...stats, ...stats]; // duplicate for seamless loop
-
   return (
-    <div style={{
-      position: "relative",
-      background: "#060e08",
-      borderTop: "2px solid #0a1a0c",
-      borderBottom: "2px solid #0a1a0c",
-      overflow: "hidden",
-      height: 32,
-    }}>
-      {/* Scanline overlay for LED matrix texture */}
-      <div style={{
-        position: "absolute", inset: 0, zIndex: 2, pointerEvents: "none",
-        background: "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.18) 2px, rgba(0,0,0,0.18) 3px)",
-      }} />
+    <div style={{ position: "relative", background: "#06080e" }}>
+      {/* Top patriotic stripe */}
+      <PatrioticStripe height={3} />
 
-      {/* Left fade */}
+      {/* Main board */}
       <div style={{
-        position: "absolute", left: 0, top: 0, bottom: 0, width: 28, zIndex: 3,
-        background: "linear-gradient(to right, #060e08, transparent)",
-        pointerEvents: "none",
-      }} />
-      {/* Right fade */}
-      <div style={{
-        position: "absolute", right: 0, top: 0, bottom: 0, width: 28, zIndex: 3,
-        background: "linear-gradient(to left, #060e08, transparent)",
-        pointerEvents: "none",
-      }} />
-
-      {/* STL logo pill — left anchor */}
-      <div style={{
-        position: "absolute", left: 0, top: 0, bottom: 0, zIndex: 4,
+        position: "relative",
+        background: "linear-gradient(180deg, #0a0c14 0%, #060810 100%)",
+        overflow: "hidden",
+        height: 52,
         display: "flex", alignItems: "center",
-        background: "linear-gradient(to right, #060e08 70%, transparent)",
-        paddingLeft: 8, paddingRight: 20,
       }}>
+        {/* LED scanline matrix texture */}
         <div style={{
-          background: "#0a1a0c", border: "1px solid rgba(232,168,32,0.3)", borderRadius: 2,
-          padding: "2px 7px", display: "flex", alignItems: "center", gap: 4,
-        }}>
-          <span style={{ fontFamily: FONT, fontSize: 8, fontWeight: 800, letterSpacing: "0.2em",
-            color: GOLD, textShadow: `0 0 6px ${GOLD}66` }}>STL</span>
+          position: "absolute", inset: 0, pointerEvents: "none", zIndex: 1,
+          background: "repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.14) 3px, rgba(0,0,0,0.14) 4px)",
+        }} />
+        {/* Subtle vertical column texture */}
+        <div style={{
+          position: "absolute", inset: 0, pointerEvents: "none", zIndex: 1,
+          background: "repeating-linear-gradient(90deg, transparent, transparent 4px, rgba(0,0,0,0.06) 4px, rgba(0,0,0,0.06) 5px)",
+        }} />
+
+        {/* Content row */}
+        <div style={{ position: "relative", zIndex: 2, display: "flex", alignItems: "center", width: "100%", height: "100%" }}>
+
+          {/* Cardinals logo block */}
+          <div style={{
+            display: "flex", alignItems: "center", gap: 8,
+            padding: "0 16px 0 12px",
+            borderRight: "1px solid rgba(255,255,255,0.07)",
+            height: "100%",
+            background: "linear-gradient(90deg, rgba(196,30,58,0.12) 0%, transparent 100%)",
+            flexShrink: 0,
+          }}>
+            <CardinalsLogo size={34} />
+            <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              <span style={{ fontFamily: FONT, fontSize: 9, fontWeight: 800, letterSpacing: "0.2em",
+                color: "#c41e3a", textShadow: "0 0 6px rgba(196,30,58,0.6)" }}>ST. LOUIS</span>
+              <span style={{ fontFamily: FONT, fontSize: 7, fontWeight: 700, letterSpacing: "0.16em",
+                color: "rgba(232,168,32,0.7)" }}>CARDINALS · 2026</span>
+            </div>
+          </div>
+
+          {/* Stars separator */}
+          <div style={{ padding: "0 10px", flexShrink: 0 }}>
+            <span style={{ fontFamily: "Arial,sans-serif", fontSize: 8, color: "#002868",
+              textShadow: "0 0 4px rgba(0,40,104,0.8)", letterSpacing: "3px" }}>★★★</span>
+          </div>
+
+          {/* Stat blocks */}
+          {loading ? (
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <span style={{ fontFamily: FONT, fontSize: 10, color: "rgba(245,240,224,0.2)", letterSpacing: "0.2em" }}>
+                LOADING PROJECTIONS…
+              </span>
+            </div>
+          ) : (
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "space-evenly" }}>
+              {stats.map((s, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", flex: 1 }}>
+                  {i > 0 && <RibbonDivider />}
+                  <RibbonStatBlock stat={s} />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Right patriotic flag accent */}
+          <div style={{
+            display: "flex", flexDirection: "column", gap: 2, padding: "0 10px",
+            borderLeft: "1px solid rgba(255,255,255,0.07)", height: "100%",
+            justifyContent: "center", flexShrink: 0,
+          }}>
+            {["#c41e3a","#f5f0e0","#002868","#f5f0e0","#c41e3a"].map((c, i) => (
+              <div key={i} style={{ width: 6, height: 4, background: c, opacity: 0.7 }} />
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Scrolling track */}
-      <div style={{
-        display: "flex", alignItems: "center",
-        height: "100%", whiteSpace: "nowrap",
-        transform: `translateX(${-offset}px)`,
-        paddingLeft: 56,
-        willChange: "transform",
-      }} ref={trackRef}>
-        {loading ? (
-          <span style={{ fontFamily: FONT, fontSize: 10, color: "rgba(232,168,32,0.3)", letterSpacing: "0.15em", padding: "0 20px" }}>
-            LOADING · PROJECTION DATA · · ·
-          </span>
-        ) : (
-          items.map((s, i) => <RibbonSegment key={i} stat={s} />)
-        )}
-      </div>
+      {/* Bottom patriotic stripe */}
+      <PatrioticStripe height={3} />
     </div>
   );
 }
@@ -354,77 +386,54 @@ async function fetchProjections(): Promise<RibbonStat[]> {
   return null as any;
 }
 
+function statColor(val: number, good: number, ok: number): { valueColor: string; glowColor: string } {
+  if (val >= good) return { valueColor: WIN_GRN, glowColor: "rgba(76,175,80,0.5)" };
+  if (val >= ok)   return { valueColor: GOLD,    glowColor: "rgba(232,168,32,0.5)" };
+  return             { valueColor: LOSS_RD,  glowColor: "rgba(217,64,64,0.4)" };
+}
+
 function buildStats(
   projWins: number | null,
   playoffPct: number | null,
   divPct: number | null,
   record?: { w: number; l: number }
 ): RibbonStat[] {
-  const stats: RibbonStat[] = [];
-
-  // If we have live record, compute pace projection
   if (record && !projWins) {
     const gp = record.w + record.l;
     if (gp > 0) projWins = Math.round((record.w / gp) * 162);
   }
-
-  stats.push({
-    label: "2026 Projected Wins",
-    value: projWins != null ? `${projWins} W` : "— W",
-    color: projWins != null && projWins >= 86 ? WIN_GRN : projWins != null && projWins >= 81 ? GOLD : LOSS_RD,
-    separator: false,
-  });
-
-  // Playoff % — derive from projected wins if no direct data
   if (playoffPct == null && projWins != null) {
-    // Rough logistic curve: 90W ≈ 75%, 85W ≈ 45%, 80W ≈ 20%
     playoffPct = Math.min(99, Math.max(1, Math.round(1 / (1 + Math.exp(-0.22 * (projWins - 84))) * 100)));
   }
-  stats.push({
-    label: "Playoff Chances",
-    value: playoffPct != null ? `${playoffPct}%` : "—",
-    color: playoffPct != null && playoffPct >= 60 ? WIN_GRN : playoffPct != null && playoffPct >= 35 ? GOLD : LOSS_RD,
-    separator: true,
-  });
-
-  // Division title % — rough model
   if (divPct == null && projWins != null) {
     divPct = Math.min(95, Math.max(1, Math.round(1 / (1 + Math.exp(-0.28 * (projWins - 89))) * 100)));
   }
-  stats.push({
-    label: "Division Title",
-    value: divPct != null ? `${divPct}%` : "—",
-    color: divPct != null && divPct >= 40 ? WIN_GRN : divPct != null && divPct >= 20 ? GOLD : LOSS_RD,
-    separator: true,
-  });
-
-  // Wild card % (complement)
-  const wcPct = playoffPct != null && divPct != null
-    ? Math.max(0, Math.min(playoffPct - divPct, playoffPct))
-    : null;
-  if (wcPct != null) {
-    stats.push({
-      label: "Wild Card",
-      value: `${Math.max(0, wcPct)}%`,
-      color: wcPct >= 30 ? WIN_GRN : wcPct >= 15 ? GOLD : MUTED,
-      separator: true,
-    });
-  }
-
-  // World Series %
   const wsPct = projWins != null
-    ? Math.round(1 / (1 + Math.exp(-0.18 * (projWins - 92))) * 18)
+    ? Math.max(1, Math.round(1 / (1 + Math.exp(-0.18 * (projWins - 92))) * 18))
     : null;
-  if (wsPct != null) {
-    stats.push({
-      label: "World Series",
-      value: `${Math.max(1, wsPct)}%`,
-      color: wsPct >= 10 ? WIN_GRN : wsPct >= 5 ? GOLD : MUTED,
-      separator: true,
-    });
-  }
 
-  return stats;
+  return [
+    {
+      label: "Proj. Wins",
+      value: projWins != null ? `${projWins}` : "—",
+      ...statColor(projWins ?? 0, 86, 81),
+    },
+    {
+      label: "Playoff %",
+      value: playoffPct != null ? `${playoffPct}%` : "—",
+      ...statColor(playoffPct ?? 0, 60, 35),
+    },
+    {
+      label: "Div. Title",
+      value: divPct != null ? `${divPct}%` : "—",
+      ...statColor(divPct ?? 0, 40, 20),
+    },
+    {
+      label: "World Series",
+      value: wsPct != null ? `${wsPct}%` : "—",
+      ...statColor(wsPct ?? 0, 10, 5),
+    },
+  ];
 }
 
 // ─── Main export ─────────────────────────────────────────────────────────────
