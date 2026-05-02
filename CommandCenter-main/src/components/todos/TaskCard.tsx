@@ -253,111 +253,105 @@ export function TaskCard({ task, isPinned = false, onPin, onUnpin }: { task: Tas
               : "inset 0 1px 0 rgba(255,255,255,0.03)",
           }}>
 
-            {/* ── Top row: checkbox + title + play button ── */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px 5px" }}>
-              {/* Checkbox */}
-              <button type="button"
-                className={`sb-check ${completeMut.isPending ? "done" : ""}`}
-                onClick={e => { e.stopPropagation(); completeMut.mutate(); }}
-                disabled={completeMut.isPending} title="Mark complete" style={{ flexShrink: 0 }}>
-                {completeMut.isPending && "✓"}
-              </button>
+            {/* ── Main layout: left (checkbox+title+play) | right (scoreboard panels) ── */}
+            <div style={{ display: "flex", alignItems: "stretch" }}>
 
-              {/* Pin indicator */}
-              {isPinned && !isThisRunning && (
-                <span title="Pinned to top" style={{ fontSize: 10, color: GOLD, flexShrink: 0, opacity: 0.8 }}>📌</span>
-              )}
-
-              {/* Title */}
-              <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }}
-                onClick={() => isThisRunning ? setFocus(true) : setModalOpen(true)}>
-                <div style={{
-                  fontFamily: FONT, fontSize: 13, fontWeight: 700,
-                  letterSpacing: "0.06em", textTransform: "uppercase",
-                  color: FG, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-                }}>{task.title}</div>
-              </div>
-
-              {/* Subtask toggle */}
-              {activeSubs.length > 0 && (
+              {/* LEFT: checkbox + title + subtasks toggle + play */}
+              <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8, padding: "7px 8px 7px 10px" }}>
+                {/* Checkbox */}
                 <button type="button"
-                  onClick={e => { e.stopPropagation(); setSubsOpen(v => !v); }}
-                  style={{ background: "none", border: "none", cursor: "pointer",
-                    color: DIM, display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}
-                  onMouseEnter={e => (e.currentTarget.style.color = GOLD)}
-                  onMouseLeave={e => (e.currentTarget.style.color = DIM)}>
-                  {subsOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                  <span style={{ fontFamily: FONT, fontSize: 9, letterSpacing: "0.08em" }}>{activeSubs.length}</span>
+                  className={`sb-check ${completeMut.isPending ? "done" : ""}`}
+                  onClick={e => { e.stopPropagation(); completeMut.mutate(); }}
+                  disabled={completeMut.isPending} title="Mark complete" style={{ flexShrink: 0 }}>
+                  {completeMut.isPending && "✓"}
                 </button>
-              )}
 
-              {/* Play/Stop */}
-              <div className="task-play" onClick={handleTimer}
-                title={isThisRunning ? "Stop timer" : "Start timer"} style={{ flexShrink: 0 }}>
-                {isThisRunning ? <div className="tri-stop" /> : <div className="tri" />}
+                {/* Pin indicator */}
+                {isPinned && !isThisRunning && (
+                  <span title="Pinned to top" style={{ fontSize: 10, color: GOLD, flexShrink: 0, opacity: 0.8 }}>📌</span>
+                )}
+
+                {/* Title */}
+                <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }}
+                  onClick={() => isThisRunning ? setFocus(true) : setModalOpen(true)}>
+                  <div style={{
+                    fontFamily: FONT, fontSize: 13, fontWeight: 700,
+                    letterSpacing: "0.06em", textTransform: "uppercase",
+                    color: FG, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                  }}>{task.title}</div>
+                </div>
+
+                {/* Subtask toggle */}
+                {activeSubs.length > 0 && (
+                  <button type="button"
+                    onClick={e => { e.stopPropagation(); setSubsOpen(v => !v); }}
+                    style={{ background: "none", border: "none", cursor: "pointer",
+                      color: DIM, display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}
+                    onMouseEnter={e => (e.currentTarget.style.color = GOLD)}
+                    onMouseLeave={e => (e.currentTarget.style.color = DIM)}>
+                    {subsOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                    <span style={{ fontFamily: FONT, fontSize: 9, letterSpacing: "0.08em" }}>{activeSubs.length}</span>
+                  </button>
+                )}
+
+                {/* Play/Stop */}
+                <div className="task-play" onClick={handleTimer}
+                  title={isThisRunning ? "Stop timer" : "Start timer"} style={{ flexShrink: 0 }}>
+                  {isThisRunning ? <div className="tri-stop" /> : <div className="tri" />}
+                </div>
               </div>
-            </div>
 
-            {/* ── Bottom row: scoreboard panels ── */}
-            <div style={{
-              display: "flex", alignItems: "flex-end", gap: 6,
-              padding: "4px 10px 8px", flexWrap: "wrap",
-              borderTop: "1px solid rgba(0,0,0,0.3)",
-            }}>
+              {/* RIGHT: scoreboard stat panels — vertical divider then cells */}
+              <div style={{
+                display: "flex", alignItems: "center", gap: 5,
+                padding: "5px 10px 5px 8px",
+                borderLeft: "1px solid rgba(0,0,0,0.35)",
+                flexShrink: 0,
+              }}>
+                {/* Priority */}
+                <PriorityPanel priority={task.priority} />
 
-              {/* Priority */}
-              <PriorityPanel priority={task.priority} />
+                {/* Focus Score */}
+                <FocusScorePanel score={task.focus_score} />
 
-              {/* Focus Score */}
-              <FocusScorePanel score={task.focus_score} />
+                {/* Est. Time */}
+                {task.time_estimate_minutes != null && task.time_estimate_minutes > 0 && (
+                  <PanelCell value={formatMinutes(task.time_estimate_minutes)} sub="EST" color="muted" />
+                )}
 
-              {/* Est. Time */}
-              {task.time_estimate_minutes != null && task.time_estimate_minutes > 0 && (
+                {/* Due date */}
+                {task.due_date && (
+                  <PanelCell
+                    value={task.due_date}
+                    sub={overdue ? "⚠ OVR" : "DUE"}
+                    color={overdue ? "red" : "muted"}
+                  />
+                )}
+
+                {/* Category — always show, dash if none */}
                 <PanelCell
-                  value={formatMinutes(task.time_estimate_minutes)}
-                  sub="EST"
-                  color="muted"
-                />
-              )}
-
-              {/* Due date */}
-              {task.due_date && (
-                <PanelCell
-                  value={task.due_date}
-                  sub={overdue ? "⚠ OVERDUE" : "DUE"}
-                  color={overdue ? "red" : "muted"}
-                />
-              )}
-
-              {/* Category */}
-              {(task as any).category_name && (
-                <PanelCell
-                  value={(task as any).category_name}
+                  value={(task as any).category_name || "—"}
                   sub="CAT"
-                  color="muted"
+                  color={(task as any).category_name ? "muted" : "dim"}
                 />
-              )}
 
-              {/* Tags */}
-              {task.tag_ids?.length > 0 && (
-                <div style={{ display: "flex", gap: 4, alignItems: "flex-end", flexWrap: "wrap" }}>
-                  {task.tag_ids.slice(0, 3).map((tag, i) => (
+                {/* Tags — always show up to 2, dash if none */}
+                {(task.tag_ids?.length ?? 0) > 0 ? (
+                  task.tag_ids.slice(0, 2).map((tag: any, i: number) => (
                     <PanelCell
                       key={i}
-                      value={typeof tag === "string" && tag.length > 10 ? tag.slice(0, 10) + "…" : tag as any}
+                      value={typeof tag === "string" && tag.length > 9 ? tag.slice(0, 9) + "…" : tag}
                       sub={i === 0 ? "TAG" : ""}
                       color="dim"
                     />
-                  ))}
-                </div>
-              )}
+                  ))
+                ) : (
+                  <PanelCell value="—" sub="TAG" color="dim" />
+                )}
 
-              {/* Active timer (pushed to right) */}
-              {isThisRunning && (
-                <div style={{ marginLeft: "auto" }}>
-                  <TimerPanel seconds={elapsedSeconds} />
-                </div>
-              )}
+                {/* Active timer */}
+                {isThisRunning && <TimerPanel seconds={elapsedSeconds} />}
+              </div>
             </div>
           </div>
 
@@ -388,3 +382,4 @@ export function TaskCard({ task, isPinned = false, onPin, onUnpin }: { task: Tas
     </>
   );
 }
+
