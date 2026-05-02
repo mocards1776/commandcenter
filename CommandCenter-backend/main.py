@@ -401,6 +401,11 @@ async def list_habits(session: Session = Depends(db.get_session)):
                 {"id": c.id, "habit_id": c.habit_id, "completed_date": c.completed_date.isoformat() if c.completed_date else None, "created_at": c.created_at.isoformat() if c.created_at else None}
                 for c in comps
             ],
+                        "description": getattr(h, "description", None),
+                                    "custom_days": None,
+                                                "target_minutes": getattr(h, "target_minutes", None),
+                                                            "created_at": h.created_at,
+                                                                        "updated_at": h.updated_at,
         })
     return result
 
@@ -431,6 +436,11 @@ async def create_habit(data: HabitCreate, session: Session = Depends(db.get_sess
         "sort_order": habit.sort_order,
         "is_active": habit.is_active,
         "completions": [],
+                "description": None,
+                        "custom_days": None,
+                                "target_minutes": None,
+                                        "created_at": habit.created_at,
+                                                "updated_at": habit.updated_at,
     }
 
 @app.patch("/habits/{habit_id}", response_model=HabitResponse)
@@ -462,6 +472,11 @@ async def update_habit(habit_id: str, data: HabitUpdate, session: Session = Depe
             {"id": c.id, "habit_id": c.habit_id, "completed_date": c.completed_date.isoformat() if c.completed_date else None, "created_at": c.created_at.isoformat() if c.created_at else None}
             for c in comps
         ],
+                "description": None,
+                        "custom_days": None,
+                                "target_minutes": None,
+                                        "created_at": habit.created_at,
+                                                "updated_at": habit.updated_at,
     }
 
 @app.delete("/habits/{habit_id}")
@@ -858,6 +873,11 @@ async def get_dashboard(session: Session = Depends(db.get_session)):
                 {"id": c.id, "habit_id": c.habit_id, "completed_date": c.completed_date.isoformat() if c.completed_date else None, "created_at": c.created_at.isoformat() if c.created_at else None}
                 for c in comps
             ],
+                        "description": getattr(h, "description", None),
+                                    "custom_days": None,
+                                                "target_minutes": getattr(h, "target_minutes", None),
+                                                            "created_at": h.created_at,
+                                                                        "updated_at": h.updated_at,
         })
 
     # Include completed tasks in the dashboard task list so they show as done
