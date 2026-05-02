@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { dashboardApi, gamificationApi } from "@/lib/api";
 import { GameScoreboard } from "@/components/dashboard/GameScoreboard";
 import { NextUpPanel } from "@/components/dashboard/NextUpPanel";
 import { BaseballPanel } from "@/components/dashboard/BaseballPanel";
 import { HabitRow } from "@/components/habits/HabitRow";
-import { useUIStore, useTimerStore } from "@/store";
+import { useTimerStore } from "@/store";
 import { Loader2 } from "lucide-react";
 import { todayStr } from "@/lib/utils";
 
@@ -19,7 +20,7 @@ function useLiveClock() {
 }
 
 export function DashboardPage() {
-  const { setActivePage } = useUIStore();
+  const navigate = useNavigate();
   const { activeTimer } = useTimerStore();
   const today = todayStr();
   const now = useLiveClock();
@@ -140,7 +141,7 @@ export function DashboardPage() {
         <div style={{ borderRight: "3px solid #1e3629" }}>
           <div className="bottom-label" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span>Today's Habits</span>
-            <button className="panel-header-link" onClick={() => setActivePage("habits")} style={{ fontSize: 9 }}>Manage &#8594;</button>
+            <button className="panel-header-link" onClick={() => navigate("/habits")} style={{ fontSize: 9 }}>Manage &#8594;</button>
           </div>
           {habits.length === 0 ? (
             <p style={{ padding: "12px 14px", fontFamily: "'IM Fell English',Georgia,serif", fontStyle: "italic", fontSize: 11, color: "rgba(245,240,224,0.2)" }}>No habits configured</p>
@@ -151,12 +152,12 @@ export function DashboardPage() {
         <div style={{ borderRight: "3px solid #1e3629" }}>
           <div className="bottom-label" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span>Active Projects</span>
-            <button className="panel-header-link" onClick={() => setActivePage("projects")} style={{ fontSize: 9 }}>All &#8594;</button>
+            <button className="panel-header-link" onClick={() => navigate("/projects")} style={{ fontSize: 9 }}>All &#8594;</button>
           </div>
           {projects.length === 0 ? (
             <p style={{ padding: "12px 14px", fontFamily: "'IM Fell English',Georgia,serif", fontStyle: "italic", fontSize: 11, color: "rgba(245,240,224,0.2)" }}>No active projects</p>
           ) : projects.map(p => (
-            <div key={p.id} className="proj-row" onClick={() => setActivePage("projects")}>
+            <div key={p.id} className="proj-row" onClick={() => navigate("/projects")}>
               <div className="proj-name-line">
                 <span className="proj-name">{p.title}</span>
                 <span className="proj-pct">{p.completion_percentage}%</span>

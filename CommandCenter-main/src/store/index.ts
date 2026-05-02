@@ -65,18 +65,15 @@ export const useCelebrationStore = create<CelebrationState>((set) => ({
 
 interface UIState {
   sidebarCollapsed: boolean;
-  activePage: string;
   addTaskOpen: boolean;
   toggleSidebar: () => void;
-  setActivePage: (page: string) => void;
   setAddTaskOpen: (v: boolean) => void;
 }
 export const useUIStore = create<UIState>()(
   persist(
     (set) => ({
-      sidebarCollapsed: false, activePage: "dashboard", addTaskOpen: false,
+      sidebarCollapsed: false, addTaskOpen: false,
       toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
-      setActivePage: (page) => set({ activePage: page }),
       setAddTaskOpen: (v) => set({ addTaskOpen: v }),
     }),
     { name: "ui-store" }

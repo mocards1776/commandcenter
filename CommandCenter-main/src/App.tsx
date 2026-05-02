@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "react-hot-toast";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TimerBanner } from "@/components/layout/TimerBanner";
 import { FocusMode } from "@/components/focus/FocusMode";
@@ -22,24 +23,32 @@ import { tokenStore }     from "@/lib/api";
 
 const qc = new QueryClient({ defaultOptions:{ queries:{ staleTime:30_000, retry:1 } } });
 
-const PAGES: Record<string, React.ComponentType> = {
-  dashboard:DashboardPage, todos:TodosPage, projects:ProjectsPage,
-  habits:HabitsPage, calendar:CalendarPage, focus:FocusPage,
-  braindump:BraindumpPage, notes:NotesPage, crm:CRMPage,
-  stats:StatsPage, sports:SportsPage,
-};
-
-function AppInner() {
-  const { activePage, sidebarCollapsed } = useUIStore();
+function AppShell() {
+  const { sidebarCollapsed } = useUIStore();
   const { activeTimer } = useTimerStore();
-  const Page = PAGES[activePage] ?? DashboardPage;
+  const location = useLocation();
   const sw = sidebarCollapsed ? 48 : 200;
   return (
     <div style={{ minHeight:"100vh", background:"#162a1c" }}>
       <FocusMode/><CelebrationOverlay/><TimerBanner/><Sidebar/>
       <main style={{ marginLeft:sw, paddingTop:activeTimer?44:0, minHeight:"100vh", transition:"margin-left 0.25s ease" }}>
-        <div className="sb-shell" style={{ minHeight:"calc(100vh - 0px)" }} key={activePage}>
-          <Page/>
+        <div className="sb-shell" style={{ minHeight:"calc(100vh - 0px)" }} key={location.pathname}>
+          <Routes>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/todos"     element={<TodosPage />} />
+            <Route path="/projects"  element={<ProjectsPage />} />
+            <Route path="/habits"    element={<HabitsPage />} />
+            <Route path="/calendar"  element={<CalendarPage />} />
+            <Route path="/focus"     element={<FocusPage />} />
+            <Route path="/braindump" element={<BraindumpPage />} />
+            <Route path="/notes"     element={<NotesPage />} />
+            <Route path="/crm"       element={<CRMPage />} />
+            <Route path="/stats"     element={<StatsPage />} />
+            <Route path="/sports"    element={<SportsPage />} />
+            {/* Unknown path → dashboard */}
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
         </div>
       </main>
       <Toaster position="bottom-right" toastOptions={{
@@ -67,7 +76,9 @@ export default function App() {
 
   return (
     <QueryClientProvider client={qc}>
-      <AppInner/>
+      <BrowserRouter>
+        <AppShell />
+      </BrowserRouter>
     </QueryClientProvider>
   );
 }

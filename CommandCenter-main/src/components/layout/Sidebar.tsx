@@ -1,5 +1,7 @@
 import { LayoutDashboard,CheckSquare,FolderKanban,Flame,Calendar,Brain,StickyNote,Users,BarChart3,Trophy,Focus,ChevronLeft,ChevronRight } from "lucide-react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useUIStore } from "@/store";
+
 const NAV = [
   {id:"dashboard",label:"Dashboard",icon:LayoutDashboard},{id:"todos",label:"Daily Todos",icon:CheckSquare},
   {id:"projects",label:"Projects",icon:FolderKanban},{id:"habits",label:"Habits",icon:Flame},
@@ -36,11 +38,16 @@ function BrandMark({ collapsed, onFlagClick }: { collapsed: boolean; onFlagClick
 }
 
 export function Sidebar() {
-  const { sidebarCollapsed, toggleSidebar, activePage, setActivePage, setAddTaskOpen } = useUIStore();
+  const { sidebarCollapsed, toggleSidebar, setAddTaskOpen } = useUIStore();
+  const navigate = useNavigate();
+  const location = useLocation();
   const w = sidebarCollapsed ? 48 : 200;
 
+  // Determine active page from URL
+  const currentId = location.pathname.replace(/^\//, "").split("/")[0] || "dashboard";
+
   function handleFlagClick() {
-    setActivePage("todos");
+    navigate("/todos");
     setAddTaskOpen(true);
   }
 
@@ -58,8 +65,8 @@ export function Sidebar() {
       {sidebarCollapsed&&<button onClick={toggleSidebar} style={{margin:"8px auto",width:30,height:22,display:"flex",alignItems:"center",justifyContent:"center",background:"none",border:"1px solid rgba(232,168,32,0.2)",borderRadius:2,cursor:"pointer",color:"rgba(232,168,32,0.35)"}} onMouseEnter={e=>{e.currentTarget.style.color="#e8a820";e.currentTarget.style.borderColor="rgba(232,168,32,0.5)";}} onMouseLeave={e=>{e.currentTarget.style.color="rgba(232,168,32,0.35)";e.currentTarget.style.borderColor="rgba(232,168,32,0.2)"}}><ChevronRight size={13}/></button>}
       <nav style={{flex:1,overflowY:"auto",padding:"6px"}}>
         {NAV.map(({id,label,icon:Icon})=>{
-          const active=activePage===id;
-          return <button key={id} onClick={()=>setActivePage(id)} title={sidebarCollapsed?label:undefined} style={{width:"100%",display:"flex",alignItems:"center",gap:8,padding:sidebarCollapsed?"8px 0":"7px 8px",justifyContent:sidebarCollapsed?"center":"flex-start",borderRadius:2,border:`1px solid ${active?"rgba(232,168,32,0.35)":"transparent"}`,background:active?"rgba(232,168,32,0.1)":"transparent",color:active?"#e8a820":"rgba(245,240,224,0.3)",cursor:"pointer",marginBottom:1,transition:"all 0.1s",fontFamily:"'Oswald',Arial,sans-serif"}} onMouseEnter={e=>{if(!active){e.currentTarget.style.color="#f5f0e0";e.currentTarget.style.background="rgba(245,240,224,0.04)";}}} onMouseLeave={e=>{if(!active){e.currentTarget.style.color="rgba(245,240,224,0.3)";e.currentTarget.style.background="transparent";}}}>
+          const active = currentId === id;
+          return <button key={id} onClick={()=>navigate("/"+id)} title={sidebarCollapsed?label:undefined} style={{width:"100%",display:"flex",alignItems:"center",gap:8,padding:sidebarCollapsed?"8px 0":"7px 8px",justifyContent:sidebarCollapsed?"center":"flex-start",borderRadius:2,border:`1px solid ${active?"rgba(232,168,32,0.35)":"transparent"}`,background:active?"rgba(232,168,32,0.1)":"transparent",color:active?"#e8a820":"rgba(245,240,224,0.3)",cursor:"pointer",marginBottom:1,transition:"all 0.1s",fontFamily:"'Oswald',Arial,sans-serif"}} onMouseEnter={e=>{if(!active){e.currentTarget.style.color="#f5f0e0";e.currentTarget.style.background="rgba(245,240,224,0.04)";}}} onMouseLeave={e=>{if(!active){e.currentTarget.style.color="rgba(245,240,224,0.3)";e.currentTarget.style.background="transparent";}}}>
             <Icon size={14} style={{flexShrink:0}}/>
             {!sidebarCollapsed&&<span style={{fontSize:11,fontWeight:600,letterSpacing:"0.1em",textTransform:"uppercase",whiteSpace:"nowrap"}}>{label}</span>}
             {active&&!sidebarCollapsed&&<div style={{marginLeft:"auto",width:3,height:14,background:"#e8a820",borderRadius:1,flexShrink:0}}/>}

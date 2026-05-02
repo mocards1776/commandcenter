@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Task, TimeBlock } from "@/types";
-import { useUIStore, useTimerStore, usePinnedTaskStore } from "@/store";
+import { useNavigate } from "react-router-dom";
+import { useTimerStore, usePinnedTaskStore } from "@/store";
 import { useActiveTimer } from "@/hooks/useTimer";
 import { isOverdue, formatDuration, todayStr } from "@/lib/utils";
 import axios from "axios";
@@ -380,7 +381,7 @@ function SHead({ icon, label }: { icon: string; label: string }) {
 }
 
 export function NextUpPanel({ tasks }: { tasks: Task[] }) {
-  const { setActivePage } = useUIStore();
+  const navigate = useNavigate();
   const apiBase = import.meta.env.VITE_API_BASE_URL || "";
   const today   = todayStr();
 
@@ -448,13 +449,13 @@ export function NextUpPanel({ tasks }: { tasks: Task[] }) {
       <SHead icon="▶" label="Next Task" />
       {nextTask
         ? <TaskSlot task={nextTask} size="lg" allTasks={pickableForTop}
-            onTaskClick={() => setActivePage("todos")}
+            onTaskClick={() => navigate("/todos")}
             onOverride={t => { setPinnedTask(t.id); if (deckOverride?.id === t.id) setDeckOverride(null); }} />
         : <EmptySlot text="Clear" />}
       <SHead icon="⋯" label="On Deck" />
       {onDeckTask
         ? <TaskSlot task={onDeckTask} size="sm" allTasks={pickableForDeck}
-            onTaskClick={() => setActivePage("todos")}
+            onTaskClick={() => navigate("/todos")}
             onOverride={t => { setDeckOverride(t); if (pinnedTaskId === t.id) setPinnedTask(null); }} />
         : <EmptySlot text="Nothing on deck" />}
       <SHead icon="◷" label="Next Event" />
