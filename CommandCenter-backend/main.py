@@ -35,9 +35,24 @@ from auth import get_current_user, create_access_token, verify_token
 app = FastAPI(title="CommandCenter API")
 
 # CORS
+# allow_origins=["*"] + allow_credentials=True is illegal — browsers reject it.
+# Use an explicit list of allowed origins instead.
+ALLOWED_ORIGINS = [
+    "https://command-center-flax-gamma.vercel.app",
+    "https://command-center-git-main-mocards1776s-projects.vercel.app",
+    # Allow any Vercel preview deploy for this project
+    "https://command-center-mocards1776s-projects.vercel.app",
+    # Local dev
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"https://command-center.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -624,17 +639,26 @@ async def get_habit_streak(
             break
     return {"habit_id": habit_id, "streak": streak}
 
-# ─── Time Entries ─────────────────────────────────────────────────────
+# ─── Time Entries ───────────────────────────────────────────────
+@app.get("/time-entries/", response_model=List[TimeEntryResponse])
+async def list_time_entries(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    entries = session.execute(
+        _own(select(TimeEntry), TimeEntry, user).order_by(TimeEntry.started_at.desc())
+    ).scalars().all()
+    return entries
+
 @app.get("/time-entries/active", response_model=Optional[TimeEntryResponse])
 async def get_active_timer(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    return session.execute(
-        _own(select(TimeEntry), TimeEntry, user)
-        .where(TimeEntry.ended_at == None)  # noqa: E711
-        .order_by(TimeEntry.started_at.desc())
+    entry = session.execute(
+        _own(select(TimeEntry), TimeEntry, user).where(TimeEntry.ended_at == None)  # noqa
     ).scalar()
+    return entry
 
 @app.post("/time-entries/start", response_model=TimeEntryResponse)
 async def start_timer(
@@ -642,12 +666,12 @@ async def start_timer(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    existing = session.execute(
-        _own(select(TimeEntry), TimeEntry, user).where(TimeEntry.ended_at == None)  # noqa: E711
+    # Stop any existing active timer first
+    active = session.execute(
+        _own(select(TimeEntry), TimeEntry, user).where(TimeEntry.ended_at == None)  # noqa
     ).scalar()
-    if existing:
-        existing.ended_at = datetime.utcnow()
-        session.commit()
+    if active:
+        active.ended_at = datetime.utcnow()
     entry = TimeEntry(**data.dict())
     entry.user_id = user.id
     session.add(entry)
@@ -667,25 +691,22 @@ async def stop_timer(
     ).scalar()
     if not entry:
         raise HTTPException(status_code=404)
-    entry.ended_at = datetime.fromisoformat(data["ended_at"])
+    entry.ended_at = datetime.fromisoformat(data["ended_at"]) if isinstance(data["ended_at"], str) else data["ended_at"]
     if "note" in data:
         entry.note = data["note"]
+    # Update actual_time_minutes on the task
+    if entry.task_id:
+        task = session.execute(
+            _own(select(Task), Task, user).where(Task.id == entry.task_id)
+        ).scalar()
+        if task:
+            delta = entry.ended_at - entry.started_at
+            task.actual_time_minutes = (task.actual_time_minutes or 0) + int(delta.total_seconds() / 60)
     session.commit()
     session.refresh(entry)
     return entry
 
-@app.get("/time-entries/", response_model=List[TimeEntryResponse])
-async def list_time_entries(
-    task_id: Optional[str] = None,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(db.get_session),
-):
-    query = _own(select(TimeEntry), TimeEntry, user)
-    if task_id:
-        query = query.where(TimeEntry.task_id == task_id)
-    return session.execute(query.order_by(TimeEntry.started_at.desc())).scalars().all()
-
-# ─── Notes ────────────────────────────────────────────────────────────
+# ─── Notes ─────────────────────────────────────────────────────────────
 @app.get("/notes/", response_model=List[NoteResponse])
 async def list_notes(
     search: Optional[str] = None,
@@ -694,7 +715,7 @@ async def list_notes(
 ):
     query = _own(select(Note), Note, user)
     if search:
-        query = query.where(Note.title.ilike(f"%{search}%") | Note.content.ilike(f"%{search}%"))
+        query = query.where(Note.content.ilike(f"%{search}%") | Note.title.ilike(f"%{search}%"))
     return session.execute(query.order_by(Note.updated_at.desc())).scalars().all()
 
 @app.post("/notes/", response_model=NoteResponse)
@@ -717,12 +738,13 @@ async def update_note(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    note = session.execute(_own(select(Note), Note, user).where(Note.id == note_id)).scalar()
+    note = session.execute(
+        _own(select(Note), Note, user).where(Note.id == note_id)
+    ).scalar()
     if not note:
         raise HTTPException(status_code=404)
     for key, value in data.dict(exclude_unset=True).items():
         setattr(note, key, value)
-    note.updated_at = datetime.utcnow()
     session.commit()
     session.refresh(note)
     return note
@@ -733,24 +755,103 @@ async def delete_note(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    note = session.execute(_own(select(Note), Note, user).where(Note.id == note_id)).scalar()
+    note = session.execute(
+        _own(select(Note), Note, user).where(Note.id == note_id)
+    ).scalar()
     if not note:
         raise HTTPException(status_code=404)
     session.delete(note)
     session.commit()
     return {"ok": True}
 
-# ─── CRM ──────────────────────────────────────────────────────────────
-@app.get("/crm/", response_model=List[CRMPersonResponse])
-async def list_crm(
-    search: Optional[str] = None,
+# ─── Tags ──────────────────────────────────────────────────────────────
+@app.get("/tags/", response_model=List[TagResponse])
+async def list_tags(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    query = _own(select(CRMPerson), CRMPerson, user)
-    if search:
-        query = query.where(CRMPerson.name.ilike(f"%{search}%"))
-    return session.execute(query.order_by(CRMPerson.name)).scalars().all()
+    tags = session.execute(
+        _own_or_legacy(select(Tag), Tag, user).order_by(Tag.name)
+    ).scalars().all()
+    return tags
+
+@app.post("/tags/", response_model=TagResponse)
+async def create_tag(
+    data: TagCreate,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    tag = Tag(**data.dict())
+    tag.user_id = user.id
+    session.add(tag)
+    session.commit()
+    session.refresh(tag)
+    return tag
+
+@app.delete("/tags/{tag_id}")
+async def delete_tag(
+    tag_id: str,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    tag = session.execute(
+        _own(select(Tag), Tag, user).where(Tag.id == tag_id)
+    ).scalar()
+    if not tag:
+        raise HTTPException(status_code=404)
+    session.delete(tag)
+    session.commit()
+    return {"ok": True}
+
+# ─── Categories ────────────────────────────────────────────────────────
+@app.get("/categories/", response_model=List[CategoryResponse])
+async def list_categories(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    cats = session.execute(
+        _own_or_legacy(select(Category), Category, user).order_by(Category.name)
+    ).scalars().all()
+    return cats
+
+@app.post("/categories/", response_model=CategoryResponse)
+async def create_category(
+    data: CategoryCreate,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    cat = Category(**data.dict())
+    cat.user_id = user.id
+    session.add(cat)
+    session.commit()
+    session.refresh(cat)
+    return cat
+
+@app.delete("/categories/{category_id}")
+async def delete_category(
+    category_id: str,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    cat = session.execute(
+        _own(select(Category), Category, user).where(Category.id == category_id)
+    ).scalar()
+    if not cat:
+        raise HTTPException(status_code=404)
+    session.delete(cat)
+    session.commit()
+    return {"ok": True}
+
+# ─── CRM ───────────────────────────────────────────────────────────────
+@app.get("/crm/", response_model=List[CRMPersonResponse])
+async def list_crm(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    people = session.execute(
+        _own(select(CRMPerson), CRMPerson, user).order_by(CRMPerson.name)
+    ).scalars().all()
+    return people
 
 @app.post("/crm/", response_model=CRMPersonResponse)
 async def create_crm(
@@ -822,20 +923,21 @@ async def mark_contacted(
     ).scalar()
     if not person:
         raise HTTPException(status_code=404)
-    person.last_contacted = datetime.utcnow().date()
+    person.last_contacted = datetime.utcnow()
     session.commit()
     session.refresh(person)
     return person
 
-# ─── Time Blocks ──────────────────────────────────────────────────────
+# ─── Time Blocks ───────────────────────────────────────────────────────
 @app.get("/time-blocks/", response_model=List[TimeBlockResponse])
 async def list_time_blocks(
-    date: Optional[str] = None,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    query = _own(select(TimeBlock), TimeBlock, user)
-    return session.execute(query.order_by(TimeBlock.start_time)).scalars().all()
+    blocks = session.execute(
+        _own(select(TimeBlock), TimeBlock, user).order_by(TimeBlock.start_time)
+    ).scalars().all()
+    return blocks
 
 @app.post("/time-blocks/", response_model=TimeBlockResponse)
 async def create_time_block(
@@ -883,16 +985,16 @@ async def delete_time_block(
     session.commit()
     return {"ok": True}
 
-# ─── Braindump ────────────────────────────────────────────────────────
+# ─── Braindump ─────────────────────────────────────────────────────────
 @app.get("/braindump/", response_model=List[BraindumpEntryResponse])
 async def list_braindump(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    return session.execute(
-        _own(select(BraindumpEntry), BraindumpEntry, user)
-        .order_by(BraindumpEntry.created_at.desc())
+    entries = session.execute(
+        _own(select(BraindumpEntry), BraindumpEntry, user).order_by(BraindumpEntry.created_at.desc())
     ).scalars().all()
+    return entries
 
 @app.post("/braindump/", response_model=BraindumpEntryResponse)
 async def create_braindump(
@@ -900,7 +1002,7 @@ async def create_braindump(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    entry = BraindumpEntry(raw_text=data.raw_text)
+    entry = BraindumpEntry(raw_text=data.raw_text, processed=False)
     entry.user_id = user.id
     session.add(entry)
     session.commit()
@@ -923,191 +1025,151 @@ async def process_braindump(
     session.refresh(entry)
     return entry
 
-# ─── Dashboard ────────────────────────────────────────────────────────
-@app.get("/dashboard/")
-async def get_dashboard(
+# ─── Dashboard ─────────────────────────────────────────────────────────
+@app.get("/dashboard/", response_model=DashboardSummary)
+async def dashboard(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
     today = _today_ct()
-    ct_midnight = _ct_midnight_as_utc()
+    ct_midnight_utc = _ct_midnight_as_utc()
 
-    today_tasks = session.execute(
-        _own(select(Task), Task, user).where(Task.status.in_(["today", "in_progress"]))
+    today_tasks_q = session.execute(
+        _own(select(Task), Task, user).where(
+            Task.status.in_(["today", "in_progress"]) |
+            ((Task.due_date != None) & (Task.due_date <= datetime.combine(today, datetime.max.time())) & (Task.status != "done"))  # noqa
+        )
     ).scalars().all()
 
     completed_today = session.execute(
         _own(select(Task), Task, user).where(
-            (Task.status == "done") & (Task.completed_at >= ct_midnight)
+            (Task.status == "done") &
+            (Task.completed_at >= ct_midnight_utc)
         )
     ).scalars().all()
 
-    time_entries = session.execute(
-        _own(select(TimeEntry), TimeEntry, user).where(TimeEntry.started_at >= ct_midnight)
-    ).scalars().all()
+    focus_score_today = sum(t.focus_score for t in completed_today)
 
-    total_seconds = 0
-    for entry in time_entries:
-        end = entry.ended_at or datetime.utcnow()
-        total_seconds += int((end - entry.started_at).total_seconds())
+    active_timer = session.execute(
+        _own(select(TimeEntry), TimeEntry, user).where(TimeEntry.ended_at == None)  # noqa
+    ).scalar()
 
-    focus_score_today = sum(t.focus_score for t in completed_today if t.focus_score)
-
-    overdue_tasks = session.execute(
-        _own(select(Task), Task, user).where(
-            (Task.due_date != None) &  # noqa: E711
-            (Task.due_date < today) &
-            (~Task.status.in_(["done", "cancelled"]))
+    finished_entries = session.execute(
+        _own(select(TimeEntry), TimeEntry, user).where(
+            (TimeEntry.ended_at != None) &  # noqa
+            (TimeEntry.started_at >= ct_midnight_utc)
         )
     ).scalars().all()
 
-    active_projects_rows = session.execute(
-        _own(select(Project), Project, user).where(Project.status == "active")
-    ).scalars().all()
-    active_projects = []
-    for p in active_projects_rows:
-        proj_tasks = session.execute(
-            _own(select(Task), Task, user).where(Task.project_id == p.id)
-        ).scalars().all()
-        total = len(proj_tasks)
-        done = sum(1 for t in proj_tasks if t.status == "done")
-        active_projects.append({
-            "id": p.id, "title": p.title, "task_count": total,
-            "completion_percentage": int((done / total) * 100) if total else 0,
-        })
-
-    habits_rows = session.execute(_own(select(Habit), Habit, user)).scalars().all()
-    today_habits = []
-    for h in habits_rows:
-        comps = session.execute(
-            select(HabitCompletion).where(HabitCompletion.habit_id == h.id)
-        ).scalars().all()
-        today_habits.append({
-            "id": h.id, "name": h.title, "color": h.color,
-            "icon": getattr(h, "icon", None), "frequency": h.frequency,
-            "time_hour": getattr(h, "time_hour", None),
-            "time_minute": getattr(h, "time_minute", None),
-            "sort_order": getattr(h, "sort_order", 0),
-            "is_active": getattr(h, "is_active", True),
-            "completions": [
-                {"id": c.id, "habit_id": c.habit_id,
-                 "completed_date": c.completed_date.isoformat() if c.completed_date else None,
-                 "created_at": c.created_at.isoformat() if c.created_at else None}
-                for c in comps
-            ],
-            "description": getattr(h, "description", None),
-            "custom_days": None,
-            "target_minutes": getattr(h, "target_minutes", None),
-            "created_at": h.created_at, "updated_at": h.updated_at,
-        })
-
-    all_today_tasks = list(today_tasks) + list(completed_today)
-    today_tasks_serialized = [json.loads(TaskResponse.from_orm(t).json()) for t in all_today_tasks]
-    overdue_tasks_serialized = [json.loads(TaskResponse.from_orm(t).json()) for t in overdue_tasks]
-
-    return DashboardSummary(
-        tasks_today=len(today_tasks),
-        completed_today=len(completed_today),
-        focus_score_today=focus_score_today,
-        time_tracked_seconds=total_seconds,
-        streak_days=0,
-        today_tasks=today_tasks_serialized,
-        overdue_tasks=overdue_tasks_serialized,
-        today_habits=today_habits,
-        active_projects=active_projects,
-        total_tasks_today=len(today_tasks) + len(completed_today),
-        completed_tasks_today=len(completed_today),
-        habit_completion_rate=0.0,
-        gamification={
-            "tasks_completed": len(completed_today),
-            "tasks_attempted": len(today_tasks) + len(completed_today),
-            "batting_average": len(completed_today) / (len(today_tasks) + len(completed_today)) if (len(today_tasks) + len(completed_today)) > 0 else 0.0,
-            "hits": len(completed_today),
-            "home_runs": sum(1 for t in completed_today if t.priority == "critical"),
-            "total_focus_minutes": round(total_seconds / 60),
-        },
+    time_tracked_seconds = sum(
+        int((e.ended_at - e.started_at).total_seconds()) for e in finished_entries
     )
 
-# ─── Tags & Categories ──────────────────────────────────────────────
-# These are user-scoped; legacy NULL-owner rows are also visible for backwards
-# compat (the backfill on startup will eventually claim them all).
-@app.get("/tags/", response_model=List[TagResponse])
-async def list_tags(
+    # Streak: consecutive days with at least one completed task
+    all_completed = session.execute(
+        _own(select(Task), Task, user).where(Task.status == "done")
+    ).scalars().all()
+    completed_dates = {t.completed_at.date() for t in all_completed if t.completed_at}
+    streak = 0
+    check_day = today
+    while check_day in completed_dates:
+        streak += 1
+        check_day -= timedelta(days=1)
+
+    habits = session.execute(
+        _own(select(Habit), Habit, user).where(Habit.is_active == True)  # noqa
+    ).scalars().all()
+    today_habits_data = []
+    completed_habit_count = 0
+    for h in habits:
+        comp = session.execute(
+            select(HabitCompletion).where(
+                (HabitCompletion.habit_id == h.id) &
+                (HabitCompletion.completed_date == today)
+            )
+        ).scalar()
+        today_habits_data.append({"habit": _serialize_habit(h, [comp] if comp else []), "completed": bool(comp)})
+        if comp:
+            completed_habit_count += 1
+
+    habit_completion_rate = (completed_habit_count / len(habits) * 100) if habits else 0
+
+    overdue = session.execute(
+        _own(select(Task), Task, user).where(
+            (Task.due_date < datetime.combine(today, datetime.min.time())) &
+            (Task.status != "done")
+        )
+    ).scalars().all()
+
+    active_projects = session.execute(
+        _own(select(Project), Project, user).where(Project.status == "active")
+    ).scalars().all()
+
+    return {
+        "tasks_today": len(today_tasks_q),
+        "completed_today": len(completed_today),
+        "focus_score_today": focus_score_today,
+        "time_tracked_seconds": time_tracked_seconds,
+        "streak_days": streak,
+        "today_tasks": [json.loads(TaskResponse.from_orm(t).json()) for t in today_tasks_q],
+        "overdue_tasks": [json.loads(TaskResponse.from_orm(t).json()) for t in overdue],
+        "today_habits": today_habits_data,
+        "active_projects": [{"id": p.id, "title": p.title, "status": p.status, "color": p.color} for p in active_projects],
+        "total_tasks_today": len(today_tasks_q),
+        "completed_tasks_today": len(completed_today),
+        "habit_completion_rate": habit_completion_rate,
+        "gamification": None,
+    }
+
+# ─── Gamification ──────────────────────────────────────────────────────
+@app.get("/gamification/")
+async def gamification_history(
+    limit: int = Query(30, ge=1, le=365),
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    return session.execute(_own_or_legacy(select(Tag), Tag, user)).scalars().all()
+    """Return per-day gamification stats for the last `limit` days."""
+    today = _today_ct()
+    result = []
+    for i in range(limit - 1, -1, -1):
+        day = today - timedelta(days=i)
+        day_start = datetime.combine(day, datetime.min.time())
+        day_end   = datetime.combine(day, datetime.max.time())
+        completed = session.execute(
+            _own(select(Task), Task, user).where(
+                (Task.status == "done") &
+                (Task.completed_at >= day_start) &
+                (Task.completed_at <= day_end)
+            )
+        ).scalars().all()
+        focus = sum(t.focus_score for t in completed)
+        entries = session.execute(
+            _own(select(TimeEntry), TimeEntry, user).where(
+                (TimeEntry.ended_at != None) &  # noqa
+                (TimeEntry.started_at >= day_start) &
+                (TimeEntry.started_at <= day_end)
+            )
+        ).scalars().all()
+        time_sec = sum(int((e.ended_at - e.started_at).total_seconds()) for e in entries)
+        result.append({
+            "date": day.isoformat(),
+            "tasks_completed": len(completed),
+            "focus_score": focus,
+            "time_tracked_seconds": time_sec,
+            "points": focus + len(completed) * 10,
+        })
+    return result
 
-@app.post("/tags/", response_model=TagResponse)
-async def create_tag(
-    data: TagCreate,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(db.get_session),
-):
-    tag = Tag(**data.dict())
-    tag.user_id = user.id
-    session.add(tag)
-    session.commit()
-    session.refresh(tag)
-    return tag
-
-@app.delete("/tags/{tag_id}")
-async def delete_tag(
-    tag_id: str,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(db.get_session),
-):
-    tag = session.execute(_own(select(Tag), Tag, user).where(Tag.id == tag_id)).scalar()
-    if not tag:
-        raise HTTPException(status_code=404)
-    session.delete(tag)
-    session.commit()
-    return {"ok": True}
-
-@app.get("/categories/", response_model=List[CategoryResponse])
-async def list_categories(
-    user: User = Depends(get_current_user),
-    session: Session = Depends(db.get_session),
-):
-    return session.execute(_own_or_legacy(select(Category), Category, user)).scalars().all()
-
-@app.post("/categories/", response_model=CategoryResponse)
-async def create_category(
-    data: CategoryCreate,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(db.get_session),
-):
-    category = Category(**data.dict())
-    category.user_id = user.id
-    session.add(category)
-    session.commit()
-    session.refresh(category)
-    return category
-
-@app.delete("/categories/{category_id}")
-async def delete_category(
-    category_id: str,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(db.get_session),
-):
-    category = session.execute(
-        _own(select(Category), Category, user).where(Category.id == category_id)
-    ).scalar()
-    if not category:
-        raise HTTPException(status_code=404)
-    session.delete(category)
-    session.commit()
-    return {"ok": True}
-
-# ─── Sports favorites (user-owned) ─────────────────────────────
+# ─── Sports ──────────────────────────────────────────────────────────
 @app.get("/sports/favorites/", response_model=List[FavoriteSportsTeamResponse])
 async def list_favorite_teams(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    return session.execute(
+    teams = session.execute(
         _own(select(FavoriteSportsTeam), FavoriteSportsTeam, user)
     ).scalars().all()
+    return teams
 
 @app.post("/sports/favorites/", response_model=FavoriteSportsTeamResponse)
 async def add_favorite_team(
@@ -1129,8 +1191,7 @@ async def remove_favorite_team(
     session: Session = Depends(db.get_session),
 ):
     team = session.execute(
-        _own(select(FavoriteSportsTeam), FavoriteSportsTeam, user)
-        .where(FavoriteSportsTeam.id == team_id)
+        _own(select(FavoriteSportsTeam), FavoriteSportsTeam, user).where(FavoriteSportsTeam.id == team_id)
     ).scalar()
     if not team:
         raise HTTPException(status_code=404)
@@ -1138,356 +1199,58 @@ async def remove_favorite_team(
     session.commit()
     return {"ok": True}
 
-# ─── Gamification (user-scoped) ────────────────────────────────
-@app.get("/gamification/", response_model=List[dict])
-async def get_gamification_history(
-    limit: int = 30,
-    user: User = Depends(get_current_user),
+# ─── Telegram Webhook ────────────────────────────────────────────────
+@app.post("/telegram/webhook")
+async def telegram_webhook(
+    request: Request,
     session: Session = Depends(db.get_session),
 ):
-    ct_now = datetime.now(_CT)
-    results = []
-
-    for days_back in range(limit):
-        day = (ct_now - timedelta(days=days_back)).date()
-        day_start_utc = datetime(day.year, day.month, day.day, 0, 0, 0,
-                                 tzinfo=_CT).astimezone(_UTC).replace(tzinfo=None)
-        day_end_utc = day_start_utc + timedelta(days=1)
-
-        completed = session.execute(
-            _own(select(Task), Task, user).where(
-                (Task.status == "done") &
-                (Task.completed_at >= day_start_utc) &
-                (Task.completed_at < day_end_utc)
-            )
-        ).scalars().all()
-
-        if days_back == 0:
-            attempted = session.execute(
-                _own(select(Task), Task, user).where(Task.status.in_(["today", "in_progress"]))
-            ).scalars().all()
-            attempted_count = len(attempted) + len(completed)
-        else:
-            attempted_count = len(completed)
-
-        time_entries_day = session.execute(
-            _own(select(TimeEntry), TimeEntry, user).where(
-                (TimeEntry.started_at >= day_start_utc) &
-                (TimeEntry.started_at < day_end_utc)
-            )
-        ).scalars().all()
-
-        total_secs = 0
-        for e in time_entries_day:
-            end = e.ended_at or day_end_utc
-            total_secs += int((end - e.started_at).total_seconds())
-
-        habits_completed_day = session.execute(
-            select(HabitCompletion).join(Habit, Habit.id == HabitCompletion.habit_id)
-            .where(Habit.user_id == user.id)
-            .where(HabitCompletion.completed_date == day)
-        ).scalars().all()
-
-        hits = len(completed)
-        home_runs = sum(1 for t in completed if t.priority == "critical")
-        strikeouts = max(0, attempted_count - hits)
-        ba = hits / attempted_count if attempted_count > 0 else 0.0
-
-        results.append({
-            "stat_date": day.isoformat(),
-            "tasks_completed": hits,
-            "tasks_attempted": attempted_count,
-            "habits_completed": len(habits_completed_day),
-            "total_focus_minutes": round(total_secs / 60),
-            "home_runs": home_runs,
-            "hits": hits,
-            "strikeouts": strikeouts,
-            "batting_average": round(ba, 3),
-            "hitting_streak": 0,
-        })
-
-    return results
-
-# ─── Telegram Webhook (no bearer auth — Telegram can't send one) ──────
-# Tasks created via Telegram are assigned to TELEGRAM_OWNER_USER_ID (env var).
-# If unset, falls back to the oldest user in the DB.
-@app.post("/telegram/webhook")
-async def telegram_webhook(request: Request, session: Session = Depends(db.get_session)):
-    try:
-        body = await request.json()
-    except Exception:
-        return {"ok": False, "error": "Invalid JSON"}
-
-    message = body.get("message") or body.get("edited_message")
-    if not message:
-        return {"ok": True}
-
+    data = await request.json()
+    message = data.get("message", {})
+    text = message.get("text", "")
     chat_id = message.get("chat", {}).get("id")
-    text_in = (message.get("text") or "").strip()
+    from_id = str(message.get("from", {}).get("id", ""))
 
-    if not text_in or not chat_id:
+    if not chat_id:
         return {"ok": True}
 
-    # Resolve owner for this Telegram-created task
-    owner_id = TELEGRAM_OWNER_USER_ID.strip() or None
-    if not owner_id:
-        first_user = session.execute(
-            select(User).order_by(User.created_at.asc())
-        ).scalar()
-        if first_user:
-            owner_id = first_user.id
-    if not owner_id:
-        await telegram_send_message(chat_id, "No user account configured on the server.")
+    # Security: only respond to the configured owner
+    if TELEGRAM_OWNER_USER_ID and from_id != TELEGRAM_OWNER_USER_ID:
+        await telegram_send_message(chat_id, "Unauthorized.")
         return {"ok": True}
 
-    # Resolve sender → tag (scoped to the owner)
-    sender_first = (message.get("from") or {}).get("first_name", "").strip()
-    sender_tag_id = ""
-    if sender_first:
-        tag_name = sender_first.capitalize()
-        existing_tag = session.execute(
-            select(Tag).where((Tag.name == tag_name) & (Tag.user_id == owner_id))
-        ).scalar()
-        if existing_tag:
-            sender_tag_id = existing_tag.id
-        else:
-            new_tag = Tag(name=tag_name, color="#4f98a3", user_id=owner_id)
-            session.add(new_tag)
+    if not text:
+        return {"ok": True}
+
+    if text.lower() in ("/start", "/help"):
+        await telegram_send_message(
+            chat_id,
+            f"CommandCenter Bot\n\nCommands:\n/task <title> — create a task\n!/task <title> — create urgent task"
+        )
+        return {"ok": True}
+
+    if text.lower().startswith("/task"):
+        # Find the user by telegram owner ID mapping — for now use the first user
+        # (single-user deployment assumption)
+        user = session.execute(select(User)).scalar()
+        if not user:
+            await telegram_send_message(chat_id, "No users found in the system.")
+            return {"ok": True}
+        try:
+            task_data = parse_telegram_task(text)
+            task_data["focus_score"] = calc_focus_score(task_data["importance"], task_data["difficulty"])
+            task_data["tag_ids"] = ""
+            task = Task(**task_data)
+            task.user_id = user.id
+            session.add(task)
             session.commit()
-            session.refresh(new_tag)
-            sender_tag_id = new_tag.id
-
-    try:
-        task_data = parse_telegram_task(text_in)
-    except ValueError as e:
-        await telegram_send_message(chat_id, str(e))
+            await telegram_send_message(
+                chat_id,
+                f"✅ Task created: {task.title}\nPriority: {task.priority} | Status: {task.status}"
+            )
+        except ValueError as e:
+            await telegram_send_message(chat_id, f"❌ {e}")
         return {"ok": True}
 
-    task_data["tag_ids"] = sender_tag_id
-    task_data["focus_score"] = calc_focus_score(
-        task_data.get("importance", 3),
-        task_data.get("difficulty", 3),
-    )
-    task = Task(**task_data)
-    task.user_id = owner_id
-    session.add(task)
-    session.commit()
-    session.refresh(task)
-
-    tag_note = f" [tagged: {sender_first}]" if sender_first else ""
-    await telegram_send_message(
-        chat_id,
-        f"✅ Task created: \"{task.title}\" (priority: {task.priority}){tag_note}"
-    )
+    await telegram_send_message(chat_id, f"Unknown command. Send /help for available commands.")
     return {"ok": True}
-
-@app.get("/telegram/set-webhook")
-async def set_telegram_webhook(user: User = Depends(get_current_user)):
-    if not TELEGRAM_BOT_TOKEN:
-        return {"ok": False, "error": "TELEGRAM_BOT_TOKEN not set"}
-    if not PUBLIC_BACKEND_URL:
-        return {"ok": False, "error": "PUBLIC_BACKEND_URL not set"}
-
-    webhook_url = f"{PUBLIC_BACKEND_URL.rstrip('/')}/telegram/webhook"
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.post(
-            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setWebhook",
-            json={"url": webhook_url},
-        )
-    return resp.json()
-
-@app.get("/telegram/webhook-info")
-async def get_webhook_info(user: User = Depends(get_current_user)):
-    if not TELEGRAM_BOT_TOKEN:
-        return {"ok": False, "error": "TELEGRAM_BOT_TOKEN not set"}
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.get(
-            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getWebhookInfo"
-        )
-    return resp.json()
-
-# ─── MLB Live Data — Cardinals (public, no auth) ─────────────────────
-@app.get("/sports/mlb/cardinals")
-async def get_cardinals_data():
-    CT = ZoneInfo("America/Chicago")
-    now_ct = datetime.now(CT)
-    STL_TEAM_ID = 138
-
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        standings_resp = await client.get(
-            "https://statsapi.mlb.com/api/v1/standings",
-            params={"leagueId": "104", "season": str(now_ct.year),
-                    "standingsTypes": "regularSeason", "hydrate": "team"},
-        )
-        nl_central = []
-        for division in standings_resp.json().get("records", []):
-            if division.get("division", {}).get("id") == 205:
-                for tr in division.get("teamRecords", []):
-                    team = tr.get("team", {})
-                    wins = tr.get("wins", 0)
-                    losses = tr.get("losses", 0)
-                    pct_raw = tr.get("winningPercentage", "0")
-                    gb_raw = tr.get("gamesBack", "-")
-                    strk = tr.get("streak", {}).get("streakCode", "")
-                    l10_rec = tr.get("records", {}).get("splitRecords", [])
-                    l10 = next((f"{r['wins']}-{r['losses']}" for r in l10_rec if r.get("type") == "lastTen"), "")
-                    try:
-                        pct_fmt = f".{int(float(pct_raw) * 1000):03d}"
-                    except Exception:
-                        pct_fmt = ".000"
-                    nl_central.append({
-                        "abbr": team.get("abbreviation", ""),
-                        "full": team.get("name", ""),
-                        "team_id": team.get("id"),
-                        "wl": f"{wins}-{losses}",
-                        "pct": pct_fmt,
-                        "gb": "—" if str(gb_raw) in ["-", "0.0", "0"] else str(gb_raw),
-                        "strk": strk,
-                        "l10": l10,
-                        "cards": team.get("id") == STL_TEAM_ID,
-                    })
-
-        if now_ct.hour < 10:
-            current_date = (now_ct - timedelta(days=1)).date()
-            next_date = now_ct.date()
-        else:
-            current_date = now_ct.date()
-            next_date = (now_ct + timedelta(days=1)).date()
-
-        async def fetch_games(game_date: date):
-            r = await client.get(
-                "https://statsapi.mlb.com/api/v1/schedule",
-                params={"sportId": "1", "teamId": STL_TEAM_ID,
-                        "date": game_date.strftime("%Y-%m-%d"),
-                        "hydrate": "linescore,team"},
-            )
-            return r.json().get("dates", [{}])[0].get("games", [])
-
-        current_games, next_games = await asyncio.gather(
-            fetch_games(current_date), fetch_games(next_date)
-        )
-
-        def parse_game(game, label: str):
-            if not game:
-                return None
-            away = game.get("teams", {}).get("away", {})
-            home = game.get("teams", {}).get("home", {})
-            stl_is_home = home.get("team", {}).get("id") == STL_TEAM_ID
-            opp_side = away if stl_is_home else home
-            stl_side = home if stl_is_home else away
-            opp_team = opp_side.get("team", {})
-            stl_score = stl_side.get("score", 0) or 0
-            opp_score = opp_side.get("score", 0) or 0
-            status = game.get("status", {}).get("abstractGameState", "")
-            detailed = game.get("status", {}).get("detailedState", "")
-            venue = game.get("venue", {}).get("name", "")
-            city = game.get("venue", {}).get("location", {}).get("city", "")
-            game_time = ""
-            game_dt_str = game.get("gameDate", "")
-            if game_dt_str:
-                try:
-                    gdt = datetime.fromisoformat(game_dt_str.replace("Z", "+00:00"))
-                    game_time = gdt.astimezone(CT).strftime("%-I:%M %p CDT")
-                except Exception:
-                    pass
-            result = ""
-            if status == "Final":
-                result = (f"Cardinals win {stl_score}-{opp_score}"
-                          if stl_score > opp_score
-                          else f"Cardinals fall {stl_score}-{opp_score}")
-            elif status == "Live":
-                ls = game.get("linescore", {})
-                inning = ls.get("currentInning", "")
-                inning_half = ls.get("inningHalf", "")
-                result = f"{inning_half} {inning}".strip() if inning else "In Progress"
-            return {
-                "status": status, "detailed_state": detailed,
-                "stl_score": stl_score, "opp_score": opp_score,
-                "opp_abbr": opp_team.get("abbreviation", ""),
-                "opp_name": opp_team.get("teamName", opp_team.get("name", "")),
-                "stl_is_home": stl_is_home, "game_time": game_time,
-                "venue": venue, "city": city, "result": result, "date_label": label,
-            }
-
-        current_game = parse_game(
-            current_games[0] if current_games else None,
-            current_date.strftime("Today · %b %-d") if now_ct.hour >= 10 else current_date.strftime("%b %-d")
-        )
-        next_game = parse_game(
-            next_games[0] if next_games else None,
-            next_date.strftime("%A · %b %-d")
-        )
-
-        return {"nl_central": nl_central, "current_game": current_game, "next_game": next_game}
-
-
-# ─── Cardinals Playoff Projections (Baseball Reference, public) ────
-import time as _time
-
-_proj_cache: dict = {"data": None, "ts": 0}
-
-@app.get("/sports/mlb/cardinals/projections")
-async def get_cardinals_projections():
-    now = _time.time()
-    if _proj_cache["data"] and now - _proj_cache["ts"] < 1800:
-        return _proj_cache["data"]
-
-    try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-            "Accept-Language": "en-US,en;q=0.9",
-        }
-        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
-            r = await client.get(
-                "https://www.baseball-reference.com/leagues/majors/2026-playoff-odds.shtml",
-                headers=headers,
-            )
-        html = r.text
-
-        import re
-        idx = html.find("St. Louis Cardinals")
-        if idx == -1:
-            raise ValueError("Cardinals row not found")
-
-        chunk = html[idx: idx + 2000]
-        stats = dict(re.findall(r'data-stat="([^"]+)"[^>]*>([^<]*)<', chunk))
-
-        def pct(key: str):
-            v = stats.get(key, "").replace("%", "").strip()
-            try:
-                return round(float(v), 1)
-            except ValueError:
-                return None
-
-        def num(key: str):
-            v = stats.get(key, "").strip()
-            try:
-                return round(float(v), 1)
-            except ValueError:
-                return None
-
-        proj_wins_raw = num("ppr_avg_w")
-        proj_wins = int(round(proj_wins_raw)) if proj_wins_raw else None
-
-        result = {
-            "record": f"{stats.get('ppr_cur_w','?')}-{stats.get('ppr_cur_l','?')}",
-            "proj_wins": proj_wins,
-            "proj_losses": int(round(num("ppr_avg_l"))) if num("ppr_avg_l") else None,
-            "best": stats.get("ppr_best", ""),
-            "worst": stats.get("ppr_worst", ""),
-            "playoff_pct": pct("ppr_postseason"),
-            "div_pct": pct("ppr_division"),
-            "wc_pct": pct("ppr_wildcard"),
-            "ws_pct": pct("ppr_champs"),
-            "source": "baseball-reference.com",
-        }
-
-        _proj_cache["data"] = result
-        _proj_cache["ts"] = now
-        return result
-
-    except Exception as e:
-        if _proj_cache["data"]:
-            return _proj_cache["data"]
-        return {"error": str(e), "proj_wins": None, "playoff_pct": None,
-                "div_pct": None, "wc_pct": None, "ws_pct": None}
