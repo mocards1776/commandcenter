@@ -400,7 +400,7 @@ async function fetchProjections(): Promise<RibbonStat[] | null> {
 }
 
 // ─── Main Panel ──────────────────────────────────────────────────────────────
-export default function BaseballPanel() {
+export function BaseballPanel() {
   const [data, setData]               = useState<any>(null);
   const [ribbonStats, setRibbonStats] = useState<RibbonStat[]>(SEED_STATS);
   const [ribbonLoading, setRibbonLoading] = useState(true);
@@ -466,3 +466,5 @@ export default function BaseballPanel() {
     </div>
   );
 }
+
+export default BaseballPanel;
