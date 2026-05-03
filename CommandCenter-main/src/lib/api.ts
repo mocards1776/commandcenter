@@ -47,6 +47,7 @@ export const tokenStore = {
   },
 };
 
+// build: 2026-05-03 — all mutations use PUT; PATCH removed to avoid CORS preflight failures
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || "https://orca-app-v7oew.ondigitalocean.app",
   headers: { "Content-Type": "application/json" },
@@ -103,13 +104,13 @@ export const tasksApi = {
   get: (id: string) => api.get<Task>(`/tasks/${id}/`).then(r => r.data),
   create: (data: Partial<TaskCreate>) =>
     api.post<Task>("/tasks/", data).then(r => r.data),
-  // Using PUT instead of PATCH — avoids CORS preflight issues on live server
+  // PUT instead of PATCH — avoids CORS preflight on DigitalOcean
   update: (id: string, data: TaskUpdate) =>
     api.put<Task>(`/tasks/${id}/`, data).then(r => r.data),
   delete: (id: string) => api.delete(`/tasks/${id}/`),
   complete: (id: string) =>
     api.put<Task>(`/tasks/${id}/`, { status: "done" }).then(r => r.data),
-  reorder: (ids: string[]) => api.post("/tasks/reorder/", ids),
+  reorder: (ids: string[]) => api.post("/tasks/reorder/", { order: ids }),
 };
 
 // ─── Projects ────────────────────────────────────────────
@@ -118,7 +119,7 @@ export const projectsApi = {
     api.get<ProjectSummary[]>("/projects/", { params }).then(r => r.data),
   get: (id: string) => api.get<Project>(`/projects/${id}/`).then(r => r.data),
   create: (data: any) => api.post<Project>("/projects/", data).then(r => r.data),
-  // Using PUT instead of PATCH
+  // PUT instead of PATCH
   update: (id: string, data: any) =>
     api.put<Project>(`/projects/${id}/`, data).then(r => r.data),
   delete: (id: string) => api.delete(`/projects/${id}/`),
@@ -130,7 +131,7 @@ export const habitsApi = {
     api.get<Habit[]>("/habits/", { params }).then(r => r.data),
   get: (id: string) => api.get<Habit>(`/habits/${id}/`).then(r => r.data),
   create: (data: any) => api.post<Habit>("/habits/", data).then(r => r.data),
-  // Using PUT instead of PATCH
+  // PUT instead of PATCH
   update: (id: string, data: any) =>
     api.put<Habit>(`/habits/${id}/`, data).then(r => r.data),
   delete: (id: string) => api.delete(`/habits/${id}/`),
