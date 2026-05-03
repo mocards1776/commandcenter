@@ -1,6 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import select, or_, func, cast, Numeric
 from datetime import datetime, timedelta, date
@@ -52,7 +51,6 @@ def _is_allowed_origin(origin: str) -> bool:
 
 app = FastAPI(title="CommandCenter API", redirect_slashes=False)
 
-# ── CORS middleware (must be first/outermost) ─────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -63,24 +61,6 @@ app.add_middleware(
     expose_headers=["*"],
     max_age=600,
 )
-
-# ── Belt-and-suspenders: catch any preflight that slips through ───────────────
-@app.options("/{rest_of_path:path}")
-async def preflight_handler(rest_of_path: str, request: Request):
-    origin = request.headers.get("origin", "")
-    if not _is_allowed_origin(origin):
-        return Response(status_code=403)
-    return Response(
-        status_code=204,
-        headers={
-            "Access-Control-Allow-Origin": origin,
-            "Access-Control-Allow-Credentials": "true",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept, X-Requested-With",
-            "Access-Control-Max-Age": "600",
-            "Vary": "Origin",
-        },
-    )
 
 @app.on_event("startup")
 def _on_startup():
