@@ -1130,16 +1130,35 @@ async def delete_braindump(
     return {"detail": "deleted"}
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
+# Returns the full payload DashboardPage.tsx expects:
+#   today_habits     – list of habit objects with `completed` bool and direct fields
+#   today_tasks      – list of task dicts with status "today"
+#   overdue_tasks    – list of task dicts that are past due and not done
+#   active_projects  – list of project dicts (active status)
+#   completed_tasks_today – int
+#   total_tasks_today     – int
+#   time_tracked_seconds  – int
+#   gamification          – gamification summary dict
 
-async def _dashboard_data(user: User, session: Session) -> dict:
+@app.get("/dashboard")
+@app.get("/dashboard/", include_in_schema=False)
+async def dashboard_root(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
     today = _today_ct()
     midnight_utc = _ct_midnight_as_utc()
+    now_utc = datetime.utcnow()
 
-    total_tasks = session.execute(
-        select(func.count(Task.id)).where(Task.user_id == user.id)
-    ).scalar() or 0
+    # ── Today tasks (status == "today")
+    today_tasks_rows = session.execute(
+        select(Task).where(Task.user_id == user.id, Task.status == "today")
+        .order_by(Task.sort_order.asc(), Task.created_at.desc())
+    ).scalars().all()
+    today_tasks = [_task_to_dict(t) for t in today_tasks_rows]
 
-    completed_today = session.execute(
+    # ── Completed today
+    completed_tasks_today = session.execute(
         select(func.count(Task.id)).where(
             Task.user_id == user.id,
             Task.status == "done",
@@ -1147,6 +1166,167 @@ async def _dashboard_data(user: User, session: Session) -> dict:
         )
     ).scalar() or 0
 
+    # ── Total tasks for today (today + done today)
+    total_tasks_today = len(today_tasks) + completed_tasks_today
+
+    # ── Overdue tasks (not done, past due date)
+    overdue_rows = session.execute(
+        select(Task).where(
+            Task.user_id == user.id,
+            Task.status != "done",
+            Task.due_date < now_utc,
+            Task.due_date != None,  # noqa: E711
+        ).order_by(Task.due_date.asc())
+    ).scalars().all()
+    overdue_tasks = [_task_to_dict(t) for t in overdue_rows]
+
+    # ── Active projects
+    active_project_rows = session.execute(
+        select(Project).where(Project.user_id == user.id, Project.status == "active")
+        .order_by(Project.created_at.desc())
+    ).scalars().all()
+    active_projects = []
+    for p in active_project_rows:
+        d = _project_to_dict(p)
+        tasks = session.execute(
+            select(Task).where(Task.project_id == p.id, Task.user_id == user.id)
+        ).scalars().all()
+        d["task_count"] = len(tasks)
+        done_count = sum(1 for t in tasks if t.status == "done")
+        d["completion_percentage"] = int((done_count / len(tasks) * 100) if tasks else 0)
+        active_projects.append(d)
+
+    # ── Habits for today
+    habit_rows = session.execute(
+        select(Habit).where(Habit.user_id == user.id).order_by(Habit.created_at)
+    ).scalars().all()
+    today_habits = []
+    for h in habit_rows:
+        comp_today = session.execute(
+            select(HabitCompletion).where(
+                HabitCompletion.habit_id == h.id,
+                HabitCompletion.completed_date == today,
+            )
+        ).scalar()
+        today_habits.append({
+            "id": h.id,
+            "name": h.title,
+            "title": h.title,
+            "icon": h.icon or "",
+            "color": h.color,
+            "frequency": h.frequency,
+            "completed": comp_today is not None,
+        })
+
+    # ── Time tracked today (seconds)
+    time_entries_today = session.execute(
+        select(TimeEntry).where(
+            TimeEntry.user_id == user.id,
+            TimeEntry.started_at >= midnight_utc,
+            TimeEntry.ended_at != None,  # noqa: E711
+        )
+    ).scalars().all()
+    time_tracked_seconds = sum(
+        int(e.duration_seconds) for e in time_entries_today if e.duration_seconds
+    )
+
+    # ── Gamification summary
+    habit_ids = [h.id for h in habit_rows]
+    done_tasks_all = session.execute(
+        select(Task).where(Task.user_id == user.id, Task.status == "done")
+        .order_by(Task.completed_at.desc())
+        .limit(90)
+    ).scalars().all()
+    task_xp = sum(max(t.focus_score or 1, 1) for t in done_tasks_all)
+    habit_comp_count = 0
+    if habit_ids:
+        habit_comp_count = session.execute(
+            select(func.count(HabitCompletion.id)).where(
+                HabitCompletion.habit_id.in_(habit_ids)
+            )
+        ).scalar() or 0
+    total_xp = task_xp + habit_comp_count * 10
+    level = 1
+    xp_rem = total_xp
+    while xp_rem >= level * 100:
+        xp_rem -= level * 100
+        level += 1
+
+    # Streak
+    streak = 0
+    check_day = today
+    for _ in range(365):
+        day_activity = session.execute(
+            select(func.count(Task.id)).where(
+                Task.user_id == user.id,
+                Task.status == "done",
+                func.date(Task.completed_at) == check_day,
+            )
+        ).scalar() or 0
+        if not day_activity and habit_ids:
+            day_activity = session.execute(
+                select(func.count(HabitCompletion.id)).where(
+                    HabitCompletion.habit_id.in_(habit_ids),
+                    HabitCompletion.completed_date == check_day,
+                )
+            ).scalar() or 0
+        if day_activity:
+            streak += 1
+            check_day = check_day - timedelta(days=1)
+        else:
+            break
+
+    habits_done_today = sum(1 for h in today_habits if h["completed"])
+    batting_avg = round(completed_tasks_today / total_tasks_today, 3) if total_tasks_today else 0.0
+
+    gamification = {
+        "stat_date": today.isoformat(),
+        "tasks_completed": completed_tasks_today,
+        "tasks_attempted": total_tasks_today,
+        "habits_completed": habits_done_today,
+        "total_focus_minutes": round(time_tracked_seconds / 60),
+        "home_runs": sum(1 for t in done_tasks_all if (t.focus_score or 0) >= 20
+                         and t.completed_at and t.completed_at >= midnight_utc),
+        "hits": completed_tasks_today,
+        "strikeouts": len(overdue_tasks),
+        "batting_average": batting_avg,
+        "hitting_streak": streak,
+        "level": level,
+        "total_xp": total_xp,
+        "xp_progress": xp_rem,
+        "xp_for_next": level * 100,
+        "streak_days": streak,
+    }
+
+    return {
+        "today_tasks": today_tasks,
+        "overdue_tasks": overdue_tasks,
+        "active_projects": active_projects,
+        "today_habits": today_habits,
+        "completed_tasks_today": completed_tasks_today,
+        "total_tasks_today": total_tasks_today,
+        "time_tracked_seconds": time_tracked_seconds,
+        "gamification": gamification,
+    }
+
+@app.get("/dashboard/summary")
+async def dashboard_summary(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    """Lightweight count-only summary (kept for backwards compat)."""
+    today = _today_ct()
+    midnight_utc = _ct_midnight_as_utc()
+    total_tasks = session.execute(
+        select(func.count(Task.id)).where(Task.user_id == user.id)
+    ).scalar() or 0
+    completed_today = session.execute(
+        select(func.count(Task.id)).where(
+            Task.user_id == user.id,
+            Task.status == "done",
+            Task.completed_at >= midnight_utc,
+        )
+    ).scalar() or 0
     overdue = session.execute(
         select(func.count(Task.id)).where(
             Task.user_id == user.id,
@@ -1155,18 +1335,14 @@ async def _dashboard_data(user: User, session: Session) -> dict:
             Task.due_date != None,  # noqa: E711
         )
     ).scalar() or 0
-
     active_projects = session.execute(
         select(func.count(Project.id)).where(
             Project.user_id == user.id, Project.status == "active"
         )
     ).scalar() or 0
-
-    # Habits — HabitCompletion has no user_id; join through Habit
     habits = session.execute(
         select(Habit).where(Habit.user_id == user.id)
     ).scalars().all()
-
     habit_completions_today = sum(
         1 for h in habits
         if session.execute(
@@ -1176,8 +1352,6 @@ async def _dashboard_data(user: User, session: Session) -> dict:
             )
         ).scalar() is not None
     )
-
-    # TimeEntry has no duration_minutes column — compute from duration_seconds property
     time_entries_today = session.execute(
         select(TimeEntry).where(
             TimeEntry.user_id == user.id,
@@ -1187,7 +1361,6 @@ async def _dashboard_data(user: User, session: Session) -> dict:
     minutes_logged = sum(
         round(e.duration_seconds / 60) for e in time_entries_today if e.ended_at
     )
-
     return {
         "total_tasks": total_tasks,
         "completed_today": completed_today,
@@ -1197,21 +1370,6 @@ async def _dashboard_data(user: User, session: Session) -> dict:
         "total_habits": len(habits),
         "minutes_logged_today": minutes_logged,
     }
-
-@app.get("/dashboard/summary")
-async def dashboard_summary(
-    user: User = Depends(get_current_user),
-    session: Session = Depends(db.get_session),
-):
-    return await _dashboard_data(user, session)
-
-@app.get("/dashboard")
-@app.get("/dashboard/", include_in_schema=False)
-async def dashboard_root(
-    user: User = Depends(get_current_user),
-    session: Session = Depends(db.get_session),
-):
-    return await _dashboard_data(user, session)
 
 # ── Gamification ──────────────────────────────────────────────────────────────
 # HabitCompletion has no user_id — must join through Habit
