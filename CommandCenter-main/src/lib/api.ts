@@ -31,7 +31,6 @@ function deleteCookie(name: string) {
 
 export const tokenStore = {
   get(): string | null {
-    // Try cookie first, fallback to localStorage for backward-compat
     const fromCookie = getCookie(TOKEN_COOKIE);
     if (fromCookie) return fromCookie;
     try { return localStorage.getItem("auth_token"); } catch { return null; }
@@ -60,10 +59,15 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Only fire auth:logout if the 401 is on a non-auth endpoint AND we actually
+// had a token (i.e. the session expired server-side, not a missing-token call).
 api.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401) {
+    const url = err.config?.url ?? "";
+    const isAuthEndpoint = url.includes("/auth/login") || url.includes("/auth/register");
+    const hadToken = !!tokenStore.get();
+    if (err.response?.status === 401 && !isAuthEndpoint && hadToken) {
       tokenStore.clear();
       window.dispatchEvent(new CustomEvent("auth:logout"));
     }
@@ -138,6 +142,17 @@ export const timersApi = {
     api.get<TimeEntry[]>("/time-entries/", { params }).then(r => r.data),
 };
 
+// ─── Time Blocks ──────────────────────────────────────────────
+export const timeBlocksApi = {
+  list: (date?: string) =>
+    api.get<TimeBlock[]>("/api/time-blocks/", { params: date ? { date } : undefined }).then(r => r.data),
+  create: (data: any) =>
+    api.post<TimeBlock>("/api/time-blocks/", data).then(r => r.data),
+  update: (id: string, data: any) =>
+    api.patch<TimeBlock>(`/time-blocks/${id}/`, data).then(r => r.data),
+  delete: (id: string) => api.delete(`/time-blocks/${id}/`),
+};
+
 // ─── Braindump ───────────────────────────────────────────────
 export const braindumpApi = {
   list: () => api.get<BraindumpEntry[]>("/braindump/").then(r => r.data),
@@ -188,11 +203,18 @@ export const categoriesApi = {
 
 // ─── Sports ────────────────────────────────────────────
 export const sportsApi = {
+  // Favorites (user preferences stored in DB)
   favorites: () =>
     api.get<FavoriteSportsTeam[]>("/sports/favorites/").then(r => r.data),
   addFavorite: (data: any) =>
     api.post<FavoriteSportsTeam>("/sports/favorites/", data).then(r => r.data),
   removeFavorite: (id: string) => api.delete(`/sports/favorites/${id}/`),
+
+  // MLB live data — proxied through our backend (auth required)
+  mlbTeam: (teamSlug: string) =>
+    api.get(`/sports/mlb/${teamSlug}`).then(r => r.data),
+  mlbProjections: (teamSlug: string) =>
+    api.get(`/sports/mlb/${teamSlug}/projections`).then(r => r.data),
 };
 
 export default api;
