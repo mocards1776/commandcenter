@@ -336,6 +336,7 @@ async def create_task(
     return _task_to_dict(task)
 
 @app.get("/tasks/{task_id}", response_model=TaskResponse)
+@app.get("/tasks/{task_id}/", response_model=TaskResponse, include_in_schema=False)
 async def get_task(
     task_id: int,
     user: User = Depends(get_current_user),
@@ -349,6 +350,7 @@ async def get_task(
     return _task_to_dict(task)
 
 @app.patch("/tasks/{task_id}", response_model=TaskResponse)
+@app.patch("/tasks/{task_id}/", response_model=TaskResponse, include_in_schema=False)
 async def update_task(
     task_id: int,
     data: TaskUpdate,
@@ -379,6 +381,7 @@ async def update_task(
     return _task_to_dict(task)
 
 @app.delete("/tasks/{task_id}")
+@app.delete("/tasks/{task_id}/", include_in_schema=False)
 async def delete_task(
     task_id: int,
     user: User = Depends(get_current_user),
@@ -452,6 +455,7 @@ async def create_project(
     return _project_to_dict(proj)
 
 @app.get("/projects/{project_id}", response_model=ProjectResponse)
+@app.get("/projects/{project_id}/", response_model=ProjectResponse, include_in_schema=False)
 async def get_project(
     project_id: int,
     user: User = Depends(get_current_user),
@@ -473,6 +477,7 @@ async def get_project(
     return d
 
 @app.patch("/projects/{project_id}", response_model=ProjectResponse)
+@app.patch("/projects/{project_id}/", response_model=ProjectResponse, include_in_schema=False)
 async def update_project(
     project_id: int,
     data: ProjectUpdate,
@@ -492,6 +497,7 @@ async def update_project(
     return _project_to_dict(proj)
 
 @app.delete("/projects/{project_id}")
+@app.delete("/projects/{project_id}/", include_in_schema=False)
 async def delete_project(
     project_id: int,
     user: User = Depends(get_current_user),
@@ -580,6 +586,7 @@ async def create_habit(
     }
 
 @app.patch("/habits/{habit_id}", response_model=HabitResponse)
+@app.patch("/habits/{habit_id}/", response_model=HabitResponse, include_in_schema=False)
 async def update_habit(
     habit_id: int,
     data: HabitUpdate,
@@ -617,6 +624,7 @@ async def update_habit(
     }
 
 @app.delete("/habits/{habit_id}")
+@app.delete("/habits/{habit_id}/", include_in_schema=False)
 async def delete_habit(
     habit_id: int,
     user: User = Depends(get_current_user),
@@ -632,6 +640,7 @@ async def delete_habit(
     return {"detail": "deleted"}
 
 @app.post("/habits/{habit_id}/complete")
+@app.post("/habits/{habit_id}/complete/", include_in_schema=False)
 async def complete_habit(
     habit_id: int,
     user: User = Depends(get_current_user),
@@ -755,6 +764,7 @@ async def create_note(
     return note
 
 @app.patch("/notes/{note_id}", response_model=NoteResponse)
+@app.patch("/notes/{note_id}/", response_model=NoteResponse, include_in_schema=False)
 async def update_note(
     note_id: int,
     data: NoteUpdate,
@@ -778,6 +788,7 @@ async def update_note(
     return note
 
 @app.delete("/notes/{note_id}")
+@app.delete("/notes/{note_id}/", include_in_schema=False)
 async def delete_note(
     note_id: int,
     user: User = Depends(get_current_user),
@@ -822,6 +833,7 @@ async def create_crm(
     return person
 
 @app.patch("/crm/{person_id}", response_model=CRMPersonResponse)
+@app.patch("/crm/{person_id}/", response_model=CRMPersonResponse, include_in_schema=False)
 async def update_crm(
     person_id: int,
     data: CRMPersonUpdate,
@@ -845,6 +857,7 @@ async def update_crm(
     return person
 
 @app.delete("/crm/{person_id}")
+@app.delete("/crm/{person_id}/", include_in_schema=False)
 async def delete_crm(
     person_id: int,
     user: User = Depends(get_current_user),
@@ -885,6 +898,7 @@ async def create_tag(
     return tag
 
 @app.delete("/tags/{tag_id}")
+@app.delete("/tags/{tag_id}/", include_in_schema=False)
 async def delete_tag(
     tag_id: int,
     user: User = Depends(get_current_user),
@@ -925,6 +939,7 @@ async def create_category(
     return cat
 
 @app.delete("/categories/{cat_id}")
+@app.delete("/categories/{cat_id}/", include_in_schema=False)
 async def delete_category(
     cat_id: int,
     user: User = Depends(get_current_user),
@@ -967,6 +982,7 @@ async def create_time_block(
     return block
 
 @app.patch("/time-blocks/{block_id}", response_model=TimeBlockResponse)
+@app.patch("/time-blocks/{block_id}/", response_model=TimeBlockResponse, include_in_schema=False)
 async def update_time_block(
     block_id: int,
     data: TimeBlockUpdate,
@@ -985,6 +1001,7 @@ async def update_time_block(
     return block
 
 @app.delete("/time-blocks/{block_id}")
+@app.delete("/time-blocks/{block_id}/", include_in_schema=False)
 async def delete_time_block(
     block_id: int,
     user: User = Depends(get_current_user),
@@ -1025,6 +1042,7 @@ async def create_braindump(
     return entry
 
 @app.delete("/braindump/{entry_id}")
+@app.delete("/braindump/{entry_id}/", include_in_schema=False)
 async def delete_braindump(
     entry_id: int,
     user: User = Depends(get_current_user),
@@ -1068,6 +1086,7 @@ async def add_favorite_team(
     return team
 
 @app.delete("/sports/favorites/{team_id}")
+@app.delete("/sports/favorites/{team_id}/", include_in_schema=False)
 async def remove_favorite_team(
     team_id: int,
     user: User = Depends(get_current_user),
@@ -1150,8 +1169,6 @@ async def get_dashboard(
             "completion_percentage": int((done / len(tasks) * 100) if tasks else 0),
         })
 
-    # Use Python-side duration calculation to avoid SQLite-only strftime("%s")
-    # which crashes on PostgreSQL. Fetch rows and compute in Python instead.
     time_entries_today = session.execute(
         select(TimeEntry).where(
             TimeEntry.user_id == user.id,
