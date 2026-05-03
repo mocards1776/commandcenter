@@ -75,6 +75,19 @@ api.interceptors.response.use(
   }
 );
 
+// Helper: ensure a value is always a plain array.
+// Handles: already-array, wrapped {history:[...]}, wrapped {results:[...]}, null/undefined.
+function toArray<T>(data: unknown): T[] {
+  if (Array.isArray(data)) return data as T[];
+  if (data && typeof data === "object") {
+    const obj = data as Record<string, unknown>;
+    if (Array.isArray(obj.history)) return obj.history as T[];
+    if (Array.isArray(obj.results)) return obj.results as T[];
+    if (Array.isArray(obj.data)) return obj.data as T[];
+  }
+  return [];
+}
+
 // ─── Dashboard ────────────────────────────────────────────────
 export const dashboardApi = {
   get: () => api.get<DashboardSummary>("/dashboard/").then(r => r.data),
@@ -83,7 +96,7 @@ export const dashboardApi = {
 // ─── Gamification ─────────────────────────────────────────────
 export const gamificationApi = {
   history: (limit = 30) =>
-    api.get<GamificationStats[]>("/gamification/", { params: { limit } }).then(r => r.data),
+    api.get("/gamification/", { params: { limit } }).then(r => toArray<GamificationStats>(r.data)),
 };
 
 // ─── Tasks ─────────────────────────────────────────────
