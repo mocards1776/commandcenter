@@ -3,7 +3,7 @@ import type { GamificationStats } from "@/types";
 
 interface Props {
   stats?: GamificationStats;
-  history?: GamificationStats[];
+  history?: GamificationStats[] | any;
 }
 
 function avg(arr: number[]): number {
@@ -72,9 +72,16 @@ export function GameScoreboard({ stats, history }: Props) {
   const tasksC = stats?.tasks_completed ?? 0;
   const tasksA = stats?.tasks_attempted ?? 0;
 
+  // Normalize history — backend may return an array, a paginated object, or undefined
+  const historyArr: GamificationStats[] = Array.isArray(history)
+    ? history
+    : Array.isArray(history?.results)
+    ? history.results
+    : [];
+
   // Compute weekly average (last 7 days) and all-time best from history.
-  const last7 = history && history.length ? history.slice(-7) : [];
-  const all   = history && history.length ? history : [];
+  const last7 = historyArr.slice(-7);
+  const all   = historyArr;
 
   // Batting avg
   const wkBA   = last7.length ? battingAvgStr(avg(last7.map(h => h.batting_average))) : null;
