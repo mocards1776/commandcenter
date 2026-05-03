@@ -24,6 +24,11 @@ function fmtTime(hour?: number | null, minute?: number | null): string {
   return `${h12}:${String(minute).padStart(2, "0")}${ampm}`;
 }
 
+// Safe accessor — always returns a plain array regardless of what the API sends
+function safeCompletions(habit: Habit): { completed_date: string }[] {
+  return Array.isArray(habit.completions) ? habit.completions : [];
+}
+
 function calcStreak(completions: { completed_date: string }[], today: string): number {
   const dates = new Set(completions.map(c => c.completed_date));
   let streak = 0;
@@ -81,13 +86,14 @@ export function HabitRow({ habit, todayStr, last7 = [], isEven = false }: Props)
   const [modalOpen, setModalOpen] = useState(false);
   const qc = useQueryClient();
 
-  // Guard: completions may be undefined if the backend returns a partial habit object
-  const doneSet = new Set((habit.completions ?? []).map((c: any) => c.completed_date));
+  // Always use safeCompletions — guards against null, undefined, or any non-array value
+  const completions = safeCompletions(habit);
+  const doneSet = new Set(completions.map((c: any) => c.completed_date));
   const isDoneToday = doneSet.has(todayStr);
 
-  const streak = calcStreak(habit.completions ?? [], todayStr);
-  const best = calcBest(habit.completions ?? []);
-  const mthPct = calcMonthPct(habit.completions ?? []);
+  const streak = calcStreak(completions, todayStr);
+  const best = calcBest(completions);
+  const mthPct = calcMonthPct(completions);
 
   const streakColor = streak >= 7 ? "#f4c842" : streak >= 3 ? "#e8a820" : streak > 0 ? "rgba(232,168,32,0.7)" : "rgba(240,236,224,0.22)";
   const bestColor   = best   >= 14 ? "#f4c842" : best   >= 5  ? "#e8a820" : "rgba(240,236,224,0.4)";
