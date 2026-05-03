@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from sqlalchemy import select, or_, func
+from sqlalchemy import select, or_, func, cast, Numeric
 from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
 import os
@@ -660,8 +660,6 @@ async def complete_habit(
     return {"completed": True, "streak": streak}
 
 # ── Time Entries ─────────────────────────────────────────────────────────────
-# Real columns: id, user_id, task_id, habit_id, started_at, ended_at, note, created_at
-# duration_seconds is a @property — NOT a DB column
 
 def _time_entry_to_dict(e: TimeEntry) -> dict:
     duration_secs = e.duration_seconds if e.ended_at else None
@@ -728,7 +726,6 @@ async def create_time_entry(
     return _time_entry_to_dict(entry)
 
 # ── Notes ────────────────────────────────────────────────────────────────────
-# Real columns: id, user_id, title, content, tags, created_at, updated_at
 
 @app.get("/notes", response_model=List[NoteResponse])
 async def list_notes(
@@ -796,8 +793,6 @@ async def delete_note(
     return {"detail": "deleted"}
 
 # ── CRM ──────────────────────────────────────────────────────────────────────
-# Real columns: id, user_id, name, email, phone, company, notes,
-#               last_contacted, created_at, updated_at
 
 @app.get("/crm", response_model=List[CRMPersonResponse])
 async def list_crm(
@@ -1155,15 +1150,21 @@ async def get_dashboard(
             "completion_percentage": int((done / len(tasks) * 100) if tasks else 0),
         })
 
-    time_today = session.execute(
-        select(func.sum(
-            func.strftime("%s", TimeEntry.ended_at) - func.strftime("%s", TimeEntry.started_at)
-        )).where(
+    # Use Python-side duration calculation to avoid SQLite-only strftime("%s")
+    # which crashes on PostgreSQL. Fetch rows and compute in Python instead.
+    time_entries_today = session.execute(
+        select(TimeEntry).where(
             TimeEntry.user_id == user.id,
             TimeEntry.started_at >= midnight_utc,
             TimeEntry.ended_at != None,  # noqa: E711
         )
-    ).scalar() or 0
+    ).scalars().all()
+
+    time_today = sum(
+        int((e.ended_at - e.started_at).total_seconds())
+        for e in time_entries_today
+        if e.ended_at and e.started_at
+    )
 
     total_tasks = session.execute(
         select(func.count(Task.id)).where(Task.user_id == user.id)
@@ -1177,7 +1178,7 @@ async def get_dashboard(
         "overdue_tasks": [_task_to_dict(t) for t in overdue_tasks],
         "today_habits": today_habit_data,
         "active_projects": project_summaries,
-        "time_tracked_today_seconds": int(time_today),
+        "time_tracked_today_seconds": time_today,
         "stats": {
             "total_tasks": total_tasks,
             "done_tasks": done_tasks,
