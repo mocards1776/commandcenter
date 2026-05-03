@@ -49,7 +49,6 @@ def _is_allowed_origin(origin: str) -> bool:
         or (origin.startswith("https://command-center") and origin.endswith(".vercel.app"))
     )
 
-# redirect_slashes=True so /dashboard/ -> /dashboard (fixes 405 errors on trailing-slash URLs)
 app = FastAPI(title="CommandCenter API", redirect_slashes=True)
 
 app.add_middleware(
@@ -63,8 +62,6 @@ app.add_middleware(
     max_age=600,
 )
 
-# Explicit OPTIONS handler — ensures PATCH preflight is never blocked
-# even if the CORS middleware is loaded after another middleware strips headers.
 @app.options("/{rest_of_path:path}")
 async def preflight_handler(rest_of_path: str, request: Request):
     origin = request.headers.get("origin", "")
@@ -279,7 +276,6 @@ async def get_dashboard(
 ):
     today = _today_ct()
 
-    # Tasks due today or in progress
     today_tasks = session.execute(
         select(Task).where(
             Task.user_id == user.id,
@@ -287,7 +283,6 @@ async def get_dashboard(
         )
     ).scalars().all()
 
-    # Overdue tasks
     overdue_tasks = session.execute(
         select(Task).where(
             Task.user_id == user.id,
@@ -296,7 +291,6 @@ async def get_dashboard(
         )
     ).scalars().all()
 
-    # Habits
     habits = session.execute(
         select(Habit).where(Habit.user_id == user.id)
     ).scalars().all()
@@ -323,7 +317,6 @@ async def get_dashboard(
             "streak": streak,
         })
 
-    # Active time entry
     active_entry = session.execute(
         select(TimeEntry).where(
             TimeEntry.user_id == user.id,
@@ -331,7 +324,6 @@ async def get_dashboard(
         ).order_by(TimeEntry.started_at.desc())
     ).scalar()
 
-    # Projects summary
     projects = session.execute(
         select(Project).where(Project.user_id == user.id, Project.status == "active")
     ).scalars().all()
@@ -447,7 +439,6 @@ async def get_gamification(
     today = _today_ct()
     start_date = today - timedelta(days=limit - 1)
 
-    # Tasks completed in window
     tasks_done = session.execute(
         select(Task).where(
             Task.user_id == user.id,
@@ -456,7 +447,6 @@ async def get_gamification(
         )
     ).scalars().all()
 
-    # Habit completions in window
     habit_completions = session.execute(
         select(HabitCompletion).join(Habit, HabitCompletion.habit_id == Habit.id).where(
             Habit.user_id == user.id,
@@ -464,7 +454,6 @@ async def get_gamification(
         )
     ).scalars().all()
 
-    # XP calculation
     task_xp = sum((t.focus_score or 1) * 10 for t in tasks_done)
     habit_xp = len(habit_completions) * 5
 
@@ -475,7 +464,6 @@ async def get_gamification(
     xp_progress = total_xp - xp_for_current_level
     xp_needed = max(1, xp_for_next_level - xp_for_current_level)
 
-    # Daily activity heatmap
     daily_activity: dict = defaultdict(int)
     for t in tasks_done:
         if t.completed_at:
@@ -484,7 +472,6 @@ async def get_gamification(
     for hc in habit_completions:
         daily_activity[str(hc.completed_date)] += 1
 
-    # Current streak
     streak = 0
     check = today
     for _ in range(limit):
@@ -566,13 +553,11 @@ async def get_task(
         raise HTTPException(status_code=404, detail="Task not found")
     return _task_to_dict(task)
 
-@app.patch("/tasks/{task_id}", response_model=TaskResponse)
-@app.patch("/tasks/{task_id}/", response_model=TaskResponse, include_in_schema=False)
-async def update_task(
+async def _do_update_task(
     task_id: int,
     data: TaskUpdate,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(db.get_session),
+    user: User,
+    session: Session,
 ):
     task = session.execute(
         select(Task).where(Task.id == task_id, Task.user_id == user.id)
@@ -596,6 +581,27 @@ async def update_task(
     session.commit()
     session.refresh(task)
     return _task_to_dict(task)
+
+@app.patch("/tasks/{task_id}", response_model=TaskResponse)
+@app.patch("/tasks/{task_id}/", response_model=TaskResponse, include_in_schema=False)
+async def update_task_patch(
+    task_id: int,
+    data: TaskUpdate,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    return await _do_update_task(task_id, data, user, session)
+
+# PUT alias — avoids CORS preflight blocking PATCH on some proxy configs
+@app.put("/tasks/{task_id}", response_model=TaskResponse)
+@app.put("/tasks/{task_id}/", response_model=TaskResponse, include_in_schema=False)
+async def update_task_put(
+    task_id: int,
+    data: TaskUpdate,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    return await _do_update_task(task_id, data, user, session)
 
 @app.delete("/tasks/{task_id}")
 @app.delete("/tasks/{task_id}/", include_in_schema=False)
@@ -693,14 +699,7 @@ async def get_project(
     d["completion_percentage"] = int((done / len(tasks) * 100) if tasks else 0)
     return d
 
-@app.patch("/projects/{project_id}", response_model=ProjectResponse)
-@app.patch("/projects/{project_id}/", response_model=ProjectResponse, include_in_schema=False)
-async def update_project(
-    project_id: int,
-    data: ProjectUpdate,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(db.get_session),
-):
+async def _do_update_project(project_id: int, data: ProjectUpdate, user: User, session: Session):
     proj = session.execute(
         select(Project).where(Project.id == project_id, Project.user_id == user.id)
     ).scalar()
@@ -712,6 +711,22 @@ async def update_project(
     session.commit()
     session.refresh(proj)
     return _project_to_dict(proj)
+
+@app.patch("/projects/{project_id}", response_model=ProjectResponse)
+@app.patch("/projects/{project_id}/", response_model=ProjectResponse, include_in_schema=False)
+async def update_project_patch(
+    project_id: int, data: ProjectUpdate,
+    user: User = Depends(get_current_user), session: Session = Depends(db.get_session),
+):
+    return await _do_update_project(project_id, data, user, session)
+
+@app.put("/projects/{project_id}", response_model=ProjectResponse)
+@app.put("/projects/{project_id}/", response_model=ProjectResponse, include_in_schema=False)
+async def update_project_put(
+    project_id: int, data: ProjectUpdate,
+    user: User = Depends(get_current_user), session: Session = Depends(db.get_session),
+):
+    return await _do_update_project(project_id, data, user, session)
 
 @app.delete("/projects/{project_id}")
 @app.delete("/projects/{project_id}/", include_in_schema=False)
@@ -802,14 +817,7 @@ async def create_habit(
         "created_at": habit.created_at, "updated_at": habit.updated_at,
     }
 
-@app.patch("/habits/{habit_id}", response_model=HabitResponse)
-@app.patch("/habits/{habit_id}/", response_model=HabitResponse, include_in_schema=False)
-async def update_habit(
-    habit_id: int,
-    data: HabitUpdate,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(db.get_session),
-):
+async def _do_update_habit(habit_id: int, data: HabitUpdate, user: User, session: Session):
     habit = session.execute(
         select(Habit).where(Habit.id == habit_id, Habit.user_id == user.id)
     ).scalar()
@@ -839,6 +847,22 @@ async def update_habit(
         "completed_today": comp_today is not None,
         "created_at": habit.created_at, "updated_at": habit.updated_at,
     }
+
+@app.patch("/habits/{habit_id}", response_model=HabitResponse)
+@app.patch("/habits/{habit_id}/", response_model=HabitResponse, include_in_schema=False)
+async def update_habit_patch(
+    habit_id: int, data: HabitUpdate,
+    user: User = Depends(get_current_user), session: Session = Depends(db.get_session),
+):
+    return await _do_update_habit(habit_id, data, user, session)
+
+@app.put("/habits/{habit_id}", response_model=HabitResponse)
+@app.put("/habits/{habit_id}/", response_model=HabitResponse, include_in_schema=False)
+async def update_habit_put(
+    habit_id: int, data: HabitUpdate,
+    user: User = Depends(get_current_user), session: Session = Depends(db.get_session),
+):
+    return await _do_update_habit(habit_id, data, user, session)
 
 @app.delete("/habits/{habit_id}")
 @app.delete("/habits/{habit_id}/", include_in_schema=False)
@@ -885,7 +909,7 @@ async def complete_habit(
     streak = _habit_streak(habit_id, session, today)
     return {"completed": True, "streak": streak}
 
-# ── Time Entries ─────────────────────────────────────────────────────────────
+# ── Time Entries ─────────────────────────────────────────────
 
 def _time_entry_to_dict(e: TimeEntry) -> dict:
     duration_secs = e.duration_seconds if e.ended_at else None

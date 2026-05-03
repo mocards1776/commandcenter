@@ -59,8 +59,6 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Only fire auth:logout if the 401 is on a non-auth endpoint AND we actually
-// had a token (i.e. the session expired server-side, not a missing-token call).
 api.interceptors.response.use(
   (res) => res,
   (err) => {
@@ -75,8 +73,6 @@ api.interceptors.response.use(
   }
 );
 
-// Helper: ensure a value is always a plain array.
-// Handles: already-array, wrapped {history:[...]}, wrapped {results:[...]}, null/undefined.
 function toArray<T>(data: unknown): T[] {
   if (Array.isArray(data)) return data as T[];
   if (data && typeof data === "object") {
@@ -107,11 +103,12 @@ export const tasksApi = {
   get: (id: string) => api.get<Task>(`/tasks/${id}/`).then(r => r.data),
   create: (data: Partial<TaskCreate>) =>
     api.post<Task>("/tasks/", data).then(r => r.data),
+  // Using PUT instead of PATCH — avoids CORS preflight issues on live server
   update: (id: string, data: TaskUpdate) =>
-    api.patch<Task>(`/tasks/${id}/`, data).then(r => r.data),
+    api.put<Task>(`/tasks/${id}/`, data).then(r => r.data),
   delete: (id: string) => api.delete(`/tasks/${id}/`),
   complete: (id: string) =>
-    api.patch<Task>(`/tasks/${id}/`, { status: "done" }).then(r => r.data),
+    api.put<Task>(`/tasks/${id}/`, { status: "done" }).then(r => r.data),
   reorder: (ids: string[]) => api.post("/tasks/reorder/", ids),
 };
 
@@ -121,8 +118,9 @@ export const projectsApi = {
     api.get<ProjectSummary[]>("/projects/", { params }).then(r => r.data),
   get: (id: string) => api.get<Project>(`/projects/${id}/`).then(r => r.data),
   create: (data: any) => api.post<Project>("/projects/", data).then(r => r.data),
+  // Using PUT instead of PATCH
   update: (id: string, data: any) =>
-    api.patch<Project>(`/projects/${id}/`, data).then(r => r.data),
+    api.put<Project>(`/projects/${id}/`, data).then(r => r.data),
   delete: (id: string) => api.delete(`/projects/${id}/`),
 };
 
@@ -132,8 +130,9 @@ export const habitsApi = {
     api.get<Habit[]>("/habits/", { params }).then(r => r.data),
   get: (id: string) => api.get<Habit>(`/habits/${id}/`).then(r => r.data),
   create: (data: any) => api.post<Habit>("/habits/", data).then(r => r.data),
+  // Using PUT instead of PATCH
   update: (id: string, data: any) =>
-    api.patch<Habit>(`/habits/${id}/`, data).then(r => r.data),
+    api.put<Habit>(`/habits/${id}/`, data).then(r => r.data),
   delete: (id: string) => api.delete(`/habits/${id}/`),
   complete: (id: string, data: { completed_date: string; note?: string }) =>
     api.post<HabitCompletion>(`/habits/${id}/complete/`, data).then(r => r.data),
@@ -162,7 +161,7 @@ export const timeBlocksApi = {
   create: (data: any) =>
     api.post<TimeBlock>("/api/time-blocks/", data).then(r => r.data),
   update: (id: string, data: any) =>
-    api.patch<TimeBlock>(`/time-blocks/${id}/`, data).then(r => r.data),
+    api.put<TimeBlock>(`/time-blocks/${id}/`, data).then(r => r.data),
   delete: (id: string) => api.delete(`/time-blocks/${id}/`),
 };
 
@@ -181,7 +180,7 @@ export const notesApi = {
     api.get<Note[]>("/notes/", { params }).then(r => r.data),
   create: (data: any) => api.post<Note>("/notes/", data).then(r => r.data),
   update: (id: string, data: any) =>
-    api.patch<Note>(`/notes/${id}/`, data).then(r => r.data),
+    api.put<Note>(`/notes/${id}/`, data).then(r => r.data),
   delete: (id: string) => api.delete(`/notes/${id}/`),
 };
 
@@ -192,7 +191,7 @@ export const crmApi = {
   get: (id: string) => api.get<CRMPerson>(`/crm/${id}/`).then(r => r.data),
   create: (data: any) => api.post<CRMPerson>("/crm/", data).then(r => r.data),
   update: (id: string, data: any) =>
-    api.patch<CRMPerson>(`/crm/${id}/`, data).then(r => r.data),
+    api.put<CRMPerson>(`/crm/${id}/`, data).then(r => r.data),
   delete: (id: string) => api.delete(`/crm/${id}/`),
   markContacted: (id: string) =>
     api.post<CRMPerson>(`/crm/${id}/contacted/`).then(r => r.data),
@@ -216,14 +215,11 @@ export const categoriesApi = {
 
 // ─── Sports ────────────────────────────────────────────
 export const sportsApi = {
-  // Favorites (user preferences stored in DB)
   favorites: () =>
     api.get<FavoriteSportsTeam[]>("/sports/favorites/").then(r => r.data),
   addFavorite: (data: any) =>
     api.post<FavoriteSportsTeam>("/sports/favorites/", data).then(r => r.data),
   removeFavorite: (id: string) => api.delete(`/sports/favorites/${id}/`),
-
-  // MLB live data — proxied through our backend (auth required)
   mlbTeam: (teamSlug: string) =>
     api.get(`/sports/mlb/${teamSlug}`).then(r => r.data),
   mlbProjections: (teamSlug: string) =>
