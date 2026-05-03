@@ -110,8 +110,9 @@ export const tasksApi = {
   update: (id: string, data: TaskUpdate) =>
     api.patch<Task>(`/tasks/${id}/`, data).then(r => r.data),
   delete: (id: string) => api.delete(`/tasks/${id}/`),
+  // Backend has no /complete/ endpoint — mark done via PATCH status=done
   complete: (id: string) =>
-    api.post<Task>(`/tasks/${id}/complete/`).then(r => r.data),
+    api.patch<Task>(`/tasks/${id}/`, { status: "done" }).then(r => r.data),
   reorder: (ids: string[]) => api.post("/tasks/reorder/", ids),
 };
 
