@@ -1,14 +1,14 @@
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { dashboardApi, gamificationApi } from "@/lib/api";
+import { dashboardApi, gamificationApi, habitsApi } from "@/lib/api";
 import { GameScoreboard } from "@/components/dashboard/GameScoreboard";
 import { NextUpPanel } from "@/components/dashboard/NextUpPanel";
 import { BaseballPanel } from "@/components/dashboard/BaseballPanel";
-import { HabitRow } from "@/components/habits/HabitRow";
 import { useTimerStore } from "@/store";
 import { Loader2 } from "lucide-react";
 import { todayStr } from "@/lib/utils";
+import toast from "react-hot-toast";
 
 function useLiveClock() {
   const [now, setNow] = useState(() => new Date());
@@ -19,23 +19,91 @@ function useLiveClock() {
   return now;
 }
 
-// Normalize a raw entry from today_habits into a safe Habit-like object.
-// The dashboard endpoint may return:
-//   { habit: { ...habitFields }, completed: bool }  — wrapped
-//   { id, name, completions: [...], ... }           — flat habit
-//   { id, name, ... }                               — flat habit WITHOUT completions
-// We always want a flat habit with completions guaranteed to be an array.
-function normalizeHabit(entry: any): any | null {
-  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
+// Inline habit row for the dashboard — uses only fields the backend
+// actually returns on /dashboard/. Does NOT depend on Habit type or completions[].
+function DashHabitRow({ entry, todayStr }: { entry: any; todayStr: string }) {
+  const qc = useQueryClient();
+  const habitId: string = entry?.habit?.id ?? entry?.id ?? "";
+  const name: string    = entry?.habit?.name ?? entry?.name ?? "—";
+  const icon: string    = entry?.habit?.icon ?? entry?.icon ?? "";
+  // Backend may return `completed: bool` or we fall back to checking completions[]
+  const completions: any[] = Array.isArray(entry?.habit?.completions)
+    ? entry.habit.completions
+    : Array.isArray(entry?.completions) ? entry.completions : [];
+  const isDone: boolean = typeof entry?.completed === "boolean"
+    ? entry.completed
+    : completions.some((c: any) => c?.completed_date === todayStr);
 
-  // Unwrap { habit: {...}, completed: bool } shape
-  const raw = entry.habit && typeof entry.habit === "object" ? entry.habit : entry;
+  const completeMut = useMutation({
+    mutationFn: () => habitsApi.complete(habitId, { completed_date: todayStr }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["habits"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      toast.success(`${icon} ${name}`, { duration: 1800 });
+    },
+  });
+  const uncompleteMut = useMutation({
+    mutationFn: () => habitsApi.uncomplete(habitId, todayStr),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["habits"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
 
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-  if (!raw.id) return null; // must have at least an id
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!habitId || completeMut.isPending || uncompleteMut.isPending) return;
+    isDone ? uncompleteMut.mutate() : completeMut.mutate();
+  };
 
-  // Guarantee completions is always an array
-  return { ...raw, completions: Array.isArray(raw.completions) ? raw.completions : [] };
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        padding: "7px 14px",
+        gap: 10,
+        borderBottom: "1px solid rgba(240,236,224,0.05)",
+        cursor: "default",
+        transition: "background 0.12s",
+      }}
+      onMouseEnter={e => (e.currentTarget.style.background = "rgba(232,168,32,0.04)")}
+      onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+    >
+      <div onClick={handleClick} title={isDone ? "Mark incomplete" : "Mark complete"} style={{ cursor: "pointer", flexShrink: 0, lineHeight: 0 }}>
+        {isDone ? (
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+            <circle cx="11" cy="11" r="10" stroke="#e8a820" strokeWidth="1.5" />
+            <circle cx="11" cy="11" r="7" fill="#e8a820" />
+            <path d="M7.5 11l2.5 2.5 4.5-4.5" stroke="#1a2e1f" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        ) : (
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+            <circle cx="11" cy="11" r="10" stroke="rgba(240,236,224,0.25)" strokeWidth="1.5" />
+          </svg>
+        )}
+      </div>
+      <span style={{
+        fontFamily: "'Oswald', Arial, sans-serif",
+        fontWeight: 700,
+        fontSize: 13,
+        letterSpacing: "0.10em",
+        textTransform: "uppercase",
+        color: isDone ? "#f0ece0" : "rgba(240,236,224,0.55)",
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+        flex: 1,
+        minWidth: 0,
+      }}>
+        {icon && <span style={{ fontSize: 14, flexShrink: 0 }}>{icon}</span>}
+        {name}
+      </span>
+    </div>
+  );
 }
 
 export function DashboardPage() {
@@ -85,15 +153,21 @@ export function DashboardPage() {
 
   const overdueT = data?.overdue_tasks ?? [];
 
-  // Normalize every today_habits entry so completions is always an array
-  const rawHabits: any[] = data?.today_habits ?? [];
-  const habits = rawHabits.map(normalizeHabit).filter(Boolean);
+  // Raw entries — could be Habit[], wrapped {habit,completed}[], or anything.
+  // DashHabitRow handles every shape safely.
+  const habitEntries: any[] = Array.isArray(data?.today_habits) ? data.today_habits : [];
+
+  // Count completed habits for the stats panel
+  const habitsDone = habitEntries.filter((e: any) => {
+    if (typeof e?.completed === "boolean") return e.completed;
+    const comps = Array.isArray(e?.habit?.completions) ? e.habit.completions
+      : Array.isArray(e?.completions) ? e.completions : [];
+    return comps.some((c: any) => c?.completed_date === today);
+  }).length;
 
   const projects = data?.active_projects ?? [];
-
   const allPending = [...(data?.today_tasks ?? []), ...overdueT];
 
-  // Live clock strings in CDT
   const timeStr = now.toLocaleTimeString("en-US", {
     timeZone: "America/Chicago",
     hour: "numeric",
@@ -166,9 +240,12 @@ export function DashboardPage() {
             <span>Today's Habits</span>
             <button className="panel-header-link" onClick={() => navigate("/habits")} style={{ fontSize: 9 }}>Manage &#8594;</button>
           </div>
-          {habits.length === 0 ? (
+          {habitEntries.length === 0 ? (
             <p style={{ padding: "12px 14px", fontFamily: "'IM Fell English',Georgia,serif", fontStyle: "italic", fontSize: 11, color: "rgba(245,240,224,0.2)" }}>No habits configured</p>
-          ) : habits.slice(0, 6).map((h: any) => <HabitRow key={h.id} habit={h} todayStr={today} />)}
+          ) : habitEntries.slice(0, 6).map((entry: any, idx: number) => {
+            const id = entry?.habit?.id ?? entry?.id ?? idx;
+            return <DashHabitRow key={id} entry={entry} todayStr={today} />;
+          })}
         </div>
 
         {/* Projects */}
@@ -207,9 +284,9 @@ export function DashboardPage() {
               <div>
                 <div style={{ fontSize: 8, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 4 }}>Habits</div>
                 <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
-                  <div className="panel panel-sm"><span className="panel-num gold" style={{ fontSize: 20 }}>{habits.filter((h: any) => (h.completions ?? []).some((c: any) => c.completed_date === today)).length}</span></div>
+                  <div className="panel panel-sm"><span className="panel-num gold" style={{ fontSize: 20 }}>{habitsDone}</span></div>
                   <div style={{ fontSize: 18, color: "rgba(255,255,255,0.2)", lineHeight: "36px" }}>/</div>
-                  <div className="panel panel-sm"><span className="panel-num empty" style={{ fontSize: 20 }}>{habits.length}</span></div>
+                  <div className="panel panel-sm"><span className="panel-num empty" style={{ fontSize: 20 }}>{habitEntries.length}</span></div>
                 </div>
               </div>
             </div>
