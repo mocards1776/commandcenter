@@ -107,13 +107,11 @@ export const tasksApi = {
   get: (id: string) => api.get<Task>(`/tasks/${id}/`).then(r => r.data),
   create: (data: Partial<TaskCreate>) =>
     api.post<Task>("/tasks/", data).then(r => r.data),
-  // Use PUT instead of PATCH — DO App Platform edge proxy blocks PATCH preflight
   update: (id: string, data: TaskUpdate) =>
-    api.put<Task>(`/tasks/${id}/`, data).then(r => r.data),
+    api.patch<Task>(`/tasks/${id}/`, data).then(r => r.data),
   delete: (id: string) => api.delete(`/tasks/${id}/`),
-  // Complete via PUT status=done
   complete: (id: string) =>
-    api.put<Task>(`/tasks/${id}/`, { status: "done" }).then(r => r.data),
+    api.patch<Task>(`/tasks/${id}/`, { status: "done" }).then(r => r.data),
   reorder: (ids: string[]) => api.post("/tasks/reorder/", ids),
 };
 
@@ -124,7 +122,7 @@ export const projectsApi = {
   get: (id: string) => api.get<Project>(`/projects/${id}/`).then(r => r.data),
   create: (data: any) => api.post<Project>("/projects/", data).then(r => r.data),
   update: (id: string, data: any) =>
-    api.put<Project>(`/projects/${id}/`, data).then(r => r.data),
+    api.patch<Project>(`/projects/${id}/`, data).then(r => r.data),
   delete: (id: string) => api.delete(`/projects/${id}/`),
 };
 
@@ -135,7 +133,7 @@ export const habitsApi = {
   get: (id: string) => api.get<Habit>(`/habits/${id}/`).then(r => r.data),
   create: (data: any) => api.post<Habit>("/habits/", data).then(r => r.data),
   update: (id: string, data: any) =>
-    api.put<Habit>(`/habits/${id}/`, data).then(r => r.data),
+    api.patch<Habit>(`/habits/${id}/`, data).then(r => r.data),
   delete: (id: string) => api.delete(`/habits/${id}/`),
   complete: (id: string, data: { completed_date: string; note?: string }) =>
     api.post<HabitCompletion>(`/habits/${id}/complete/`, data).then(r => r.data),
@@ -164,7 +162,7 @@ export const timeBlocksApi = {
   create: (data: any) =>
     api.post<TimeBlock>("/api/time-blocks/", data).then(r => r.data),
   update: (id: string, data: any) =>
-    api.put<TimeBlock>(`/time-blocks/${id}/`, data).then(r => r.data),
+    api.patch<TimeBlock>(`/time-blocks/${id}/`, data).then(r => r.data),
   delete: (id: string) => api.delete(`/time-blocks/${id}/`),
 };
 
@@ -183,7 +181,7 @@ export const notesApi = {
     api.get<Note[]>("/notes/", { params }).then(r => r.data),
   create: (data: any) => api.post<Note>("/notes/", data).then(r => r.data),
   update: (id: string, data: any) =>
-    api.put<Note>(`/notes/${id}/`, data).then(r => r.data),
+    api.patch<Note>(`/notes/${id}/`, data).then(r => r.data),
   delete: (id: string) => api.delete(`/notes/${id}/`),
 };
 
@@ -194,7 +192,7 @@ export const crmApi = {
   get: (id: string) => api.get<CRMPerson>(`/crm/${id}/`).then(r => r.data),
   create: (data: any) => api.post<CRMPerson>("/crm/", data).then(r => r.data),
   update: (id: string, data: any) =>
-    api.put<CRMPerson>(`/crm/${id}/`, data).then(r => r.data),
+    api.patch<CRMPerson>(`/crm/${id}/`, data).then(r => r.data),
   delete: (id: string) => api.delete(`/crm/${id}/`),
   markContacted: (id: string) =>
     api.post<CRMPerson>(`/crm/${id}/contacted/`).then(r => r.data),
