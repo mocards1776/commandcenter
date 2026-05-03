@@ -806,7 +806,7 @@ async def process_braindump(entry_id: str, session: Session = Depends(db.get_ses
     session.commit(); session.refresh(entry)
     return entry
 
-# ─── Sports ────────────────────────────────────────────
+# ─── Sports — Favorites ────────────────────────────────────
 from models import FavoriteSportsTeam
 from schemas import FavoriteSportsTeamCreate, FavoriteSportsTeamResponse
 
@@ -827,6 +827,180 @@ async def remove_sports_favorite(team_id: str, session: Session = Depends(db.get
         raise HTTPException(status_code=404)
     session.delete(team); session.commit()
     return {"ok": True}
+
+# ─── Sports — MLB Live Data (MLB Stats API, no key required) ──────────────────
+import httpx
+from zoneinfo import ZoneInfo
+_CT = ZoneInfo("America/Chicago")
+
+_MLB_TEAM_IDS = {
+    "cardinals": 138, "cubs": 112, "brewers": 158, "reds": 113, "pirates": 134,
+    "braves": 144, "mets": 121, "phillies": 143, "marlins": 146, "nationals": 120,
+    "dodgers": 119, "giants": 137, "padres": 135, "rockies": 115, "diamondbacks": 109,
+    "yankees": 147, "redsox": 111, "bluejays": 141, "orioles": 110, "rays": 139,
+    "astros": 117, "athletics": 133, "mariners": 136, "angels": 108, "rangers": 140,
+    "twins": 142, "whitesox": 145, "guardians": 114, "tigers": 116, "royals": 118,
+}
+
+_TEAM_META = {
+    138: ("STL", "St. Louis"),   112: ("CHC", "Chicago"),     158: ("MIL", "Milwaukee"),
+    113: ("CIN", "Cincinnati"),  134: ("PIT", "Pittsburgh"),  144: ("ATL", "Atlanta"),
+    121: ("NYM", "New York"),    143: ("PHI", "Philadelphia"), 146: ("MIA", "Miami"),
+    120: ("WSH", "Washington"),  119: ("LAD", "Los Angeles"),  137: ("SF", "San Francisco"),
+    135: ("SD", "San Diego"),    115: ("COL", "Denver"),       109: ("ARI", "Phoenix"),
+    147: ("NYY", "New York"),    111: ("BOS", "Boston"),       141: ("TOR", "Toronto"),
+    110: ("BAL", "Baltimore"),   139: ("TB", "Tampa Bay"),     117: ("HOU", "Houston"),
+    133: ("OAK", "Oakland"),     136: ("SEA", "Seattle"),      108: ("LAA", "Anaheim"),
+    140: ("TEX", "Arlington"),   145: ("CHW", "Chicago"),      114: ("CLE", "Cleveland"),
+    116: ("DET", "Detroit"),     118: ("KC", "Kansas City"),   142: ("MIN", "Minneapolis"),
+}
+
+_MLB_BASE = "https://statsapi.mlb.com/api/v1"
+
+async def _mlb_get(path: str) -> dict:
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        r = await client.get(f"{_MLB_BASE}{path}")
+        r.raise_for_status()
+        return r.json()
+
+def _shape_game(g: dict, team_id: int) -> dict:
+    away = g.get("teams", {}).get("away", {})
+    home = g.get("teams", {}).get("home", {})
+    is_home  = home.get("team", {}).get("id") == team_id
+    stl_side = home if is_home else away
+    opp_side = away if is_home else home
+    opp_id   = opp_side.get("team", {}).get("id", 0)
+    opp_abbr, opp_city = _TEAM_META.get(opp_id, ("???", ""))
+    abstract = g.get("status", {}).get("abstractGameState", "")
+    status = "Final" if abstract == "Final" else "Live" if abstract == "Live" else g.get("status", {}).get("detailedState", "")
+    game_time_ct = ""
+    game_date_utc = g.get("gameDate", "")
+    if game_date_utc:
+        try:
+            utc_dt = datetime.fromisoformat(game_date_utc.replace("Z", "+00:00"))
+            game_time_ct = utc_dt.astimezone(_CT).strftime("%-I:%M %p CT")
+        except Exception:
+            game_time_ct = game_date_utc
+    linescore = g.get("linescore", {})
+    away_pp = (away.get("probablePitcher") or {}).get("fullName")
+    home_pp = (home.get("probablePitcher") or {}).get("fullName")
+    return {
+        "game_pk":     g.get("gamePk"),
+        "status":      status,
+        "is_home":     is_home,
+        "opp_name":    opp_side.get("team", {}).get("name", ""),
+        "opp_abbr":    opp_abbr,
+        "city":        opp_city,
+        "stl_score":   stl_side.get("score"),
+        "opp_score":   opp_side.get("score"),
+        "inning":      linescore.get("currentInning"),
+        "inning_half": linescore.get("inningHalf"),
+        "outs":        linescore.get("outs"),
+        "balls":       linescore.get("balls"),
+        "strikes":     linescore.get("strikes"),
+        "stl_pitcher": home_pp if is_home else away_pp,
+        "opp_pitcher": away_pp if is_home else home_pp,
+        "game_time":   game_time_ct,
+        "venue":       g.get("venue", {}).get("name", ""),
+        "date_label":  g.get("officialDate", game_date_utc[:10] if game_date_utc else ""),
+    }
+
+@router.get("/sports/mlb/{team_slug}")
+async def mlb_team_today(team_slug: str, user: User = Depends(get_current_user)):
+    team_id = _MLB_TEAM_IDS.get(team_slug.lower())
+    if not team_id:
+        raise HTTPException(status_code=404, detail=f"Unknown team: {team_slug}")
+    today_str  = datetime.now(_CT).strftime("%Y-%m-%d")
+    window_end = (datetime.now(_CT) + timedelta(days=7)).strftime("%Y-%m-%d")
+    try:
+        sched = await _mlb_get(
+            f"/schedule?sportId=1&teamId={team_id}"
+            f"&startDate={today_str}&endDate={window_end}"
+            f"&hydrate=linescore,probablePitcher"
+        )
+        today_games, future_games = [], []
+        for date_entry in sched.get("dates", []):
+            for g in date_entry.get("games", []):
+                shaped = _shape_game(g, team_id)
+                (today_games if date_entry.get("date") == today_str else future_games).append(shaped)
+        current_game = next(
+            (g for g in today_games if g["status"] in ("Live", "Final")),
+            today_games[0] if today_games else None
+        )
+        next_game = future_games[0] if future_games else None
+        # NL Central standings — division id 205
+        standings_data = await _mlb_get(
+            "/standings?leagueId=104&season=2026&standingsTypes=regularSeason"
+        )
+        nl_central = []
+        for record in standings_data.get("records", []):
+            if record.get("division", {}).get("id") == 205:
+                for tr in record.get("teamRecords", []):
+                    tid = tr.get("team", {}).get("id", 0)
+                    abbr, _ = _TEAM_META.get(tid, ("???", ""))
+                    splits = tr.get("records", {}).get("splitRecords", [])
+                    last10 = next(
+                        (f"{s['wins']}-{s['losses']}" for s in splits if s.get("type") == "lastTen"), ""
+                    )
+                    nl_central.append({
+                        "team_id":  tid,
+                        "abbr":     abbr,
+                        "teamName": tr.get("team", {}).get("name", ""),
+                        "wl":       f"{tr.get('wins', 0)}-{tr.get('losses', 0)}",
+                        "pct":      tr.get("winningPercentage", ".000"),
+                        "gb":       str(tr.get("gamesBack", "\u2014")),
+                        "strk":     tr.get("streak", {}).get("streakCode", ""),
+                        "l10":      last10,
+                        "cards":    tid == 138,
+                    })
+                break
+        return {
+            "team_id":      team_id,
+            "date":         today_str,
+            "current_game": current_game,
+            "next_game":    next_game,
+            "nl_central":   nl_central,
+        }
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"MLB API error: {e}")
+
+@router.get("/sports/mlb/{team_slug}/projections")
+async def mlb_projections(team_slug: str, user: User = Depends(get_current_user)):
+    """Playoff odds from FanGraphs — no API key required."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            r = await client.get(
+                "https://www.fangraphs.com/api/playoff-odds/odds"
+                "?dateEnd=yesterday&dateDelta=0&odds=div,wc,league,world",
+                headers={"Accept": "application/json", "User-Agent": "Mozilla/5.0"}
+            )
+            r.raise_for_status()
+            rows = r.json()
+            if not isinstance(rows, list):
+                rows = []
+        row = next((x for x in rows if "Cardinals" in str(x.get("Team", ""))), None)
+        if row:
+            def pct(v):
+                try:
+                    f = float(v)
+                    return round(f * 100, 1) if f <= 1.0 else round(f, 1)
+                except Exception:
+                    return None
+            wins   = row.get("W") or row.get("Wins")
+            losses = row.get("L") or row.get("Losses")
+            return {
+                "proj_wins":   round(float(wins))   if wins   else None,
+                "playoff_pct": pct(row.get("Playoffs")    or row.get("PlayoffOdds")),
+                "div_pct":     pct(row.get("Division")),
+                "wc_pct":      pct(row.get("WildCard")     or row.get("WC")),
+                "ws_pct":      pct(row.get("WorldSeries")  or row.get("WS")),
+                "best":        f"{int(float(wins))}-{int(float(losses))}" if wins and losses else None,
+                "record":      None,
+            }
+    except Exception:
+        pass
+    return {"proj_wins": None, "playoff_pct": None, "div_pct": None,
+            "wc_pct": None, "ws_pct": None, "best": None, "record": None}
 
 # ─── Mount router at BOTH "" (root) AND "/api" ─────────────
 # Frontend calls /dashboard/, /tasks/, etc. (no /api prefix) — root mount covers that.
@@ -853,7 +1027,7 @@ async def startup():
                 conn.commit()
             except Exception:
                 pass
-    print("✓ Database initialized and migrated")
+    print("\u2713 Database initialized and migrated")
 
 if __name__ == "__main__":
     import uvicorn
