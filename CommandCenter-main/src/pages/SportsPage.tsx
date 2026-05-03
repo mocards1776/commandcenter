@@ -22,7 +22,7 @@ const SPORTS = [
 function MlbScoreCard({ game }: { game: any }) {
   const away = game.teams?.away;
   const home = game.teams?.home;
-  const status = game.status?.abstractGameState; // "Preview" | "Live" | "Final"
+  const status = game.status?.abstractGameState;
   const isLive = status === "Live";
   const isFinal = status === "Final";
   const linescore = game.linescore;
@@ -39,9 +39,7 @@ function MlbScoreCard({ game }: { game: any }) {
     <div
       className={cn(
         "rounded-xl border p-3 transition-all",
-        isLive
-          ? "border-emerald-500/30 bg-emerald-500/5"
-          : "border-[#2a2a45] bg-[#12121f]"
+        isLive ? "border-emerald-500/30 bg-emerald-500/5" : "border-[#2a2a45] bg-[#12121f]"
       )}
     >
       {isLive && (
@@ -73,9 +71,7 @@ function MlbScoreCard({ game }: { game: any }) {
             <span
               className={cn(
                 "text-lg font-black tabular-nums",
-                (isLive || isFinal) && side.isWinner
-                  ? "text-white"
-                  : "text-slate-400"
+                (isLive || isFinal) && side.isWinner ? "text-white" : "text-slate-400"
               )}
             >
               {side.score ?? "–"}
@@ -114,11 +110,11 @@ function MlbScores() {
           },
         })
         .then((r) => {
-          const games: any[] = [];
-          for (const d of r.data?.dates ?? []) {
-            games.push(...(d.games ?? []));
-          }
-          return games;
+          const dates = r.data?.dates;
+          if (!Array.isArray(dates)) return [] as any[];
+          return dates.flatMap((d: any) =>
+            Array.isArray(d.games) ? d.games : []
+          ) as any[];
         }),
     staleTime: 30_000,
     refetchInterval: 60_000,
@@ -173,9 +169,7 @@ function ScoreCard({ game }: { game: any }) {
     <div
       className={cn(
         "rounded-xl border p-3 transition-all",
-        isLive
-          ? "border-emerald-500/30 bg-emerald-500/5"
-          : "border-[#2a2a45] bg-[#12121f]"
+        isLive ? "border-emerald-500/30 bg-emerald-500/5" : "border-[#2a2a45] bg-[#12121f]"
       )}
     >
       {isLive && (
@@ -190,10 +184,7 @@ function ScoreCard({ game }: { game: any }) {
       {!isLive && !isFinal && (
         <div className="text-xs text-slate-500 mb-2">
           {game.date
-            ? new Date(game.date).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })
+            ? new Date(game.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
             : "TBD"}
         </div>
       )}
@@ -202,19 +193,13 @@ function ScoreCard({ game }: { game: any }) {
           <div key={i} className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               {team.team?.logo && (
-                <img
-                  src={team.team.logo}
-                  alt=""
-                  className="w-5 h-5 object-contain"
-                />
+                <img src={team.team.logo} alt="" className="w-5 h-5 object-contain" />
               )}
               <span className="text-sm font-semibold text-slate-200">
                 {team.team?.abbreviation}
               </span>
               {team.records?.[0] && (
-                <span className="text-xs text-slate-600">
-                  ({team.records[0].summary})
-                </span>
+                <span className="text-xs text-slate-600">({team.records[0].summary})</span>
               )}
             </div>
             <span
@@ -238,7 +223,7 @@ function EspnScores({ sport }: { sport: (typeof SPORTS)[number] }) {
     queryFn: () =>
       axios
         .get(`${ESPN}/${sport.espnSport}/scoreboard`)
-        .then((r) => r.data?.events ?? []),
+        .then((r) => (Array.isArray(r.data?.events) ? r.data.events : [])),
     staleTime: 60_000,
     retry: 1,
   });
@@ -263,11 +248,11 @@ function EspnScores({ sport }: { sport: (typeof SPORTS)[number] }) {
         <div className="flex justify-center py-6">
           <Loader2 className="w-5 h-5 animate-spin text-slate-500" />
         </div>
-      ) : data?.length === 0 ? (
+      ) : !data?.length ? (
         <p className="text-sm text-slate-600 text-center py-4">No games today</p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {data?.slice(0, 8).map((game: any) => (
+          {data.slice(0, 8).map((game: any) => (
             <ScoreCard key={game.id} game={game} />
           ))}
         </div>
@@ -291,11 +276,7 @@ function FavoriteTeams() {
 
   const addMutation = useMutation({
     mutationFn: () =>
-      sportsApi.addFavorite({
-        team_name: teamName,
-        sport,
-        sort_order: favorites?.length ?? 0,
-      }),
+      sportsApi.addFavorite({ team_name: teamName, sport, sort_order: favorites?.length ?? 0 }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["sports-favorites"] });
       setTeamName("");
@@ -337,9 +318,7 @@ function FavoriteTeams() {
             className="bg-[#0d0d1f] border border-[#2a2a45] rounded-lg px-2 py-1 text-sm text-slate-300 outline-none"
           >
             {SPORTS.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.label}
-              </option>
+              <option key={s.id} value={s.id}>{s.label}</option>
             ))}
           </select>
           <button
@@ -368,9 +347,7 @@ function FavoriteTeams() {
           </div>
         ))}
         {favorites?.length === 0 && (
-          <p className="text-xs text-slate-600">
-            No favorites yet. Add your teams above!
-          </p>
+          <p className="text-xs text-slate-600">No favorites yet. Add your teams above!</p>
         )}
       </div>
     </div>
