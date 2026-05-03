@@ -19,6 +19,25 @@ function useLiveClock() {
   return now;
 }
 
+// Normalize a raw entry from today_habits into a safe Habit-like object.
+// The dashboard endpoint may return:
+//   { habit: { ...habitFields }, completed: bool }  — wrapped
+//   { id, name, completions: [...], ... }           — flat habit
+//   { id, name, ... }                               — flat habit WITHOUT completions
+// We always want a flat habit with completions guaranteed to be an array.
+function normalizeHabit(entry: any): any | null {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
+
+  // Unwrap { habit: {...}, completed: bool } shape
+  const raw = entry.habit && typeof entry.habit === "object" ? entry.habit : entry;
+
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  if (!raw.id) return null; // must have at least an id
+
+  // Guarantee completions is always an array
+  return { ...raw, completions: Array.isArray(raw.completions) ? raw.completions : [] };
+}
+
 export function DashboardPage() {
   const navigate = useNavigate();
   const { activeTimer } = useTimerStore();
@@ -65,12 +84,11 @@ export function DashboardPage() {
   };
 
   const overdueT = data?.overdue_tasks ?? [];
-  // today_habits entries from backend are { habit: {...}, completed: bool } — unwrap them
-  // Filter out any null/non-object values to prevent "h is not iterable" crashes
-  const rawHabits = data?.today_habits ?? [];
-  const habits = rawHabits
-    .map((entry: any) => entry?.habit ?? entry)
-    .filter((h: any) => h != null && typeof h === "object" && !Array.isArray(h));
+
+  // Normalize every today_habits entry so completions is always an array
+  const rawHabits: any[] = data?.today_habits ?? [];
+  const habits = rawHabits.map(normalizeHabit).filter(Boolean);
+
   const projects = data?.active_projects ?? [];
 
   const allPending = [...(data?.today_tasks ?? []), ...overdueT];
@@ -189,7 +207,7 @@ export function DashboardPage() {
               <div>
                 <div style={{ fontSize: 8, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 4 }}>Habits</div>
                 <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
-                  <div className="panel panel-sm"><span className="panel-num gold" style={{ fontSize: 20 }}>{habits.filter((h: any) => h?.completions?.some((c: any) => c.completed_date === today)).length}</span></div>
+                  <div className="panel panel-sm"><span className="panel-num gold" style={{ fontSize: 20 }}>{habits.filter((h: any) => (h.completions ?? []).some((c: any) => c.completed_date === today)).length}</span></div>
                   <div style={{ fontSize: 18, color: "rgba(255,255,255,0.2)", lineHeight: "36px" }}>/</div>
                   <div className="panel panel-sm"><span className="panel-num empty" style={{ fontSize: 20 }}>{habits.length}</span></div>
                 </div>
