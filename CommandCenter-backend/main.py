@@ -275,7 +275,9 @@ async def get_dashboard(
     session: Session = Depends(db.get_session),
 ):
     today = _today_ct()
+    today_dt = datetime(today.year, today.month, today.day)
 
+    # Tasks
     today_tasks = session.execute(
         select(Task).where(
             Task.user_id == user.id,
@@ -286,11 +288,34 @@ async def get_dashboard(
     overdue_tasks = session.execute(
         select(Task).where(
             Task.user_id == user.id,
-            Task.due_date < datetime(today.year, today.month, today.day),
+            Task.due_date < today_dt,
             Task.status.notin_(["done"]),
         )
     ).scalars().all()
 
+    # Tasks completed today
+    completed_today_tasks = session.execute(
+        select(Task).where(
+            Task.user_id == user.id,
+            Task.status == "done",
+            Task.completed_at >= today_dt,
+        )
+    ).scalars().all()
+
+    completed_tasks_today = len(completed_today_tasks)
+    total_tasks_today = len(today_tasks) + completed_tasks_today
+
+    # Time tracked today (seconds)
+    time_entries_today = session.execute(
+        select(TimeEntry).where(
+            TimeEntry.user_id == user.id,
+            TimeEntry.started_at >= today_dt,
+            TimeEntry.ended_at != None,  # noqa: E711
+        )
+    ).scalars().all()
+    time_tracked_seconds = sum(e.duration_seconds or 0 for e in time_entries_today)
+
+    # Habits
     habits = session.execute(
         select(Habit).where(Habit.user_id == user.id)
     ).scalars().all()
@@ -311,12 +336,15 @@ async def get_dashboard(
         today_habits.append({
             "id": h.id,
             "title": h.title,
+            "name": h.title,      # frontend DashHabitRow checks entry?.name
             "color": h.color,
             "icon": h.icon,
             "completed_today": completed,
+            "completed": completed,   # DashHabitRow also checks entry?.completed
             "streak": streak,
         })
 
+    # Active time entry
     active_entry = session.execute(
         select(TimeEntry).where(
             TimeEntry.user_id == user.id,
@@ -324,9 +352,56 @@ async def get_dashboard(
         ).order_by(TimeEntry.started_at.desc())
     ).scalar()
 
-    projects = session.execute(
+    # Active projects (with task counts)
+    projects_rows = session.execute(
         select(Project).where(Project.user_id == user.id, Project.status == "active")
     ).scalars().all()
+    active_projects = []
+    for p in projects_rows:
+        tasks = session.execute(
+            select(Task).where(Task.project_id == p.id, Task.user_id == user.id)
+        ).scalars().all()
+        done_count = sum(1 for t in tasks if t.status == "done")
+        pct = int((done_count / len(tasks) * 100) if tasks else 0)
+        d = _project_to_dict(p)
+        d["task_count"] = len(tasks)
+        d["completion_percentage"] = pct
+        active_projects.append(d)
+
+    # Gamification block — batting average stats the scoreboard needs
+    attempted = total_tasks_today
+    batting_avg = (completed_tasks_today / attempted) if attempted > 0 else 0.0
+
+    # Hitting streak: consecutive days with at least 1 task completed
+    hitting_streak = 0
+    check = today
+    for _ in range(365):
+        count = session.execute(
+            select(func.count(Task.id)).where(
+                Task.user_id == user.id,
+                Task.status == "done",
+                Task.completed_at >= datetime(check.year, check.month, check.day),
+                Task.completed_at < datetime(check.year, check.month, check.day) + timedelta(days=1),
+            )
+        ).scalar() or 0
+        if count > 0:
+            hitting_streak += 1
+            check = check - timedelta(days=1)
+        else:
+            break
+
+    gamification = {
+        "stat_date": today.isoformat(),
+        "tasks_completed": completed_tasks_today,
+        "tasks_attempted": attempted,
+        "habits_completed": habits_completed_today,
+        "total_focus_minutes": round(time_tracked_seconds / 60),
+        "home_runs": 0,
+        "hits": completed_tasks_today,
+        "strikeouts": len(overdue_tasks),
+        "batting_average": round(batting_avg, 3),
+        "hitting_streak": hitting_streak,
+    }
 
     return {
         "today_tasks": [_task_to_dict(t) for t in today_tasks],
@@ -335,7 +410,12 @@ async def get_dashboard(
         "habits_total": len(habits),
         "habits_completed_today": habits_completed_today,
         "active_time_entry": _time_entry_to_dict(active_entry) if active_entry else None,
-        "active_projects_count": len(projects),
+        "active_projects_count": len(projects_rows),
+        "active_projects": active_projects,
+        "completed_tasks_today": completed_tasks_today,
+        "total_tasks_today": total_tasks_today,
+        "time_tracked_seconds": time_tracked_seconds,
+        "gamification": gamification,
         "date": today.isoformat(),
     }
 
@@ -768,7 +848,7 @@ async def list_habits(
             select(func.count(HabitCompletion.id)).where(HabitCompletion.habit_id == h.id)
         ).scalar() or 0
         result.append({
-            "id": h.id, "title": h.title, "description": h.description,
+            "id": h.id, "title": h.title, "name": h.title, "description": h.description,
             "frequency": h.frequency, "target_count": 1,
             "color": h.color, "icon": h.icon,
             "streak": streak, "total_completions": total,
