@@ -251,6 +251,242 @@ async def root():
 async def health():
     return {"status": "ok"}
 
+# ── Dashboard ─────────────────────────────────────────────────────────────────
+
+@app.get("/dashboard")
+@app.get("/dashboard/", include_in_schema=False)
+async def get_dashboard(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    today = _today_ct()
+
+    # Tasks due today or in progress
+    today_tasks = session.execute(
+        select(Task).where(
+            Task.user_id == user.id,
+            Task.status.in_(["today", "in_progress"]),
+        )
+    ).scalars().all()
+
+    # Overdue tasks
+    overdue_tasks = session.execute(
+        select(Task).where(
+            Task.user_id == user.id,
+            Task.due_date < datetime(today.year, today.month, today.day),
+            Task.status.notin_(["done"]),
+        )
+    ).scalars().all()
+
+    # Habits
+    habits = session.execute(
+        select(Habit).where(Habit.user_id == user.id)
+    ).scalars().all()
+
+    habits_completed_today = 0
+    today_habits = []
+    for h in habits:
+        comp = session.execute(
+            select(HabitCompletion).where(
+                HabitCompletion.habit_id == h.id,
+                HabitCompletion.completed_date == today,
+            )
+        ).scalar()
+        completed = comp is not None
+        if completed:
+            habits_completed_today += 1
+        streak = _habit_streak(h.id, session, today)
+        today_habits.append({
+            "id": h.id,
+            "title": h.title,
+            "color": h.color,
+            "icon": h.icon,
+            "completed_today": completed,
+            "streak": streak,
+        })
+
+    # Active time entry
+    active_entry = session.execute(
+        select(TimeEntry).where(
+            TimeEntry.user_id == user.id,
+            TimeEntry.ended_at == None,  # noqa: E711
+        ).order_by(TimeEntry.started_at.desc())
+    ).scalar()
+
+    # Projects summary
+    projects = session.execute(
+        select(Project).where(Project.user_id == user.id, Project.status == "active")
+    ).scalars().all()
+
+    return {
+        "today_tasks": [_task_to_dict(t) for t in today_tasks],
+        "overdue_tasks": [_task_to_dict(t) for t in overdue_tasks],
+        "today_habits": today_habits,
+        "habits_total": len(habits),
+        "habits_completed_today": habits_completed_today,
+        "active_time_entry": _time_entry_to_dict(active_entry) if active_entry else None,
+        "active_projects_count": len(projects),
+        "date": today.isoformat(),
+    }
+
+# ── Tags ──────────────────────────────────────────────────────────────────────
+
+@app.get("/tags", response_model=List[TagResponse])
+@app.get("/tags/", response_model=List[TagResponse], include_in_schema=False)
+async def list_tags(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    rows = session.execute(
+        select(Tag).where(Tag.user_id == user.id).order_by(Tag.name)
+    ).scalars().all()
+    return rows
+
+@app.post("/tags", response_model=TagResponse)
+@app.post("/tags/", response_model=TagResponse, include_in_schema=False)
+async def create_tag(
+    data: TagCreate,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    tag = Tag(name=data.name, color=getattr(data, "color", None) or "#4A90D9", user_id=user.id)
+    session.add(tag)
+    session.commit()
+    session.refresh(tag)
+    return tag
+
+@app.delete("/tags/{tag_id}")
+@app.delete("/tags/{tag_id}/", include_in_schema=False)
+async def delete_tag(
+    tag_id: int,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    tag = session.execute(
+        select(Tag).where(Tag.id == tag_id, Tag.user_id == user.id)
+    ).scalar()
+    if not tag:
+        raise HTTPException(status_code=404, detail="Tag not found")
+    session.delete(tag)
+    session.commit()
+    return {"detail": "deleted"}
+
+# ── Categories ────────────────────────────────────────────────────────────────
+
+@app.get("/categories", response_model=List[CategoryResponse])
+@app.get("/categories/", response_model=List[CategoryResponse], include_in_schema=False)
+async def list_categories(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    rows = session.execute(
+        select(Category).where(Category.user_id == user.id).order_by(Category.name)
+    ).scalars().all()
+    return rows
+
+@app.post("/categories", response_model=CategoryResponse)
+@app.post("/categories/", response_model=CategoryResponse, include_in_schema=False)
+async def create_category(
+    data: CategoryCreate,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    cat = Category(
+        name=data.name,
+        color=getattr(data, "color", None) or "#4A90D9",
+        user_id=user.id,
+    )
+    session.add(cat)
+    session.commit()
+    session.refresh(cat)
+    return cat
+
+@app.delete("/categories/{category_id}")
+@app.delete("/categories/{category_id}/", include_in_schema=False)
+async def delete_category(
+    category_id: int,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    cat = session.execute(
+        select(Category).where(Category.id == category_id, Category.user_id == user.id)
+    ).scalar()
+    if not cat:
+        raise HTTPException(status_code=404, detail="Category not found")
+    session.delete(cat)
+    session.commit()
+    return {"detail": "deleted"}
+
+# ── Gamification ──────────────────────────────────────────────────────────────
+
+@app.get("/gamification")
+@app.get("/gamification/", include_in_schema=False)
+async def get_gamification(
+    limit: int = Query(default=90, ge=1, le=365),
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    today = _today_ct()
+    start_date = today - timedelta(days=limit - 1)
+
+    # Tasks completed in window
+    tasks_done = session.execute(
+        select(Task).where(
+            Task.user_id == user.id,
+            Task.status == "done",
+            Task.completed_at >= datetime(start_date.year, start_date.month, start_date.day),
+        )
+    ).scalars().all()
+
+    # Habit completions in window
+    habit_completions = session.execute(
+        select(HabitCompletion).join(Habit, HabitCompletion.habit_id == Habit.id).where(
+            Habit.user_id == user.id,
+            HabitCompletion.completed_date >= start_date,
+        )
+    ).scalars().all()
+
+    # XP calculation
+    task_xp = sum((t.focus_score or 1) * 10 for t in tasks_done)
+    habit_xp = len(habit_completions) * 5
+
+    total_xp = task_xp + habit_xp
+    level = max(1, int(total_xp ** 0.5) // 10 + 1)
+    xp_for_current_level = ((level - 1) * 10) ** 2
+    xp_for_next_level = (level * 10) ** 2
+    xp_progress = total_xp - xp_for_current_level
+    xp_needed = max(1, xp_for_next_level - xp_for_current_level)
+
+    # Daily activity heatmap
+    daily_activity: dict = defaultdict(int)
+    for t in tasks_done:
+        if t.completed_at:
+            day = t.completed_at.date() if hasattr(t.completed_at, "date") else t.completed_at
+            daily_activity[str(day)] += 1
+    for hc in habit_completions:
+        daily_activity[str(hc.completed_date)] += 1
+
+    # Current streak
+    streak = 0
+    check = today
+    for _ in range(limit):
+        if daily_activity.get(str(check), 0) > 0:
+            streak += 1
+            check = check - timedelta(days=1)
+        else:
+            break
+
+    return {
+        "total_xp": total_xp,
+        "level": level,
+        "xp_progress": xp_progress,
+        "xp_needed": xp_needed,
+        "current_streak": streak,
+        "tasks_completed": len(tasks_done),
+        "habits_completed": len(habit_completions),
+        "daily_activity": dict(daily_activity),
+    }
+
 # ── Tasks ────────────────────────────────────────────────────────────────────
 
 @app.get("/tasks", response_model=List[TaskResponse])
