@@ -33,7 +33,9 @@ from schemas import (
 )
 from auth import get_current_user, create_access_token, verify_token
 
-app = FastAPI(title="CommandCenter API")
+# redirect_slashes=False stops the 307 Temporary Redirect loop when frontend
+# calls /tasks/ instead of /tasks — FastAPI normally redirects, doubling requests.
+app = FastAPI(title="CommandCenter API", redirect_slashes=False)
 
 ALLOWED_ORIGINS = [
     "https://command-center-flax-gamma.vercel.app",
@@ -288,7 +290,10 @@ async def root():
 async def health():
     return {"status": "ok"}
 
+# ── Tasks ────────────────────────────────────────────────────────────────────
+
 @app.get("/tasks", response_model=List[TaskResponse])
+@app.get("/tasks/", response_model=List[TaskResponse], include_in_schema=False)
 async def list_tasks(
     status: Optional[str] = None,
     project_id: Optional[int] = None,
@@ -297,7 +302,12 @@ async def list_tasks(
 ):
     q = select(Task).where(Task.user_id == user.id)
     if status:
-        q = q.where(Task.status == status)
+        # support comma-separated status values: ?status=today,in_progress
+        statuses = [s.strip() for s in status.split(",")]
+        if len(statuses) == 1:
+            q = q.where(Task.status == statuses[0])
+        else:
+            q = q.where(Task.status.in_(statuses))
     if project_id:
         q = q.where(Task.project_id == project_id)
     q = q.order_by(Task.sort_order.asc(), Task.created_at.desc())
@@ -305,6 +315,7 @@ async def list_tasks(
     return [_task_to_dict(t) for t in rows]
 
 @app.post("/tasks", response_model=TaskResponse)
+@app.post("/tasks/", response_model=TaskResponse, include_in_schema=False)
 async def create_task(
     data: TaskCreate,
     user: User = Depends(get_current_user),
@@ -401,7 +412,10 @@ async def reorder_tasks(
     session.commit()
     return {"detail": "reordered"}
 
+# ── Projects ─────────────────────────────────────────────────────────────────
+
 @app.get("/projects", response_model=List[ProjectResponse])
+@app.get("/projects/", response_model=List[ProjectResponse], include_in_schema=False)
 async def list_projects(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
@@ -423,6 +437,7 @@ async def list_projects(
     return result
 
 @app.post("/projects", response_model=ProjectResponse)
+@app.post("/projects/", response_model=ProjectResponse, include_in_schema=False)
 async def create_project(
     data: ProjectCreate,
     user: User = Depends(get_current_user),
@@ -493,6 +508,8 @@ async def delete_project(
     session.delete(proj)
     session.commit()
     return {"detail": "deleted"}
+
+# ── Habits ───────────────────────────────────────────────────────────────────
 
 @app.get("/habits", response_model=List[HabitResponse])
 async def list_habits(
@@ -632,7 +649,10 @@ async def complete_habit(
     session.commit()
     return {"completed": True, "streak": habit.streak}
 
+# ── Time Entries ─────────────────────────────────────────────────────────────
+
 @app.get("/time-entries", response_model=List[TimeEntryResponse])
+@app.get("/time-entries/", response_model=List[TimeEntryResponse], include_in_schema=False)
 async def list_time_entries(
     task_id: Optional[int] = None,
     user: User = Depends(get_current_user),
@@ -645,7 +665,34 @@ async def list_time_entries(
     rows = session.execute(q).scalars().all()
     return rows
 
+@app.get("/time-entries/active")
+@app.get("/time-entries/active/", include_in_schema=False)
+async def get_active_time_entry(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    """Return the currently running time entry (no ended_at), or null."""
+    entry = session.execute(
+        select(TimeEntry).where(
+            TimeEntry.user_id == user.id,
+            TimeEntry.ended_at == None,  # noqa: E711
+        ).order_by(TimeEntry.started_at.desc())
+    ).scalar()
+    if not entry:
+        return {"active": None}
+    return {
+        "active": {
+            "id": entry.id,
+            "task_id": entry.task_id,
+            "description": entry.description,
+            "started_at": entry.started_at,
+            "ended_at": entry.ended_at,
+            "duration_minutes": entry.duration_minutes,
+        }
+    }
+
 @app.post("/time-entries", response_model=TimeEntryResponse)
+@app.post("/time-entries/", response_model=TimeEntryResponse, include_in_schema=False)
 async def create_time_entry(
     data: TimeEntryCreate,
     user: User = Depends(get_current_user),
@@ -661,6 +708,8 @@ async def create_time_entry(
     session.commit()
     session.refresh(entry)
     return entry
+
+# ── Notes ────────────────────────────────────────────────────────────────────
 
 @app.get("/notes", response_model=List[NoteResponse])
 async def list_notes(
@@ -722,6 +771,8 @@ async def delete_note(
     session.commit()
     return {"detail": "deleted"}
 
+# ── CRM ──────────────────────────────────────────────────────────────────────
+
 @app.get("/crm", response_model=List[CRMPersonResponse])
 async def list_crm(
     user: User = Depends(get_current_user),
@@ -782,6 +833,8 @@ async def delete_crm(
     session.delete(person)
     session.commit()
     return {"detail": "deleted"}
+
+# ── Time Blocks ───────────────────────────────────────────────────────────────
 
 @app.get("/time-blocks", response_model=List[TimeBlockResponse])
 async def list_time_blocks(
@@ -846,7 +899,10 @@ async def delete_time_block(
     session.commit()
     return {"detail": "deleted"}
 
+# ── Tags & Categories ─────────────────────────────────────────────────────────
+
 @app.get("/tags", response_model=List[TagResponse])
+@app.get("/tags/", response_model=List[TagResponse], include_in_schema=False)
 async def list_tags(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
@@ -869,6 +925,7 @@ async def create_tag(
     return tag
 
 @app.get("/categories", response_model=List[CategoryResponse])
+@app.get("/categories/", response_model=List[CategoryResponse], include_in_schema=False)
 async def list_categories(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
@@ -889,6 +946,8 @@ async def create_category(
     session.commit()
     session.refresh(cat)
     return cat
+
+# ── Braindump ─────────────────────────────────────────────────────────────────
 
 @app.get("/braindump", response_model=List[BraindumpEntryResponse])
 async def list_braindump(
@@ -947,11 +1006,9 @@ async def delete_braindump(
     session.commit()
     return {"detail": "deleted"}
 
-@app.get("/dashboard/summary")
-async def dashboard_summary(
-    user: User = Depends(get_current_user),
-    session: Session = Depends(db.get_session),
-):
+# ── Dashboard ─────────────────────────────────────────────────────────────────
+
+async def _dashboard_data(user: User, session: Session) -> dict:
     today = _today_ct()
     midnight_utc = _ct_midnight_as_utc()
 
@@ -1013,6 +1070,113 @@ async def dashboard_summary(
         "total_habits": len(habits),
         "minutes_logged_today": minutes_logged,
     }
+
+@app.get("/dashboard/summary")
+async def dashboard_summary(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    return await _dashboard_data(user, session)
+
+# /dashboard/ alias — frontend calls this route
+@app.get("/dashboard")
+@app.get("/dashboard/", include_in_schema=False)
+async def dashboard_root(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    return await _dashboard_data(user, session)
+
+# ── Gamification ──────────────────────────────────────────────────────────────
+# Computed from existing tasks/habits — no separate DB table needed.
+# XP formula: each completed task = focus_score XP (min 1), each habit completion = 10 XP.
+# Level thresholds: level N requires N*100 XP.
+
+@app.get("/gamification")
+@app.get("/gamification/", include_in_schema=False)
+async def gamification(
+    limit: int = 90,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    """Return XP, level, streak, and recent activity for the gamification panel."""
+    # All completed tasks
+    done_tasks = session.execute(
+        select(Task).where(Task.user_id == user.id, Task.status == "done")
+        .order_by(Task.completed_at.desc())
+        .limit(limit)
+    ).scalars().all()
+
+    task_xp = sum(max(t.focus_score or 1, 1) for t in done_tasks)
+
+    # All habit completions
+    habit_completions = session.execute(
+        select(HabitCompletion).where(HabitCompletion.user_id == user.id)
+        .order_by(HabitCompletion.completed_at.desc())
+        .limit(limit)
+    ).scalars().all()
+
+    habit_xp = len(habit_completions) * 10
+
+    total_xp = task_xp + habit_xp
+
+    # Level: each level costs level*100 XP (1=100, 2=200, ...)
+    level = 1
+    xp_remaining = total_xp
+    while xp_remaining >= level * 100:
+        xp_remaining -= level * 100
+        level += 1
+    xp_for_next = level * 100
+    xp_progress = xp_remaining
+
+    # Current streak: consecutive days with at least one task completed or habit done
+    today = _today_ct()
+    streak = 0
+    check_day = today
+    for _ in range(365):
+        has_activity = session.execute(
+            select(func.count(Task.id)).where(
+                Task.user_id == user.id,
+                Task.status == "done",
+                func.date(Task.completed_at) == check_day,
+            )
+        ).scalar() or 0
+        if not has_activity:
+            has_activity = session.execute(
+                select(func.count(HabitCompletion.id)).where(
+                    HabitCompletion.user_id == user.id,
+                    func.date(HabitCompletion.completed_at) == check_day,
+                )
+            ).scalar() or 0
+        if has_activity:
+            streak += 1
+            check_day = check_day - timedelta(days=1)
+        else:
+            break
+
+    # Recent achievements (last 10 completed tasks as milestones)
+    recent = [
+        {
+            "type": "task",
+            "title": t.title,
+            "xp": max(t.focus_score or 1, 1),
+            "completed_at": t.completed_at,
+        }
+        for t in done_tasks[:10]
+    ]
+
+    return {
+        "total_xp": total_xp,
+        "level": level,
+        "xp_progress": xp_progress,
+        "xp_for_next": xp_for_next,
+        "streak_days": streak,
+        "tasks_completed": len(done_tasks),
+        "habits_completed": len(habit_completions),
+        "recent": recent,
+    }
+
+# ── Favorite Teams ────────────────────────────────────────────────────────────
 
 @app.get("/favorite-teams", response_model=List[FavoriteSportsTeamResponse])
 async def list_favorite_teams(
