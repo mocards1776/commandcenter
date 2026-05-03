@@ -571,9 +571,12 @@ async def _do_update_task(
         imp = patch.get("importance", task.importance) or 3
         dif = patch.get("difficulty", task.difficulty) or 3
         patch["focus_score"] = calc_focus_score(imp, dif)
-    if patch.get("status") == "done" and not task.completed_at:
-        patch["completed_at"] = datetime.utcnow()
-    elif patch.get("status") != "done":
+    # Fix: only set completed_at when transitioning TO done, only clear when transitioning AWAY
+    if patch.get("status") == "done":
+        if not task.completed_at:
+            patch["completed_at"] = datetime.utcnow()
+        # already completed — leave completed_at untouched
+    elif "status" in patch and patch.get("status") != "done":
         patch["completed_at"] = None
     for k, v in patch.items():
         setattr(task, k, v)
