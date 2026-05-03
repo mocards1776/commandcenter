@@ -33,8 +33,6 @@ from schemas import (
 )
 from auth import get_current_user, create_access_token, verify_token
 
-# redirect_slashes=False stops the 307 Temporary Redirect loop when frontend
-# calls /tasks/ instead of /tasks — FastAPI normally redirects, doubling requests.
 app = FastAPI(title="CommandCenter API", redirect_slashes=False)
 
 ALLOWED_ORIGINS = [
@@ -302,7 +300,6 @@ async def list_tasks(
 ):
     q = select(Task).where(Task.user_id == user.id)
     if status:
-        # support comma-separated status values: ?status=today,in_progress
         statuses = [s.strip() for s in status.split(",")]
         if len(statuses) == 1:
             q = q.where(Task.status == statuses[0])
@@ -522,22 +519,43 @@ async def list_habits(
     result = []
     today = _today_ct()
     for h in rows:
+        # HabitCompletion has no user_id — filter by habit_id + completed_date
         comp_today = session.execute(
             select(HabitCompletion).where(
                 HabitCompletion.habit_id == h.id,
-                HabitCompletion.user_id == user.id,
-                func.date(HabitCompletion.completed_at) == today,
+                HabitCompletion.completed_date == today,
             )
         ).scalar()
+        streak = _habit_streak(h.id, session, today)
+        total = session.execute(
+            select(func.count(HabitCompletion.id)).where(HabitCompletion.habit_id == h.id)
+        ).scalar() or 0
         result.append({
             "id": h.id, "title": h.title, "description": h.description,
-            "frequency": h.frequency, "target_count": h.target_count,
+            "frequency": h.frequency, "target_count": 1,
             "color": h.color, "icon": h.icon,
-            "streak": h.streak or 0, "total_completions": h.total_completions or 0,
+            "streak": streak, "total_completions": total,
             "completed_today": comp_today is not None,
             "created_at": h.created_at, "updated_at": h.updated_at,
         })
     return result
+
+def _habit_streak(habit_id: str, session: Session, today: date) -> int:
+    streak = 0
+    check_day = today
+    for _ in range(365):
+        has = session.execute(
+            select(func.count(HabitCompletion.id)).where(
+                HabitCompletion.habit_id == habit_id,
+                HabitCompletion.completed_date == check_day,
+            )
+        ).scalar() or 0
+        if has:
+            streak += 1
+            check_day = check_day - timedelta(days=1)
+        else:
+            break
+    return streak
 
 @app.post("/habits", response_model=HabitResponse)
 async def create_habit(
@@ -547,7 +565,7 @@ async def create_habit(
 ):
     habit = Habit(
         title=data.title, description=data.description,
-        frequency=data.frequency or "daily", target_count=data.target_count or 1,
+        frequency=data.frequency or "daily",
         color=data.color or "#4A90D9", icon=data.icon or "check",
         user_id=user.id,
     )
@@ -556,7 +574,7 @@ async def create_habit(
     session.refresh(habit)
     return {
         "id": habit.id, "title": habit.title, "description": habit.description,
-        "frequency": habit.frequency, "target_count": habit.target_count,
+        "frequency": habit.frequency, "target_count": 1,
         "color": habit.color, "icon": habit.icon,
         "streak": 0, "total_completions": 0, "completed_today": False,
         "created_at": habit.created_at, "updated_at": habit.updated_at,
@@ -583,15 +601,18 @@ async def update_habit(
     comp_today = session.execute(
         select(HabitCompletion).where(
             HabitCompletion.habit_id == habit.id,
-            HabitCompletion.user_id == user.id,
-            func.date(HabitCompletion.completed_at) == today,
+            HabitCompletion.completed_date == today,
         )
     ).scalar()
+    streak = _habit_streak(habit.id, session, today)
+    total = session.execute(
+        select(func.count(HabitCompletion.id)).where(HabitCompletion.habit_id == habit.id)
+    ).scalar() or 0
     return {
         "id": habit.id, "title": habit.title, "description": habit.description,
-        "frequency": habit.frequency, "target_count": habit.target_count,
+        "frequency": habit.frequency, "target_count": 1,
         "color": habit.color, "icon": habit.icon,
-        "streak": habit.streak or 0, "total_completions": habit.total_completions or 0,
+        "streak": streak, "total_completions": total,
         "completed_today": comp_today is not None,
         "created_at": habit.created_at, "updated_at": habit.updated_at,
     }
@@ -626,30 +647,37 @@ async def complete_habit(
     existing = session.execute(
         select(HabitCompletion).where(
             HabitCompletion.habit_id == habit_id,
-            HabitCompletion.user_id == user.id,
-            func.date(HabitCompletion.completed_at) == today,
+            HabitCompletion.completed_date == today,
         )
     ).scalar()
     if existing:
         session.delete(existing)
         session.commit()
         return {"completed": False}
-    comp = HabitCompletion(habit_id=habit_id, user_id=user.id)
+    comp = HabitCompletion(habit_id=habit_id, completed_date=today)
     session.add(comp)
-    habit.total_completions = (habit.total_completions or 0) + 1
-    yesterday = today - timedelta(days=1)
-    yesterday_comp = session.execute(
-        select(HabitCompletion).where(
-            HabitCompletion.habit_id == habit_id,
-            HabitCompletion.user_id == user.id,
-            func.date(HabitCompletion.completed_at) == yesterday,
-        )
-    ).scalar()
-    habit.streak = (habit.streak or 0) + 1 if yesterday_comp else 1
     session.commit()
-    return {"completed": True, "streak": habit.streak}
+    streak = _habit_streak(habit_id, session, today)
+    return {"completed": True, "streak": streak}
 
 # ── Time Entries ─────────────────────────────────────────────────────────────
+# Real columns: id, user_id, task_id, habit_id, started_at, ended_at, note, created_at
+# duration_seconds is a @property — NOT a DB column
+
+def _time_entry_to_dict(e: TimeEntry) -> dict:
+    duration_secs = e.duration_seconds if e.ended_at else None
+    return {
+        "id": e.id,
+        "task_id": e.task_id,
+        "habit_id": e.habit_id,
+        "description": e.note,
+        "started_at": e.started_at,
+        "ended_at": e.ended_at,
+        "duration_minutes": round(duration_secs / 60) if duration_secs else None,
+        "duration_seconds": duration_secs,
+        "user_id": e.user_id,
+        "created_at": e.created_at,
+    }
 
 @app.get("/time-entries", response_model=List[TimeEntryResponse])
 @app.get("/time-entries/", response_model=List[TimeEntryResponse], include_in_schema=False)
@@ -663,7 +691,7 @@ async def list_time_entries(
         q = q.where(TimeEntry.task_id == task_id)
     q = q.order_by(TimeEntry.started_at.desc())
     rows = session.execute(q).scalars().all()
-    return rows
+    return [_time_entry_to_dict(e) for e in rows]
 
 @app.get("/time-entries/active")
 @app.get("/time-entries/active/", include_in_schema=False)
@@ -671,7 +699,6 @@ async def get_active_time_entry(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    """Return the currently running time entry (no ended_at), or null."""
     entry = session.execute(
         select(TimeEntry).where(
             TimeEntry.user_id == user.id,
@@ -680,16 +707,7 @@ async def get_active_time_entry(
     ).scalar()
     if not entry:
         return {"active": None}
-    return {
-        "active": {
-            "id": entry.id,
-            "task_id": entry.task_id,
-            "description": entry.description,
-            "started_at": entry.started_at,
-            "ended_at": entry.ended_at,
-            "duration_minutes": entry.duration_minutes,
-        }
-    }
+    return {"active": _time_entry_to_dict(entry)}
 
 @app.post("/time-entries", response_model=TimeEntryResponse)
 @app.post("/time-entries/", response_model=TimeEntryResponse, include_in_schema=False)
@@ -699,17 +717,20 @@ async def create_time_entry(
     session: Session = Depends(db.get_session),
 ):
     entry = TimeEntry(
-        task_id=data.task_id, description=data.description,
+        task_id=data.task_id,
+        note=getattr(data, "description", None) or getattr(data, "note", None),
         started_at=data.started_at or datetime.utcnow(),
-        ended_at=data.ended_at, duration_minutes=data.duration_minutes,
+        ended_at=data.ended_at,
         user_id=user.id,
     )
     session.add(entry)
     session.commit()
     session.refresh(entry)
-    return entry
+    return _time_entry_to_dict(entry)
 
 # ── Notes ────────────────────────────────────────────────────────────────────
+# Real columns: id, user_id, title, content, tags, created_at, updated_at
+# Note: NO pinned or color columns in this model
 
 @app.get("/notes", response_model=List[NoteResponse])
 async def list_notes(
@@ -728,8 +749,9 @@ async def create_note(
     session: Session = Depends(db.get_session),
 ):
     note = Note(
-        title=data.title, content=data.content,
-        color=data.color or "#ffffff", pinned=data.pinned or False,
+        title=data.title,
+        content=data.content,
+        tags=getattr(data, "tags", None),
         user_id=user.id,
     )
     session.add(note)
@@ -749,7 +771,12 @@ async def update_note(
     ).scalar()
     if not note:
         raise HTTPException(status_code=404, detail="Note not found")
-    for k, v in data.model_dump(exclude_unset=True).items():
+    patch = data.model_dump(exclude_unset=True)
+    # drop keys that don't exist on the model
+    for k in list(patch.keys()):
+        if not hasattr(note, k):
+            del patch[k]
+    for k, v in patch.items():
         setattr(note, k, v)
     note.updated_at = datetime.utcnow()
     session.commit()
@@ -772,6 +799,9 @@ async def delete_note(
     return {"detail": "deleted"}
 
 # ── CRM ──────────────────────────────────────────────────────────────────────
+# Real columns: id, user_id, name, email, phone, company, notes,
+#               last_contacted, created_at, updated_at
+# NO role / relationship_type / tags columns
 
 @app.get("/crm", response_model=List[CRMPersonResponse])
 async def list_crm(
@@ -791,8 +821,8 @@ async def create_crm(
 ):
     person = CRMPerson(
         name=data.name, email=data.email, phone=data.phone,
-        company=data.company, role=data.role, notes=data.notes,
-        tags=data.tags, relationship_type=data.relationship_type,
+        company=data.company,
+        notes=data.notes,
         user_id=user.id,
     )
     session.add(person)
@@ -812,7 +842,11 @@ async def update_crm(
     ).scalar()
     if not person:
         raise HTTPException(status_code=404, detail="Person not found")
-    for k, v in data.model_dump(exclude_unset=True).items():
+    patch = data.model_dump(exclude_unset=True)
+    for k in list(patch.keys()):
+        if not hasattr(person, k):
+            del patch[k]
+    for k, v in patch.items():
         setattr(person, k, v)
     person.updated_at = datetime.utcnow()
     session.commit()
@@ -835,8 +869,12 @@ async def delete_crm(
     return {"detail": "deleted"}
 
 # ── Time Blocks ───────────────────────────────────────────────────────────────
+# Real columns: id, user_id, title, start_time (DateTime), end_time (DateTime),
+#               color, created_at, updated_at
+# NO date column — derive from start_time
 
-@app.get("/time-blocks", response_model=List[TimeBlockResponse])
+@app.get("/time-blocks")
+@app.get("/time-blocks/", include_in_schema=False)
 async def list_time_blocks(
     date: Optional[str] = None,
     user: User = Depends(get_current_user),
@@ -844,29 +882,80 @@ async def list_time_blocks(
 ):
     q = select(TimeBlock).where(TimeBlock.user_id == user.id)
     if date:
-        q = q.where(TimeBlock.date == date)
+        try:
+            day = datetime.strptime(date, "%Y-%m-%d").date()
+            day_start = datetime(day.year, day.month, day.day, 0, 0, 0)
+            day_end = datetime(day.year, day.month, day.day, 23, 59, 59)
+            q = q.where(TimeBlock.start_time >= day_start, TimeBlock.start_time <= day_end)
+        except ValueError:
+            pass
     q = q.order_by(TimeBlock.start_time)
     rows = session.execute(q).scalars().all()
-    return rows
+    result = []
+    for b in rows:
+        result.append({
+            "id": b.id,
+            "title": b.title,
+            "date": b.start_time.strftime("%Y-%m-%d") if b.start_time else None,
+            "start_time": b.start_time.strftime("%H:%M") if b.start_time else None,
+            "end_time": b.end_time.strftime("%H:%M") if b.end_time else None,
+            "color": b.color,
+            "task_id": None,
+            "user_id": b.user_id,
+            "created_at": b.created_at,
+            "updated_at": b.updated_at,
+        })
+    return result
 
-@app.post("/time-blocks", response_model=TimeBlockResponse)
+@app.post("/time-blocks")
+@app.post("/time-blocks/", include_in_schema=False)
 async def create_time_block(
     data: TimeBlockCreate,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
+    # Accept either DateTime objects or "HH:MM" strings combined with a date field
+    def _parse_dt(dt_val, date_str, fallback_date):
+        if isinstance(dt_val, datetime):
+            return dt_val
+        if isinstance(dt_val, str):
+            try:
+                return datetime.fromisoformat(dt_val)
+            except ValueError:
+                # "HH:MM" + date
+                d = date_str or fallback_date
+                if isinstance(d, str):
+                    d = datetime.strptime(d, "%Y-%m-%d").date()
+                h, m = int(dt_val.split(":")[0]), int(dt_val.split(":")[1])
+                return datetime(d.year, d.month, d.day, h, m)
+        return datetime.utcnow()
+
+    today_str = _today_ct().isoformat()
+    date_hint = getattr(data, "date", today_str)
+    start = _parse_dt(data.start_time, date_hint, today_str)
+    end = _parse_dt(data.end_time, date_hint, today_str)
+
     block = TimeBlock(
-        title=data.title, date=data.date,
-        start_time=data.start_time, end_time=data.end_time,
-        color=data.color or "#4A90D9", task_id=data.task_id,
+        title=data.title,
+        start_time=start,
+        end_time=end,
+        color=data.color or "#4A90D9",
         user_id=user.id,
     )
     session.add(block)
     session.commit()
     session.refresh(block)
-    return block
+    return {
+        "id": block.id, "title": block.title,
+        "date": block.start_time.strftime("%Y-%m-%d"),
+        "start_time": block.start_time.strftime("%H:%M"),
+        "end_time": block.end_time.strftime("%H:%M"),
+        "color": block.color, "task_id": None,
+        "user_id": block.user_id,
+        "created_at": block.created_at, "updated_at": block.updated_at,
+    }
 
-@app.patch("/time-blocks/{block_id}", response_model=TimeBlockResponse)
+@app.patch("/time-blocks/{block_id}")
 async def update_time_block(
     block_id: int,
     data: TimeBlockUpdate,
@@ -878,11 +967,23 @@ async def update_time_block(
     ).scalar()
     if not block:
         raise HTTPException(status_code=404, detail="Time block not found")
-    for k, v in data.model_dump(exclude_unset=True).items():
+    patch = data.model_dump(exclude_unset=True)
+    for k in list(patch.keys()):
+        if not hasattr(block, k):
+            del patch[k]
+    for k, v in patch.items():
         setattr(block, k, v)
     session.commit()
     session.refresh(block)
-    return block
+    return {
+        "id": block.id, "title": block.title,
+        "date": block.start_time.strftime("%Y-%m-%d") if block.start_time else None,
+        "start_time": block.start_time.strftime("%H:%M") if block.start_time else None,
+        "end_time": block.end_time.strftime("%H:%M") if block.end_time else None,
+        "color": block.color, "task_id": None,
+        "user_id": block.user_id,
+        "created_at": block.created_at, "updated_at": block.updated_at,
+    }
 
 @app.delete("/time-blocks/{block_id}")
 async def delete_time_block(
@@ -948,6 +1049,7 @@ async def create_category(
     return cat
 
 # ── Braindump ─────────────────────────────────────────────────────────────────
+# Real column: raw_text (NOT content)
 
 @app.get("/braindump", response_model=List[BraindumpEntryResponse])
 async def list_braindump(
@@ -958,7 +1060,18 @@ async def list_braindump(
         select(BraindumpEntry).where(BraindumpEntry.user_id == user.id)
         .order_by(BraindumpEntry.created_at.desc())
     ).scalars().all()
-    return rows
+    # Normalize: expose raw_text as content for frontend compatibility
+    result = []
+    for e in rows:
+        result.append({
+            "id": e.id,
+            "content": e.raw_text,
+            "raw_text": e.raw_text,
+            "processed": e.processed,
+            "user_id": e.user_id,
+            "created_at": e.created_at,
+        })
+    return result
 
 @app.post("/braindump", response_model=BraindumpEntryResponse)
 async def create_braindump(
@@ -966,11 +1079,16 @@ async def create_braindump(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    entry = BraindumpEntry(content=data.content, processed=False, user_id=user.id)
+    raw = getattr(data, "content", None) or getattr(data, "raw_text", "")
+    entry = BraindumpEntry(raw_text=raw, processed=False, user_id=user.id)
     session.add(entry)
     session.commit()
     session.refresh(entry)
-    return entry
+    return {
+        "id": entry.id, "content": entry.raw_text, "raw_text": entry.raw_text,
+        "processed": entry.processed, "user_id": entry.user_id,
+        "created_at": entry.created_at,
+    }
 
 @app.patch("/braindump/{entry_id}", response_model=BraindumpEntryResponse)
 async def update_braindump(
@@ -984,12 +1102,17 @@ async def update_braindump(
     ).scalar()
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
-    for k, v in data.items():
-        if hasattr(entry, k):
-            setattr(entry, k, v)
+    if "content" in data:
+        entry.raw_text = data["content"]
+    if "processed" in data:
+        entry.processed = data["processed"]
     session.commit()
     session.refresh(entry)
-    return entry
+    return {
+        "id": entry.id, "content": entry.raw_text, "raw_text": entry.raw_text,
+        "processed": entry.processed, "user_id": entry.user_id,
+        "created_at": entry.created_at,
+    }
 
 @app.delete("/braindump/{entry_id}")
 async def delete_braindump(
@@ -1039,27 +1162,31 @@ async def _dashboard_data(user: User, session: Session) -> dict:
         )
     ).scalar() or 0
 
+    # Habits — HabitCompletion has no user_id; join through Habit
     habits = session.execute(
         select(Habit).where(Habit.user_id == user.id)
     ).scalars().all()
+
     habit_completions_today = sum(
         1 for h in habits
         if session.execute(
             select(HabitCompletion).where(
                 HabitCompletion.habit_id == h.id,
-                HabitCompletion.user_id == user.id,
-                func.date(HabitCompletion.completed_at) == today,
+                HabitCompletion.completed_date == today,
             )
         ).scalar() is not None
     )
 
+    # TimeEntry has no duration_minutes column — compute from duration_seconds property
     time_entries_today = session.execute(
         select(TimeEntry).where(
             TimeEntry.user_id == user.id,
             TimeEntry.started_at >= midnight_utc,
         )
     ).scalars().all()
-    minutes_logged = sum(e.duration_minutes or 0 for e in time_entries_today)
+    minutes_logged = sum(
+        round(e.duration_seconds / 60) for e in time_entries_today if e.ended_at
+    )
 
     return {
         "total_tasks": total_tasks,
@@ -1078,7 +1205,6 @@ async def dashboard_summary(
 ):
     return await _dashboard_data(user, session)
 
-# /dashboard/ alias — frontend calls this route
 @app.get("/dashboard")
 @app.get("/dashboard/", include_in_schema=False)
 async def dashboard_root(
@@ -1088,9 +1214,7 @@ async def dashboard_root(
     return await _dashboard_data(user, session)
 
 # ── Gamification ──────────────────────────────────────────────────────────────
-# Computed from existing tasks/habits — no separate DB table needed.
-# XP formula: each completed task = focus_score XP (min 1), each habit completion = 10 XP.
-# Level thresholds: level N requires N*100 XP.
+# HabitCompletion has no user_id — must join through Habit
 
 @app.get("/gamification")
 @app.get("/gamification/", include_in_schema=False)
@@ -1099,8 +1223,6 @@ async def gamification(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    """Return XP, level, streak, and recent activity for the gamification panel."""
-    # All completed tasks
     done_tasks = session.execute(
         select(Task).where(Task.user_id == user.id, Task.status == "done")
         .order_by(Task.completed_at.desc())
@@ -1109,18 +1231,22 @@ async def gamification(
 
     task_xp = sum(max(t.focus_score or 1, 1) for t in done_tasks)
 
-    # All habit completions
-    habit_completions = session.execute(
-        select(HabitCompletion).where(HabitCompletion.user_id == user.id)
-        .order_by(HabitCompletion.completed_at.desc())
-        .limit(limit)
+    # Get user's habit IDs first, then query completions
+    habit_ids = session.execute(
+        select(Habit.id).where(Habit.user_id == user.id)
     ).scalars().all()
 
-    habit_xp = len(habit_completions) * 10
+    habit_completions_count = 0
+    if habit_ids:
+        habit_completions_count = session.execute(
+            select(func.count(HabitCompletion.id)).where(
+                HabitCompletion.habit_id.in_(habit_ids)
+            )
+        ).scalar() or 0
 
+    habit_xp = habit_completions_count * 10
     total_xp = task_xp + habit_xp
 
-    # Level: each level costs level*100 XP (1=100, 2=200, ...)
     level = 1
     xp_remaining = total_xp
     while xp_remaining >= level * 100:
@@ -1129,7 +1255,7 @@ async def gamification(
     xp_for_next = level * 100
     xp_progress = xp_remaining
 
-    # Current streak: consecutive days with at least one task completed or habit done
+    # Streak: consecutive days with task completions
     today = _today_ct()
     streak = 0
     check_day = today
@@ -1141,11 +1267,11 @@ async def gamification(
                 func.date(Task.completed_at) == check_day,
             )
         ).scalar() or 0
-        if not has_activity:
+        if not has_activity and habit_ids:
             has_activity = session.execute(
                 select(func.count(HabitCompletion.id)).where(
-                    HabitCompletion.user_id == user.id,
-                    func.date(HabitCompletion.completed_at) == check_day,
+                    HabitCompletion.habit_id.in_(habit_ids),
+                    HabitCompletion.completed_date == check_day,
                 )
             ).scalar() or 0
         if has_activity:
@@ -1154,7 +1280,6 @@ async def gamification(
         else:
             break
 
-    # Recent achievements (last 10 completed tasks as milestones)
     recent = [
         {
             "type": "task",
@@ -1172,7 +1297,7 @@ async def gamification(
         "xp_for_next": xp_for_next,
         "streak_days": streak,
         "tasks_completed": len(done_tasks),
-        "habits_completed": len(habit_completions),
+        "habits_completed": habit_completions_count,
         "recent": recent,
     }
 
@@ -1196,7 +1321,7 @@ async def add_favorite_team(
 ):
     team = FavoriteSportsTeam(
         sport=data.sport, team_name=data.team_name,
-        team_id=data.team_id, league=data.league,
+        team_id=getattr(data, "team_id", None), league=data.league,
         user_id=user.id,
     )
     session.add(team)
@@ -1204,7 +1329,8 @@ async def add_favorite_team(
     session.refresh(team)
     return team
 
-# ─── MLB Live Data (via MLB Stats API — no key required) ─────────────────────
+# ─── MLB Live Data ────────────────────────────────────────────────────────────
+
 _MLB_TEAM_IDS: dict[str, int] = {
     "cardinals": 138, "cubs": 112, "brewers": 158, "reds": 113, "pirates": 134,
     "braves": 144, "mets": 121, "phillies": 143, "marlins": 146, "nationals": 120,
