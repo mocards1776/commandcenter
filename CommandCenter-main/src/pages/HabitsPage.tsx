@@ -66,10 +66,11 @@ export function HabitsPage() {
   const nowHour   = nowCDT.getHours();
   const nowMinute = nowCDT.getMinutes();
 
-  // Apply filters
+  // Apply filters — guard against null/undefined completions
   const visibleHabits = (habits ?? []).filter(h => {
+    if (!h || typeof h !== "object") return false;
     if (hideCompleted) {
-      const doneToday = h.completions.some((c: any) => c.completed_date === today);
+      const doneToday = (h.completions ?? []).some((c: any) => c.completed_date === today);
       if (doneToday) return false;
     }
     if (hideFuture) {
@@ -83,7 +84,7 @@ export function HabitsPage() {
     return true;
   });
 
-  const done  = habits?.filter(h => h.completions.some((c: any) => c.completed_date === today)).length ?? 0;
+  const done  = habits?.filter(h => (h.completions ?? []).some((c: any) => c.completed_date === today)).length ?? 0;
   const total = habits?.length ?? 0;
   const pct   = total > 0 ? Math.round((done / total) * 100) : 0;
 
