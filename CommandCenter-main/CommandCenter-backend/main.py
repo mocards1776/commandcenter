@@ -26,14 +26,28 @@ from schemas import UserCreate, UserResponse, UserLogin
 
 app = FastAPI(title="CommandCenter API")
 
-# CORS
+# CORS — allow everything; DO App Platform edge handles TLS termination
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+# Explicit OPTIONS handler — ensures preflight never hits the DO edge CORS filter
+@app.options("/{rest_of_path:path}")
+async def preflight_handler(rest_of_path: str):
+    from fastapi.responses import Response
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Max-Age": "86400",
+        },
+    )
 
 # NOTE: datetime.now() respects the TZ environment variable (set to America/Chicago in DO).
 # datetime.utcnow() always returns UTC regardless of TZ — never use it here.
@@ -76,7 +90,8 @@ async def list_tasks(
 ):
     query = select(Task).where(Task.user_id == user.id)
     if status:
-        query = query.where(Task.status == status)
+        statuses = [s.strip() for s in status.split(",")]
+        query = query.where(Task.status.in_(statuses))
     if search:
         query = query.where(Task.title.ilike(f"%{search}%"))
     tasks = session.execute(query.order_by(Task.created_at.desc())).scalars().all()
@@ -119,7 +134,7 @@ async def get_task(
     return task
 
 @router.patch("/tasks/{task_id}", response_model=TaskResponse)
-async def update_task(
+async def update_task_patch(
     task_id: str,
     data: TaskUpdate,
     session: Session = Depends(db.get_session),
@@ -130,6 +145,25 @@ async def update_task(
         raise HTTPException(status_code=404)
     for key, value in data.dict(exclude_unset=True).items():
         setattr(task, key, value)
+    session.commit()
+    session.refresh(task)
+    return task
+
+# PUT alias — frontend uses PUT to avoid DO edge proxy blocking PATCH preflight
+@router.put("/tasks/{task_id}", response_model=TaskResponse)
+async def update_task_put(
+    task_id: str,
+    data: TaskUpdate,
+    session: Session = Depends(db.get_session),
+    user: User = Depends(get_current_user),
+):
+    task = session.execute(select(Task).where(Task.id == task_id)).scalar()
+    if not task or task.user_id != user.id:
+        raise HTTPException(status_code=404)
+    for key, value in data.dict(exclude_unset=True).items():
+        setattr(task, key, value)
+    if data.dict(exclude_unset=True).get("status") == "done" and not task.completed_at:
+        task.completed_at = datetime.now()
     session.commit()
     session.refresh(task)
     return task
@@ -210,7 +244,24 @@ async def get_project(
     return project
 
 @router.patch("/projects/{project_id}", response_model=ProjectResponse)
-async def update_project(
+async def update_project_patch(
+    project_id: str,
+    data: ProjectUpdate,
+    session: Session = Depends(db.get_session),
+    user: User = Depends(get_current_user),
+):
+    project = session.execute(select(Project).where(Project.id == project_id)).scalar()
+    if not project or project.user_id != user.id:
+        raise HTTPException(status_code=404)
+    for key, value in data.dict(exclude_unset=True).items():
+        setattr(project, key, value)
+    session.commit()
+    session.refresh(project)
+    return project
+
+# PUT alias for projects
+@router.put("/projects/{project_id}", response_model=ProjectResponse)
+async def update_project_put(
     project_id: str,
     data: ProjectUpdate,
     session: Session = Depends(db.get_session),
@@ -313,7 +364,25 @@ async def create_habit(
     return habit
 
 @router.patch("/habits/{habit_id}", response_model=HabitResponse)
-async def update_habit(
+async def update_habit_patch(
+    habit_id: str,
+    data: HabitUpdate,
+    session: Session = Depends(db.get_session),
+    user: User = Depends(get_current_user),
+):
+    habit = session.execute(select(Habit).where(Habit.id == habit_id)).scalar()
+    if not habit or habit.user_id != user.id:
+        raise HTTPException(status_code=404)
+    updates = _serialize_habit(data.dict(exclude_unset=True))
+    for key, value in updates.items():
+        setattr(habit, key, value)
+    session.commit()
+    session.refresh(habit)
+    return habit
+
+# PUT alias for habits
+@router.put("/habits/{habit_id}", response_model=HabitResponse)
+async def update_habit_put(
     habit_id: str,
     data: HabitUpdate,
     session: Session = Depends(db.get_session),
@@ -435,7 +504,7 @@ async def start_timer(
     user: User = Depends(get_current_user),
 ):
     session.execute(
-        Task.orderupdate(TimeEntry)
+        update(TimeEntry)
         .where((TimeEntry.user_id == user.id) & (TimeEntry.ended_at.is_(None)))
         .values(ended_at=datetime.now())
     )
@@ -515,7 +584,7 @@ async def get_dashboard(
             "name": h.name,
             "icon": getattr(h, "icon", None),
             "frequency": h.frequency,
-                        "color": getattr(h, "color", "#e8a820"),
+            "color": getattr(h, "color", "#e8a820"),
             "sort_order": getattr(h, "sort_order", 0),
             "is_active": getattr(h, "is_active", True),
             "time_hour": getattr(h, "time_hour", None),
@@ -605,22 +674,22 @@ async def get_dashboard(
                 "priority": getattr(t, "priority", None),
                 "due_date": str(t.due_date) if t.due_date else None,
                 "project_id": getattr(t, "project_id", None),
-                            "focus_score": getattr(t, "focus_score", 0),
-            "importance": getattr(t, "importance", 3),
-            "difficulty": getattr(t, "difficulty", 3),
-            "sort_order": getattr(t, "order", 0),
-            "actual_time_minutes": getattr(t, "time_estimate_minutes", 0) or 0,
-            "subtasks": [],
-            "completed_at": t.completed_at.isoformat() if t.completed_at else None,
-            "notes": getattr(t, "notes", None),
-            "description": getattr(t, "description", None),
-            "tag_ids": [],
-            "show_in_daily": True,
-            "time_estimate_minutes": getattr(t, "time_estimate_minutes", None),
-            "parent_id": None,
-            "category_id": getattr(t, "category_id", None),
-            "created_at": t.created_at.isoformat() if t.created_at else None,
-            "updated_at": t.updated_at.isoformat() if t.updated_at else None,
+                "focus_score": getattr(t, "focus_score", 0),
+                "importance": getattr(t, "importance", 3),
+                "difficulty": getattr(t, "difficulty", 3),
+                "sort_order": getattr(t, "order", 0),
+                "actual_time_minutes": getattr(t, "time_estimate_minutes", 0) or 0,
+                "subtasks": [],
+                "completed_at": t.completed_at.isoformat() if t.completed_at else None,
+                "notes": getattr(t, "notes", None),
+                "description": getattr(t, "description", None),
+                "tag_ids": [],
+                "show_in_daily": True,
+                "time_estimate_minutes": getattr(t, "time_estimate_minutes", None),
+                "parent_id": None,
+                "category_id": getattr(t, "category_id", None),
+                "created_at": t.created_at.isoformat() if t.created_at else None,
+                "updated_at": t.updated_at.isoformat() if t.updated_at else None,
             }
             for t in today_task_rows
         ],
@@ -724,7 +793,17 @@ async def create_note(data: NoteCreate, session: Session = Depends(db.get_sessio
     return note
 
 @router.patch("/notes/{note_id}", response_model=NoteResponse)
-async def update_note(note_id: str, data: NoteUpdate, session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
+async def update_note_patch(note_id: str, data: NoteUpdate, session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
+    note = session.execute(select(Note).where(Note.id == note_id)).scalar()
+    if not note or note.user_id != user.id:
+        raise HTTPException(status_code=404)
+    for key, value in data.dict(exclude_unset=True).items():
+        setattr(note, key, value)
+    session.commit(); session.refresh(note)
+    return note
+
+@router.put("/notes/{note_id}", response_model=NoteResponse)
+async def update_note_put(note_id: str, data: NoteUpdate, session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
     note = session.execute(select(Note).where(Note.id == note_id)).scalar()
     if not note or note.user_id != user.id:
         raise HTTPException(status_code=404)
@@ -760,7 +839,17 @@ async def get_crm(person_id: str, session: Session = Depends(db.get_session), us
     return person
 
 @router.patch("/crm/{person_id}", response_model=CRMPersonResponse)
-async def update_crm(person_id: str, data: CRMPersonUpdate, session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
+async def update_crm_patch(person_id: str, data: CRMPersonUpdate, session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
+    person = session.execute(select(CRMPerson).where(CRMPerson.id == person_id)).scalar()
+    if not person or person.user_id != user.id:
+        raise HTTPException(status_code=404)
+    for key, value in data.dict(exclude_unset=True).items():
+        setattr(person, key, value)
+    session.commit(); session.refresh(person)
+    return person
+
+@router.put("/crm/{person_id}", response_model=CRMPersonResponse)
+async def update_crm_put(person_id: str, data: CRMPersonUpdate, session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
     person = session.execute(select(CRMPerson).where(CRMPerson.id == person_id)).scalar()
     if not person or person.user_id != user.id:
         raise HTTPException(status_code=404)
@@ -928,7 +1017,6 @@ async def mlb_team_today(team_slug: str, user: User = Depends(get_current_user))
             today_games[0] if today_games else None
         )
         next_game = future_games[0] if future_games else None
-        # NL Central standings — division id 205
         standings_data = await _mlb_get(
             "/standings?leagueId=104&season=2026&standingsTypes=regularSeason"
         )
@@ -1003,8 +1091,6 @@ async def mlb_projections(team_slug: str, user: User = Depends(get_current_user)
             "wc_pct": None, "ws_pct": None, "best": None, "record": None}
 
 # ─── Mount router at BOTH "" (root) AND "/api" ─────────────
-# Frontend calls /dashboard/, /tasks/, etc. (no /api prefix) — root mount covers that.
-# /api/* mount preserves backward compatibility with any direct API clients.
 app.include_router(router)
 app.include_router(router, prefix="/api")
 
