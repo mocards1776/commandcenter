@@ -318,13 +318,13 @@ export function TaskModal({ open, onClose, task, projectId, parentId, defaultSta
   };
 
   const payload = () => {
-    // Always send a full ISO datetime string so FastAPI's Optional[datetime] can parse it.
-    // A bare "YYYY-MM-DD" is rejected by Pydantic datetime — append T00:00:00 when no time given.
+    // Send timezone-aware ISO datetime so FastAPI/Pydantic accepts it.
+    // Appending "Z" (UTC) prevents 422 "datetime has no timezone" errors.
     let due_date: string | undefined;
     if (dueDate && dueTime) {
-      due_date = `${dueDate}T${dueTime}:00`;
+      due_date = `${dueDate}T${dueTime}:00Z`;
     } else if (dueDate) {
-      due_date = `${dueDate}T00:00:00`;
+      due_date = `${dueDate}T00:00:00Z`;
     }
     return {
       title: title.trim(),
@@ -358,10 +358,33 @@ export function TaskModal({ open, onClose, task, projectId, parentId, defaultSta
   const updateMut = useMutation({
     mutationFn: () => tasksApi.update(task!.id, payload()),
     onSuccess: () => { inv(); toast.success("Updated!"); onClose(); },
-    onError: (e:any) => { toast.error(`Save failed: ${e?.response?.data?.detail ?? e?.message ?? "unknown"}`); },
+    onError: (e:any) => {
+      const detail = e?.response?.data?.detail;
+      const msg = Array.isArray(detail)
+        ? detail.map((d: any) => d?.msg ?? JSON.stringify(d)).join("; ")
+        : detail ?? e?.message ?? "unknown";
+      toast.error(`Save failed: ${msg}`);
+    },
   });
-  const completeMut = useMutation({ mutationFn:()=>tasksApi.complete(task!.id), onSuccess:()=>{ triggerCelebration({...task!,focus_score:focusScore,importance,difficulty},calcPoints({focus_score:focusScore})); inv(); onClose(); } });
-  const deleteMut   = useMutation({ mutationFn:()=>tasksApi.delete(task!.id), onSuccess:()=>{inv();toast.success("Deleted");onClose();}, onError:(e:any)=>{toast.error(`Delete failed: ${e?.response?.data?.detail??e?.message??"unknown"}`);} });
+
+  const completeMut = useMutation({
+    mutationFn: () => tasksApi.complete(task!.id),
+    onSuccess: () => {
+      triggerCelebration({...task!,focus_score:focusScore,importance,difficulty},calcPoints({focus_score:focusScore}));
+      inv();
+      onClose();
+    },
+    onError: (e:any) => {
+      const detail = e?.response?.data?.detail ?? e?.message ?? "unknown";
+      toast.error(`Complete failed: ${detail}`);
+    },
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: () => tasksApi.delete(task!.id),
+    onSuccess: () => { inv(); toast.success("Deleted"); onClose(); },
+    onError: (e:any) => { toast.error(`Delete failed: ${e?.response?.data?.detail??e?.message??"unknown"}`); },
+  });
 
   const handleTimer = () => { if(isThisRunning){stop();}else{if(task){setActiveTimer(null,task);start({task_id:task.id});}} };
 
