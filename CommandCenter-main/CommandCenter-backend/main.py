@@ -143,8 +143,14 @@ async def update_task_patch(
     task = session.execute(select(Task).where(Task.id == task_id)).scalar()
     if not task or task.user_id != user.id:
         raise HTTPException(status_code=404)
-    for key, value in data.dict(exclude_unset=True).items():
+    updates = data.dict(exclude_unset=True)
+    previous_status = task.status
+    for key, value in updates.items():
         setattr(task, key, value)
+    if updates.get("status") == "done" and previous_status != "done":
+        task.completed_at = datetime.now()
+    elif updates.get("status") and updates.get("status") != "done" and previous_status == "done":
+        task.completed_at = None
     session.commit()
     session.refresh(task)
     return task
@@ -160,10 +166,14 @@ async def update_task_put(
     task = session.execute(select(Task).where(Task.id == task_id)).scalar()
     if not task or task.user_id != user.id:
         raise HTTPException(status_code=404)
-    for key, value in data.dict(exclude_unset=True).items():
+    updates = data.dict(exclude_unset=True)
+    previous_status = task.status
+    for key, value in updates.items():
         setattr(task, key, value)
-    if data.dict(exclude_unset=True).get("status") == "done" and not task.completed_at:
+    if updates.get("status") == "done" and previous_status != "done":
         task.completed_at = datetime.now()
+    elif updates.get("status") and updates.get("status") != "done" and previous_status == "done":
+        task.completed_at = None
     session.commit()
     session.refresh(task)
     return task
