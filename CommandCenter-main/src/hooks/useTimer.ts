@@ -98,13 +98,39 @@ export function useActiveTimer() {
   stopRef.current = () => stopMutation.mutate();
 
   // Complete task + stop timer in one action (used by FocusMode)
+  // Always re-fetches the task fresh to avoid using a stale/persisted id.
   const completeAndStop = useCallback(async () => {
-    if (!activeTask) return;
+    // Determine task_id from the live timer first, fall back to persisted activeTask
+    const taskId = activeTimer?.task_id ?? activeTask?.id;
+
+    if (!taskId) {
+      toast.error("No task linked to this timer");
+      return;
+    }
+
+    // Re-fetch the task fresh so we're never using a stale persisted object
+    let freshTask = activeTask;
     try {
-      await tasksApi.complete(activeTask.id);
+      freshTask = await tasksApi.get(taskId);
+    } catch {
+      // If we can't fetch, fall back to persisted — but at least taskId is valid
+    }
+
+    if (!freshTask?.id) {
+      toast.error("Could not load task — please try again");
+      return;
+    }
+
+    try {
+      await tasksApi.complete(freshTask.id);
       qc.invalidateQueries({ queryKey: ["tasks"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
-    } catch {}
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail ?? err?.message ?? "Failed to complete task";
+      toast.error(msg);
+      return; // don't stop the timer if complete failed
+    }
+
     if (activeTimer) {
       stopMutation.mutate();
     }
