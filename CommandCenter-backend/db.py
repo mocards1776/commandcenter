@@ -16,26 +16,30 @@ if "localhost" not in DATABASE_URL and "127.0.0.1" not in DATABASE_URL:
 
 # Pool sizing:
 # DO Managed DB basic plan allows ~22 connections total.
-# With App Platform potentially running 2 workers, cap at 4 persistent + 2 burst
-# to leave headroom and avoid QueuePool exhaustion under concurrent polling.
-# pool_timeout=5 fails fast to prevent request pile-ups.
+# With auth.py now using get_session (yield-based, properly closed),
+# each request uses exactly 1 connection shared via FastAPI's dependency
+# injection — auth and the endpoint handler share the SAME session.
+# pool_size=5 + max_overflow=5 = 10 max, well under DO's 22 limit.
+# pool_timeout=10 gives a bit more breathing room.
 # pool_recycle=300 drops stale connections every 5 min.
 engine = create_engine(
     DATABASE_URL,
     echo=False,
     pool_pre_ping=True,
-    pool_size=4,
-    max_overflow=2,
-    pool_timeout=5,
+    pool_size=5,
+    max_overflow=5,
+    pool_timeout=10,
     pool_recycle=300,
     connect_args=_connect_args,
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def get_session_direct() -> Session:
+    """Direct session — caller is responsible for closing. Avoid in request handlers."""
     return SessionLocal()
 
 def get_session():
+    """Yield-based dependency for FastAPI. Session is always closed after the request."""
     session = SessionLocal()
     try:
         yield session
