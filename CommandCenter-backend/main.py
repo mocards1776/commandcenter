@@ -49,7 +49,8 @@ def _is_allowed_origin(origin: str) -> bool:
         or (origin.startswith("https://command-center") and origin.endswith(".vercel.app"))
     )
 
-app = FastAPI(title="CommandCenter API", redirect_slashes=False)
+# redirect_slashes=True so /dashboard/ -> /dashboard (fixes 405 errors on trailing-slash URLs)
+app = FastAPI(title="CommandCenter API", redirect_slashes=True)
 
 app.add_middleware(
     CORSMiddleware,
