@@ -63,6 +63,24 @@ app.add_middleware(
     max_age=600,
 )
 
+# Explicit OPTIONS handler — ensures PATCH preflight is never blocked
+# even if the CORS middleware is loaded after another middleware strips headers.
+@app.options("/{rest_of_path:path}")
+async def preflight_handler(rest_of_path: str, request: Request):
+    origin = request.headers.get("origin", "")
+    if _is_allowed_origin(origin):
+        return Response(
+            status_code=200,
+            headers={
+                "Access-Control-Allow-Origin": origin,
+                "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept, X-Requested-With",
+                "Access-Control-Allow-Credentials": "true",
+                "Access-Control-Max-Age": "600",
+            },
+        )
+    return Response(status_code=403)
+
 @app.on_event("startup")
 def _on_startup():
     try:
