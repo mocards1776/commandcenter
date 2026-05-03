@@ -66,8 +66,11 @@ export function DashboardPage() {
 
   const overdueT = data?.overdue_tasks ?? [];
   // today_habits entries from backend are { habit: {...}, completed: bool } — unwrap them
+  // Filter out any null/non-object values to prevent "h is not iterable" crashes
   const rawHabits = data?.today_habits ?? [];
-  const habits = rawHabits.map((entry: any) => entry?.habit ?? entry);
+  const habits = rawHabits
+    .map((entry: any) => entry?.habit ?? entry)
+    .filter((h: any) => h != null && typeof h === "object" && !Array.isArray(h));
   const projects = data?.active_projects ?? [];
 
   const allPending = [...(data?.today_tasks ?? []), ...overdueT];
