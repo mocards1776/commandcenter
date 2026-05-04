@@ -1256,8 +1256,6 @@ async def delete_crm_person(
 
 @app.get("/time-blocks")
 @app.get("/time-blocks/", include_in_schema=False)
-@app.get("/api/time-blocks", include_in_schema=False)
-@app.get("/api/time-blocks/", include_in_schema=False)
 async def list_time_blocks(
     date: Optional[str] = Query(default=None),
     user: User = Depends(get_current_user),
