@@ -43,7 +43,7 @@ ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
 ]
 
-app = FastAPI(title="CommandCenter API", redirect_slashes=False, root_path="/api")
+app = FastAPI(title="CommandCenter API", redirect_slashes=False)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1256,6 +1256,8 @@ async def delete_crm_person(
 
 @app.get("/time-blocks")
 @app.get("/time-blocks/", include_in_schema=False)
+@app.get("/api/time-blocks", include_in_schema=False)
+@app.get("/api/time-blocks/", include_in_schema=False)
 async def list_time_blocks(
     date: Optional[str] = Query(default=None),
     user: User = Depends(get_current_user),
@@ -1276,6 +1278,8 @@ async def list_time_blocks(
 
 @app.post("/time-blocks", response_model=TimeBlockResponse)
 @app.post("/time-blocks/", response_model=TimeBlockResponse, include_in_schema=False)
+@app.post("/api/time-blocks", response_model=TimeBlockResponse, include_in_schema=False)
+@app.post("/api/time-blocks/", response_model=TimeBlockResponse, include_in_schema=False)
 async def create_time_block(
     data: TimeBlockCreate,
     user: User = Depends(get_current_user),
@@ -1292,6 +1296,8 @@ async def create_time_block(
 
 @app.patch("/time-blocks/{block_id}", response_model=TimeBlockResponse)
 @app.patch("/time-blocks/{block_id}/", response_model=TimeBlockResponse, include_in_schema=False)
+@app.patch("/api/time-blocks/{block_id}", response_model=TimeBlockResponse, include_in_schema=False)
+@app.patch("/api/time-blocks/{block_id}/", response_model=TimeBlockResponse, include_in_schema=False)
 async def update_time_block(
     block_id: str,
     data: TimeBlockUpdate,
@@ -1312,6 +1318,8 @@ async def update_time_block(
 
 @app.delete("/time-blocks/{block_id}")
 @app.delete("/time-blocks/{block_id}/", include_in_schema=False)
+@app.delete("/api/time-blocks/{block_id}", include_in_schema=False)
+@app.delete("/api/time-blocks/{block_id}/", include_in_schema=False)
 async def delete_time_block(
     block_id: str,
     user: User = Depends(get_current_user),
