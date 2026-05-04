@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { Plus, X } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import axios from "axios";
 import { cn } from "@/lib/utils";
-import { tasksApi } from "@/lib/api";
+import { tasksApi, api } from "@/lib/api";
 import toast from "react-hot-toast";
 
 const HOURS = Array.from({ length: 16 }, (_, i) => i + 6);
@@ -136,7 +135,7 @@ function TimeSlotBlock({
   );
 }
 
-// ── New block form (unchanged)
+// ── New block form
 function NewBlockForm({ onClose, selectedDate }: { onClose: () => void; selectedDate: string }) {
   const [title, setTitle]         = useState("");
   const [startTime, setStartTime] = useState("09:00");
@@ -146,7 +145,7 @@ function NewBlockForm({ onClose, selectedDate }: { onClose: () => void; selected
 
   const createMutation = useMutation({
     mutationFn: () =>
-      axios.post("/api/time-blocks/", {
+      api.post("/time-blocks/", {
         title,
         start_time: `${selectedDate}T${startTime}:00`,
         end_time:   `${selectedDate}T${endTime}:00`,
@@ -199,7 +198,7 @@ export function TimeBlockPage() {
 
   const { data: blocks } = useQuery({
     queryKey: ["time-blocks", selectedDate],
-    queryFn: () => axios.get(`/api/time-blocks/?date=${selectedDate}`).then((r) => r.data).catch(() => []),
+    queryFn: () => api.get(`/time-blocks/?date=${selectedDate}`).then((r) => r.data).catch(() => []),
   });
 
   // Backlog: fetch today's + inbox tasks
@@ -214,7 +213,7 @@ export function TimeBlockPage() {
 
   const updateColorMutation = useMutation({
     mutationFn: ({ id, color }: { id: string; color: string }) =>
-      axios.patch(`/api/time-blocks/${id}/`, { color }),
+      api.put(`/time-blocks/${id}/`, { color }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["time-blocks"] }); toast.success("Color updated!"); },
     onError:   () => toast.error("Failed to update color"),
   });
