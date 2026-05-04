@@ -120,10 +120,8 @@ async function fetchCardinalsGames(): Promise<{ current_game: GameData | null; n
     };
   }
 
-  // Always fetch next game regardless of whether today's game is scheduled/live/final
-  // Only skip if today's game is Final (already played, next game is what's up)
   const nextGameStart = new Date();
-  nextGameStart.setDate(nextGameStart.getDate() + (current_game?.status === "Final" ? 1 : 1));
+  nextGameStart.setDate(nextGameStart.getDate() + 1);
   const nextGameEnd = new Date(nextGameStart);
   nextGameEnd.setDate(nextGameEnd.getDate() + 7);
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
@@ -542,12 +540,11 @@ export function BaseballPanel() {
   return (
     <div style={{ fontFamily: FONT, background: BG, borderRadius: 0, overflow: "hidden" }}>
 
-      {/* ── Two-column body: standings LEFT, Cardinals games RIGHT ── */}
-      {/* auto on left so standings get natural width; 1fr on right fills remaining */}
-      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", alignItems: "start", borderBottom: "1px solid rgba(232,168,32,0.12)" }}>
+      {/* ── Two-column body: NL Central LEFT (50%), Cardinals games RIGHT (50%) ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", alignItems: "start", borderBottom: "1px solid rgba(232,168,32,0.12)" }}>
 
         {/* LEFT — NL Central Standings */}
-        <div style={{ borderRight: "3px solid #1e3629", minWidth: 320 }}>
+        <div style={{ borderRight: "3px solid #1e3629" }}>
           <SBHead label="NL Central Standings" />
           <div style={{ background: BG }}>
             <div style={{
