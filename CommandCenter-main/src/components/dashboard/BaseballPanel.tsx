@@ -62,7 +62,6 @@ async function fetchStandings(): Promise<Row[]> {
     }
   }
 
-  // Sort by wins desc, then losses asc
   rows.sort((a, b) => {
     const [aw, al] = a.wl.split("-").map(Number);
     const [bw, bl] = b.wl.split("-").map(Number);
@@ -121,7 +120,6 @@ async function fetchCardinalsGames(): Promise<{ current_game: GameData | null; n
     };
   }
 
-  // Next game: look ahead up to 7 days
   let next_game: GameData | null = null;
   if (!current_game || current_game.status === "Final") {
     const start = new Date();
@@ -205,7 +203,7 @@ interface GameData {
   date_label?: string;
 }
 
-// ─── Sub-components (unchanged from original) ────────────────────────────────
+// ─── Sub-components ──────────────────────────────────────────────────────────
 
 function CardinalsLogo({ size = 36 }: { size?: number }) {
   return (
@@ -542,33 +540,49 @@ export function BaseballPanel() {
     <div style={{ fontFamily: FONT, background: BG, borderRadius: 6, overflow: "hidden",
       border: "1px solid rgba(232,168,32,0.15)" }}>
 
-      <SBHead label="NL Central Standings" />
-      <div style={{ background: BG }}>
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: "18px 32px 1fr 54px 38px 52px 40px",
-          gap: 4, padding: "3px 8px",
-          background: HEADER_BG,
-          borderBottom: "1px solid rgba(232,168,32,0.1)",
-        }}>
-          {["#", "", "Team", "W-L", "PCT", "GB", "STRK"].map((h, i) => (
-            <span key={i} style={{ fontFamily: FONT, fontSize: 7, fontWeight: 700,
-              letterSpacing: "0.12em", color: DIM, textAlign: i === 0 ? "center" : "left" as any }}>{h}</span>
-          ))}
-        </div>
-        {standings.length > 0 ? (
-          standings.map((row, i) => (
-            <StandingsRow key={row.team_id ?? i} row={row} rank={i + 1} />
-          ))
-        ) : (
-          <div style={{ padding: "12px 8px", fontFamily: FONT, fontSize: 9, color: DIM, textAlign: "center" }}>
-            {standingsErr ? "Failed to load standings" : "Loading standings…"}
-          </div>
-        )}
-      </div>
+      {/* ── Two-column body: standings LEFT, Cardinals games RIGHT ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", alignItems: "start" }}>
 
-      {currentGame && <GameBlock game={currentGame} label="Today's Game" />}
-      {nextGame    && <GameBlock game={nextGame}    label="Next Game" />}
+        {/* LEFT — NL Central Standings */}
+        <div style={{ borderRight: "1px solid rgba(232,168,32,0.12)" }}>
+          <SBHead label="NL Central Standings" />
+          <div style={{ background: BG }}>
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: "18px 32px 1fr 54px 38px 52px 40px",
+              gap: 4, padding: "3px 8px",
+              background: HEADER_BG,
+              borderBottom: "1px solid rgba(232,168,32,0.1)",
+            }}>
+              {["#", "", "Team", "W-L", "PCT", "GB", "STRK"].map((h, i) => (
+                <span key={i} style={{ fontFamily: FONT, fontSize: 7, fontWeight: 700,
+                  letterSpacing: "0.12em", color: DIM, textAlign: i === 0 ? "center" : "left" as any }}>{h}</span>
+              ))}
+            </div>
+            {standings.length > 0 ? (
+              standings.map((row, i) => (
+                <StandingsRow key={row.team_id ?? i} row={row} rank={i + 1} />
+              ))
+            ) : (
+              <div style={{ padding: "12px 8px", fontFamily: FONT, fontSize: 9, color: DIM, textAlign: "center" }}>
+                {standingsErr ? "Failed to load standings" : "Loading standings…"}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* RIGHT — Cardinals game(s) */}
+        <div>
+          {currentGame && <GameBlock game={currentGame} label="Today's Game" />}
+          {nextGame    && <GameBlock game={nextGame}    label="Next Game" />}
+          {!currentGame && !nextGame && (
+            <div style={{ padding: "12px 8px", fontFamily: FONT, fontSize: 9, color: DIM, textAlign: "center" }}>
+              Loading schedule…
+            </div>
+          )}
+        </div>
+
+      </div>
 
       <LedRibbonBoard stats={SEED_STATS} loading={false} />
     </div>
