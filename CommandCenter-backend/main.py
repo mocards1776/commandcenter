@@ -1032,9 +1032,6 @@ async def start_time_entry(
     ).scalar()
     if active:
         active.ended_at = datetime.utcnow()
-        if active.started_at:
-            delta = active.ended_at - active.started_at
-            active.duration_seconds = int(delta.total_seconds())
         session.add(active)
 
     task_id = data.get("task_id")
@@ -1079,9 +1076,6 @@ async def stop_time_entry(
         return _time_entry_to_dict(entry)
 
     entry.ended_at = datetime.utcnow()
-    if entry.started_at:
-        delta = entry.ended_at - entry.started_at
-        entry.duration_seconds = int(delta.total_seconds())
     session.add(entry)
     session.commit()
     session.refresh(entry)
