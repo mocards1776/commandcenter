@@ -43,7 +43,7 @@ ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
 ]
 
-app = FastAPI(title="CommandCenter API", redirect_slashes=False)
+app = FastAPI(title="CommandCenter API", redirect_slashes=False, root_path="/api")
 
 app.add_middleware(
     CORSMiddleware,
