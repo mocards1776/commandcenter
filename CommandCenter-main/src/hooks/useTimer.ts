@@ -7,6 +7,7 @@ import toast from "react-hot-toast";
 export function useActiveTimer() {
   const { activeTimer, activeTask, elapsedSeconds, startedAtMs, setElapsed, setActiveTimer, clearTimer } = useTimerStore();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Initialise ref directly from store so first tick is always correct
   const startedAtMsRef = useRef<number | null>(startedAtMs);
   const qc = useQueryClient();
   const autoStoppedRef = useRef(false);
@@ -15,8 +16,11 @@ export function useActiveTimer() {
   useEffect(() => { startedAtMsRef.current = startedAtMs; }, [startedAtMs]);
 
   const tick = useCallback(() => {
-    if (!startedAtMsRef.current) return;
-    setElapsed(Math.max(0, Math.floor((Date.now() - startedAtMsRef.current) / 1000)));
+    const s = startedAtMsRef.current;
+    if (!s || isNaN(s)) return;
+    const diff = Math.floor((Date.now() - s) / 1000);
+    if (diff < 0 || diff > 86400 * 7) return; // sanity guard
+    setElapsed(diff);
   }, [setElapsed]);
 
   useQuery({
@@ -24,6 +28,10 @@ export function useActiveTimer() {
     queryFn: async () => {
       const timer = await timersApi.active();
       if (timer) {
+        // Ensure started_at is treated as UTC before storing
+        if (timer.started_at && !/([zZ]|[+-]\d{2}:?\d{2})$/.test(timer.started_at)) {
+          timer.started_at = timer.started_at + "Z";
+        }
         let task = null;
         if (timer.task_id) {
           try { task = await tasksApi.get(timer.task_id); } catch {}
@@ -59,7 +67,9 @@ export function useActiveTimer() {
   useEffect(() => {
     if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
     if (!activeTimer || !startedAtMs) { setElapsed(0); return; }
-    autoStoppedRef.current = false; // reset on new timer
+    // Sync ref immediately before starting interval so first tick is never stale
+    startedAtMsRef.current = startedAtMs;
+    autoStoppedRef.current = false;
     tick(); // immediate first tick
     intervalRef.current = setInterval(tick, 1000);
     return () => { if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; } };
@@ -98,9 +108,7 @@ export function useActiveTimer() {
   stopRef.current = () => stopMutation.mutate();
 
   // Complete task + stop timer in one action (used by FocusMode)
-  // Always re-fetches the task fresh to avoid using a stale/persisted id.
   const completeAndStop = useCallback(async () => {
-    // Determine task_id from the live timer first, fall back to persisted activeTask
     const taskId = activeTimer?.task_id ?? activeTask?.id;
 
     if (!taskId) {
@@ -108,13 +116,10 @@ export function useActiveTimer() {
       return;
     }
 
-    // Re-fetch the task fresh so we're never using a stale persisted object
     let freshTask = activeTask;
     try {
       freshTask = await tasksApi.get(taskId);
-    } catch {
-      // If we can't fetch, fall back to persisted — but at least taskId is valid
-    }
+    } catch {}
 
     if (!freshTask?.id) {
       toast.error("Could not load task — please try again");
@@ -128,7 +133,7 @@ export function useActiveTimer() {
     } catch (err: any) {
       const msg = err?.response?.data?.detail ?? err?.message ?? "Failed to complete task";
       toast.error(msg);
-      return; // don't stop the timer if complete failed
+      return;
     }
 
     if (activeTimer) {

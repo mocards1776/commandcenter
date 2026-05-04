@@ -194,6 +194,15 @@ const ID_MAP: Record<number,[string,string]> = {
   116:["DET","Tigers"],   118:["KC","Royals"],     142:["MIN","Twins"],
 };
 
+// ESPN team id → MLB team id for NL Central
+const ESPN_TO_MLB: Record<number, number> = {
+  17: 112,  // Cubs
+  21: 113,  // Reds
+  24: 138,  // Cardinals
+  15: 158,  // Brewers
+  27: 134,  // Pirates
+};
+
 function StandingsRow({ row, rank }: { row: Row; rank: number }) {
   const win     = row.strk?.startsWith("W");
   const tid     = row.team_id as number;
@@ -399,6 +408,95 @@ async function fetchProjections(): Promise<RibbonStat[] | null> {
   return null;
 }
 
+// ─── ESPN data fetch (standings + Cardinals schedule) ────────────────────────
+async function fetchEspnData(): Promise<{ nl_central: Row[]; current_game: GameData | null; next_game: GameData | null } | null> {
+  try {
+    const [standingsRes, schedRes] = await Promise.all([
+      fetch("https://site.api.espn.com/apis/v2/sports/baseball/mlb/standings?group=nlcentral"),
+      fetch("https://site.api.espn.com/apis/v2/sports/baseball/mlb/teams/24/schedule?seasontype=2&limit=10"),
+    ]);
+    const standingsJson = await standingsRes.json();
+    const schedJson     = await schedRes.json();
+
+    // ── NL Central standings ──────────────────────────────────────────────
+    const nl_central: Row[] = [];
+    const entries: any[] = standingsJson?.standings?.entries ?? [];
+    entries.forEach((entry: any) => {
+      const espnId = Number(entry.team?.id ?? 0);
+      const mlbId  = ESPN_TO_MLB[espnId] ?? espnId;
+      const stats: any[] = entry.stats ?? [];
+      const getStat = (n: string) => stats.find((s: any) => s.name === n)?.displayValue ?? "—";
+      const wins   = getStat("wins");
+      const losses = getStat("losses");
+      const rawPct = getStat("winPercent");
+      // Ensure PCT has leading dot
+      const pct = rawPct === "—" ? "—" : rawPct.startsWith(".") ? rawPct : "." + rawPct;
+      const gb   = getStat("gamesBehind");
+      const strk = getStat("streak");
+      const l10  = getStat("vsLast10");
+      nl_central.push({
+        team_id: mlbId,
+        abbr: ID_MAP[mlbId]?.[0] ?? entry.team?.abbreviation ?? "???",
+        wl: `${wins}-${losses}`,
+        pct,
+        gb: gb === "0" || gb === "0.0" ? "—" : gb,
+        strk,
+        l10,
+        cards: mlbId === 138,
+      });
+    });
+
+    // ── Cardinals schedule → current + next game ──────────────────────────
+    const events: any[] = schedJson?.events ?? [];
+    const todayStr = new Date().toDateString();
+    let current_game: GameData | null = null;
+    let next_game: GameData | null    = null;
+
+    for (const ev of events) {
+      const comp   = ev.competitions?.[0];
+      if (!comp) continue;
+      const statusName = comp.status?.type?.name ?? "";
+      const evDate     = new Date(comp.date ?? ev.date ?? "").toDateString();
+      const isToday    = evDate === todayStr;
+      const isLive     = statusName === "STATUS_IN_PROGRESS";
+      const isFinal    = statusName === "STATUS_FINAL";
+      const isPre      = statusName === "STATUS_SCHEDULED" || statusName === "STATUS_PREGAME";
+
+      const stlComp = comp.competitors?.find((c: any) => c.team?.abbreviation === "STL");
+      const oppComp = comp.competitors?.find((c: any) => c.team?.abbreviation !== "STL");
+
+      const gameTime = comp.date
+        ? new Date(comp.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+        : "TBD";
+
+      const gd: GameData = {
+        status:    isFinal ? "Final" : isLive ? "Live" : isPre ? "Scheduled" : statusName,
+        is_home:   stlComp?.homeAway === "home",
+        opp_name:  oppComp?.team?.displayName ?? "",
+        opp_abbr:  oppComp?.team?.abbreviation ?? "",
+        stl_score: stlComp?.score != null ? Number(stlComp.score) : null,
+        opp_score: oppComp?.score != null ? Number(oppComp.score) : null,
+        game_time: gameTime,
+        venue:     comp.venue?.fullName ?? "",
+        date_label: evDate,
+      };
+
+      if (isToday && (isLive || isFinal) && !current_game) {
+        current_game = gd;
+      } else if (!next_game && (isPre || (!isToday && !isFinal))) {
+        next_game = gd;
+      }
+
+      if (current_game && next_game) break;
+    }
+
+    return { nl_central, current_game, next_game };
+  } catch (err) {
+    console.error("[BaseballPanel] ESPN fetch failed:", err);
+    return null;
+  }
+}
+
 // ─── Main Panel ──────────────────────────────────────────────────────────────
 export function BaseballPanel() {
   const [data, setData]               = useState<any>(null);
@@ -406,10 +504,34 @@ export function BaseballPanel() {
   const [ribbonLoading, setRibbonLoading] = useState(true);
 
   useEffect(() => {
-    const load = () =>
-      sportsApi.mlbTeam("cardinals")
-        .then(d => setData(d))
-        .catch(console.error);
+    const load = async () => {
+      // 1. Try backend first
+      let backendData: any = null;
+      try {
+        backendData = await sportsApi.mlbTeam("cardinals");
+      } catch { /* ignore */ }
+
+      const hasStandings = Array.isArray(backendData?.nl_central) && backendData.nl_central.length > 0;
+      const hasGames     = backendData?.current_game != null || backendData?.next_game != null;
+
+      if (hasStandings && hasGames) {
+        setData(backendData);
+        return;
+      }
+
+      // 2. ESPN fallback for missing standings or games
+      const espn = await fetchEspnData();
+      if (espn) {
+        setData({
+          nl_central:   espn.nl_central.length   > 0 ? espn.nl_central   : (backendData?.nl_central   ?? []),
+          current_game: espn.current_game ?? backendData?.current_game ?? null,
+          next_game:    espn.next_game    ?? backendData?.next_game    ?? null,
+        });
+      } else if (backendData) {
+        setData(backendData);
+      }
+    };
+
     load();
     const id = setInterval(load, 60_000);
     return () => clearInterval(id);
