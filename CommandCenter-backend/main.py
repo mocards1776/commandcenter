@@ -43,7 +43,7 @@ ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
 ]
 
-app = FastAPI(title="CommandCenter API", redirect_slashes=True)
+app = FastAPI(title="CommandCenter API", redirect_slashes=False)
 
 app.add_middleware(
     CORSMiddleware,
@@ -805,6 +805,7 @@ async def delete_project(
 # ── Habits ───────────────────────────────────────────────────────────────────
 
 @app.get("/habits", response_model=List[HabitResponse])
+@app.get("/habits/", response_model=List[HabitResponse], include_in_schema=False)
 async def list_habits(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
@@ -853,6 +854,7 @@ def _habit_streak(habit_id: str, session: Session, today: date) -> int:
     return streak
 
 @app.post("/habits", response_model=HabitResponse)
+@app.post("/habits/", response_model=HabitResponse, include_in_schema=False)
 async def create_habit(
     data: HabitCreate,
     user: User = Depends(get_current_user),
@@ -1107,6 +1109,7 @@ async def create_time_entry(
 # ── Notes ────────────────────────────────────────────────────────────────────
 
 @app.get("/notes", response_model=List[NoteResponse])
+@app.get("/notes/", response_model=List[NoteResponse], include_in_schema=False)
 async def list_notes(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
@@ -1117,6 +1120,7 @@ async def list_notes(
     return rows
 
 @app.post("/notes", response_model=NoteResponse)
+@app.post("/notes/", response_model=NoteResponse, include_in_schema=False)
 async def create_note(
     data: NoteCreate,
     user: User = Depends(get_current_user),
@@ -1134,6 +1138,7 @@ async def create_note(
     return note
 
 @app.get("/notes/{note_id}", response_model=NoteResponse)
+@app.get("/notes/{note_id}/", response_model=NoteResponse, include_in_schema=False)
 async def get_note(
     note_id: str,
     user: User = Depends(get_current_user),
@@ -1167,6 +1172,7 @@ async def update_note(
     return note
 
 @app.delete("/notes/{note_id}")
+@app.delete("/notes/{note_id}/", include_in_schema=False)
 async def delete_note(
     note_id: str,
     user: User = Depends(get_current_user),
@@ -1184,6 +1190,7 @@ async def delete_note(
 # ── CRM ──────────────────────────────────────────────────────────────────────
 
 @app.get("/crm", response_model=List[CRMPersonResponse])
+@app.get("/crm/", response_model=List[CRMPersonResponse], include_in_schema=False)
 async def list_crm(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
@@ -1194,6 +1201,7 @@ async def list_crm(
     return rows
 
 @app.post("/crm", response_model=CRMPersonResponse)
+@app.post("/crm/", response_model=CRMPersonResponse, include_in_schema=False)
 async def create_crm_person(
     data: CRMPersonCreate,
     user: User = Depends(get_current_user),
@@ -1209,6 +1217,7 @@ async def create_crm_person(
     return person
 
 @app.patch("/crm/{person_id}", response_model=CRMPersonResponse)
+@app.patch("/crm/{person_id}/", response_model=CRMPersonResponse, include_in_schema=False)
 async def update_crm_person(
     person_id: str,
     data: CRMPersonUpdate,
@@ -1228,6 +1237,7 @@ async def update_crm_person(
     return person
 
 @app.delete("/crm/{person_id}")
+@app.delete("/crm/{person_id}/", include_in_schema=False)
 async def delete_crm_person(
     person_id: str,
     user: User = Depends(get_current_user),
@@ -1267,6 +1277,7 @@ async def list_time_blocks(
     return rows
 
 @app.post("/time-blocks", response_model=TimeBlockResponse)
+@app.post("/time-blocks/", response_model=TimeBlockResponse, include_in_schema=False)
 async def create_time_block(
     data: TimeBlockCreate,
     user: User = Depends(get_current_user),
@@ -1282,6 +1293,7 @@ async def create_time_block(
     return block
 
 @app.patch("/time-blocks/{block_id}", response_model=TimeBlockResponse)
+@app.patch("/time-blocks/{block_id}/", response_model=TimeBlockResponse, include_in_schema=False)
 async def update_time_block(
     block_id: str,
     data: TimeBlockUpdate,
@@ -1301,6 +1313,7 @@ async def update_time_block(
     return block
 
 @app.delete("/time-blocks/{block_id}")
+@app.delete("/time-blocks/{block_id}/", include_in_schema=False)
 async def delete_time_block(
     block_id: str,
     user: User = Depends(get_current_user),
@@ -1318,6 +1331,7 @@ async def delete_time_block(
 # ── Braindump ─────────────────────────────────────────────────────────────────
 
 @app.get("/braindump", response_model=List[BraindumpEntryResponse])
+@app.get("/braindump/", response_model=List[BraindumpEntryResponse], include_in_schema=False)
 async def list_braindump(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
@@ -1328,6 +1342,7 @@ async def list_braindump(
     return rows
 
 @app.post("/braindump", response_model=BraindumpEntryResponse)
+@app.post("/braindump/", response_model=BraindumpEntryResponse, include_in_schema=False)
 async def create_braindump(
     data: BraindumpEntryCreate,
     user: User = Depends(get_current_user),
@@ -1340,6 +1355,7 @@ async def create_braindump(
     return entry
 
 @app.delete("/braindump/{entry_id}")
+@app.delete("/braindump/{entry_id}/", include_in_schema=False)
 async def delete_braindump(
     entry_id: str,
     user: User = Depends(get_current_user),
@@ -1443,6 +1459,7 @@ async def get_mlb_team_projections(
     }
 
 @app.get("/sports/favorite-teams", response_model=List[FavoriteSportsTeamResponse])
+@app.get("/sports/favorite-teams/", response_model=List[FavoriteSportsTeamResponse], include_in_schema=False)
 async def list_favorite_teams(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
@@ -1453,6 +1470,7 @@ async def list_favorite_teams(
     return rows
 
 @app.post("/sports/favorite-teams", response_model=FavoriteSportsTeamResponse)
+@app.post("/sports/favorite-teams/", response_model=FavoriteSportsTeamResponse, include_in_schema=False)
 async def add_favorite_team(
     data: FavoriteSportsTeamCreate,
     user: User = Depends(get_current_user),
@@ -1467,6 +1485,7 @@ async def add_favorite_team(
     return team
 
 @app.delete("/sports/favorite-teams/{team_id}")
+@app.delete("/sports/favorite-teams/{team_id}/", include_in_schema=False)
 async def remove_favorite_team(
     team_id: str,
     user: User = Depends(get_current_user),
