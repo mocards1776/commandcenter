@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { sportsApi } from "@/lib/api";
 
-const API       = (import.meta as any).env?.VITE_API_URL ?? "https://orca-app-v7oew.ondigitalocean.app";
 const BG        = "#243d28";
 const ROW_BG    = "#1e3422";
 const HEADER_BG = "#182c1c";
@@ -194,14 +193,10 @@ const ID_MAP: Record<number,[string,string]> = {
   116:["DET","Tigers"],   118:["KC","Royals"],     142:["MIN","Twins"],
 };
 
-// ESPN team id → MLB team id for NL Central
-const ESPN_TO_MLB: Record<number, number> = {
-  17: 112,  // Cubs
-  21: 113,  // Reds
-  24: 138,  // Cardinals
-  15: 158,  // Brewers
-  27: 134,  // Pirates
-};
+// Reverse lookup: abbr → team_id
+const ID_MAP_REVERSE: Record<string, number> = Object.fromEntries(
+  Object.entries(ID_MAP).map(([id, [abbr]]) => [abbr, Number(id)])
+);
 
 function StandingsRow({ row, rank }: { row: Row; rank: number }) {
   const win     = row.strk?.startsWith("W");
@@ -361,11 +356,6 @@ function GameBlock({ game, label }: { game: GameData; label: string }) {
   );
 }
 
-// Reverse lookup: abbr → team_id
-const ID_MAP_REVERSE: Record<string, number> = Object.fromEntries(
-  Object.entries(ID_MAP).map(([id, [abbr]]) => [abbr, Number(id)])
-);
-
 // ─── Seed stats (shown while projections load) ───────────────────────────────
 const SEED_STATS: RibbonStat[] = [
   { label: "Proj Wins",   value: "—",  valueColor: GOLD,    glowColor: "rgba(201,168,50,0.4)" },
@@ -381,8 +371,6 @@ function buildStats(
   divPct: number | null,
   wcPct: number | null,
   wsPct: number | null,
-  best: string | null,
-  record: string | null,
 ): RibbonStat[] {
   const fmt = (v: number | null, suffix = "%") =>
     v == null ? "—" : `${v}${suffix}`;
@@ -400,103 +388,6 @@ function buildStats(
   ];
 }
 
-async function fetchProjections(): Promise<RibbonStat[] | null> {
-  try {
-    const d = await sportsApi.mlbProjections("cardinals");
-    return buildStats(d.proj_wins, d.playoff_pct, d.div_pct, d.wc_pct, d.ws_pct, d.best, d.record);
-  } catch {}
-  return null;
-}
-
-// ─── ESPN data fetch (standings + Cardinals schedule) ────────────────────────
-async function fetchEspnData(): Promise<{ nl_central: Row[]; current_game: GameData | null; next_game: GameData | null } | null> {
-  try {
-    const [standingsRes, schedRes] = await Promise.all([
-      fetch("https://site.api.espn.com/apis/v2/sports/baseball/mlb/standings?group=nlcentral"),
-      fetch("https://site.api.espn.com/apis/v2/sports/baseball/mlb/teams/24/schedule?seasontype=2&limit=10"),
-    ]);
-    const standingsJson = await standingsRes.json();
-    const schedJson     = await schedRes.json();
-
-    // ── NL Central standings ──────────────────────────────────────────────
-    const nl_central: Row[] = [];
-    const entries: any[] = standingsJson?.standings?.entries ?? [];
-    entries.forEach((entry: any) => {
-      const espnId = Number(entry.team?.id ?? 0);
-      const mlbId  = ESPN_TO_MLB[espnId] ?? espnId;
-      const stats: any[] = entry.stats ?? [];
-      const getStat = (n: string) => stats.find((s: any) => s.name === n)?.displayValue ?? "—";
-      const wins   = getStat("wins");
-      const losses = getStat("losses");
-      const rawPct = getStat("winPercent");
-      // Ensure PCT has leading dot
-      const pct = rawPct === "—" ? "—" : rawPct.startsWith(".") ? rawPct : "." + rawPct;
-      const gb   = getStat("gamesBehind");
-      const strk = getStat("streak");
-      const l10  = getStat("vsLast10");
-      nl_central.push({
-        team_id: mlbId,
-        abbr: ID_MAP[mlbId]?.[0] ?? entry.team?.abbreviation ?? "???",
-        wl: `${wins}-${losses}`,
-        pct,
-        gb: gb === "0" || gb === "0.0" ? "—" : gb,
-        strk,
-        l10,
-        cards: mlbId === 138,
-      });
-    });
-
-    // ── Cardinals schedule → current + next game ──────────────────────────
-    const events: any[] = schedJson?.events ?? [];
-    const todayStr = new Date().toDateString();
-    let current_game: GameData | null = null;
-    let next_game: GameData | null    = null;
-
-    for (const ev of events) {
-      const comp   = ev.competitions?.[0];
-      if (!comp) continue;
-      const statusName = comp.status?.type?.name ?? "";
-      const evDate     = new Date(comp.date ?? ev.date ?? "").toDateString();
-      const isToday    = evDate === todayStr;
-      const isLive     = statusName === "STATUS_IN_PROGRESS";
-      const isFinal    = statusName === "STATUS_FINAL";
-      const isPre      = statusName === "STATUS_SCHEDULED" || statusName === "STATUS_PREGAME";
-
-      const stlComp = comp.competitors?.find((c: any) => c.team?.abbreviation === "STL");
-      const oppComp = comp.competitors?.find((c: any) => c.team?.abbreviation !== "STL");
-
-      const gameTime = comp.date
-        ? new Date(comp.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-        : "TBD";
-
-      const gd: GameData = {
-        status:    isFinal ? "Final" : isLive ? "Live" : isPre ? "Scheduled" : statusName,
-        is_home:   stlComp?.homeAway === "home",
-        opp_name:  oppComp?.team?.displayName ?? "",
-        opp_abbr:  oppComp?.team?.abbreviation ?? "",
-        stl_score: stlComp?.score != null ? Number(stlComp.score) : null,
-        opp_score: oppComp?.score != null ? Number(oppComp.score) : null,
-        game_time: gameTime,
-        venue:     comp.venue?.fullName ?? "",
-        date_label: evDate,
-      };
-
-      if (isToday && (isLive || isFinal) && !current_game) {
-        current_game = gd;
-      } else if (!next_game && (isPre || (!isToday && !isFinal))) {
-        next_game = gd;
-      }
-
-      if (current_game && next_game) break;
-    }
-
-    return { nl_central, current_game, next_game };
-  } catch (err) {
-    console.error("[BaseballPanel] ESPN fetch failed:", err);
-    return null;
-  }
-}
-
 // ─── Main Panel ──────────────────────────────────────────────────────────────
 export function BaseballPanel() {
   const [data, setData]               = useState<any>(null);
@@ -505,30 +396,11 @@ export function BaseballPanel() {
 
   useEffect(() => {
     const load = async () => {
-      // 1. Try backend first
-      let backendData: any = null;
       try {
-        backendData = await sportsApi.mlbTeam("cardinals");
-      } catch { /* ignore */ }
-
-      const hasStandings = Array.isArray(backendData?.nl_central) && backendData.nl_central.length > 0;
-      const hasGames     = backendData?.current_game != null || backendData?.next_game != null;
-
-      if (hasStandings && hasGames) {
-        setData(backendData);
-        return;
-      }
-
-      // 2. ESPN fallback for missing standings or games
-      const espn = await fetchEspnData();
-      if (espn) {
-        setData({
-          nl_central:   espn.nl_central.length   > 0 ? espn.nl_central   : (backendData?.nl_central   ?? []),
-          current_game: espn.current_game ?? backendData?.current_game ?? null,
-          next_game:    espn.next_game    ?? backendData?.next_game    ?? null,
-        });
-      } else if (backendData) {
-        setData(backendData);
+        const backendData = await sportsApi.mlbTeam("cardinals");
+        if (backendData) setData(backendData);
+      } catch (err) {
+        console.error("[BaseballPanel] backend fetch failed:", err);
       }
     };
 
@@ -538,10 +410,19 @@ export function BaseballPanel() {
   }, []);
 
   useEffect(() => {
-    fetchProjections().then(stats => {
-      if (stats) setRibbonStats(stats);
-      setRibbonLoading(false);
-    });
+    const loadProjections = async () => {
+      try {
+        const d = await sportsApi.mlbProjections("cardinals");
+        if (d) {
+          setRibbonStats(buildStats(d.proj_wins, d.playoff_pct, d.div_pct, d.wc_pct, d.ws_pct));
+        }
+      } catch (err) {
+        console.error("[BaseballPanel] projections fetch failed:", err);
+      } finally {
+        setRibbonLoading(false);
+      }
+    };
+    loadProjections();
   }, []);
 
   const currentGame = data?.current_game ?? null;
