@@ -44,9 +44,6 @@ app.add_middleware(
 # datetime.utcnow() always returns UTC regardless of TZ — never use it here.
 
 # All routes live on this router.
-# Mounted ONCE at root — the old /api prefix mount was removed because double-mounting
-# the same router object causes FastAPI to register duplicate routes, which makes it
-# return 405 on valid paths like /sports/mlb/{team_slug} and /time-blocks/.
 router = APIRouter()
 
 # ─── Auth ─────────────────────────────────────────────
@@ -1099,10 +1096,12 @@ async def mlb_projections(team_slug: str, user: User = Depends(get_current_user)
     return {"proj_wins": None, "playoff_pct": None, "div_pct": None,
             "wc_pct": None, "ws_pct": None, "best": None, "record": None}
 
-# ─── Mount router once at root ─────────────────────────────
-# DO NOT double-mount with app.include_router(router, prefix="/api") —
-# that causes route conflicts manifesting as 405s on valid paths.
+# ─── Mount router at root AND /api prefix ──────────────────
+# Accepts both /time-blocks/ and /api/time-blocks/ (and all other routes)
+# so stale clients, cached service workers, or misconfigured devices
+# sending the /api prefix can't break the app.
 app.include_router(router)
+app.include_router(router, prefix="/api")
 
 # ─── Startup ──────────────────────────────────────────
 @app.on_event("startup")
