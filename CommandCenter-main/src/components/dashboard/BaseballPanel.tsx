@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { sportsApi } from "@/lib/api";
 
 const BG        = "#243d28";
 const ROW_BG    = "#1e3422";
@@ -13,12 +12,200 @@ const WIN_GRN   = "#3a9140";
 const LOSS_RD   = "#c83030";
 const FONT      = "'Oswald',Arial,sans-serif";
 
+const STL_ID = 138;
+const NL_CENTRAL_IDS = [112, 113, 138, 158, 134]; // CHC, CIN, STL, MIL, PIT
+
+const ID_MAP: Record<number, [string, string]> = {
+  112: ["CHC", "Cubs"],      113: ["CIN", "Reds"],       138: ["STL", "Cardinals"],
+  158: ["MIL", "Brewers"],   134: ["PIT", "Pirates"],    137: ["SF", "Giants"],
+  119: ["LAD", "Dodgers"],   135: ["SD", "Padres"],      109: ["ARI", "D-backs"],
+  115: ["COL", "Rockies"],   144: ["ATL", "Braves"],     121: ["NYM", "Mets"],
+  143: ["PHI", "Phillies"],  146: ["MIA", "Marlins"],    120: ["WSH", "Nats"],
+  147: ["NYY", "Yankees"],   111: ["BOS", "Red Sox"],    141: ["TOR", "Blue Jays"],
+  139: ["TB", "Rays"],       110: ["BAL", "Orioles"],    117: ["HOU", "Astros"],
+  140: ["TEX", "Rangers"],   136: ["SEA", "Mariners"],   108: ["LAA", "Angels"],
+  133: ["OAK", "Athletics"], 145: ["CHW", "White Sox"],  114: ["CLE", "Guardians"],
+  116: ["DET", "Tigers"],    118: ["KC", "Royals"],       142: ["MIN", "Twins"],
+};
+
+const ID_MAP_REVERSE: Record<string, number> = Object.fromEntries(
+  Object.entries(ID_MAP).map(([id, [abbr]]) => [abbr, Number(id)])
+);
+
+// ─── MLB Stats API helpers (public, no auth, CORS-safe) ─────────────────────
+
+async function fetchStandings(): Promise<Row[]> {
+  const url =
+    "https://statsapi.mlb.com/api/v1/standings?leagueId=104&season=2026&standingsTypes=regularSeason&hydrate=team";
+  const res = await fetch(url);
+  const json = await res.json();
+
+  const rows: Row[] = [];
+  for (const record of json.records ?? []) {
+    for (const tr of record.teamRecords ?? []) {
+      const tid: number = tr.team?.id;
+      if (!NL_CENTRAL_IDS.includes(tid)) continue;
+      const wins   = tr.wins   ?? 0;
+      const losses = tr.losses ?? 0;
+      const gb     = tr.gamesBack ?? "0";
+      const strk   = tr.streak?.streakCode ?? "";
+      const last10 = tr.records?.splitRecords?.find((s: any) => s.type === "lastTen");
+      rows.push({
+        team_id: tid,
+        wl:  `${wins}-${losses}`,
+        pct: tr.winningPercentage ?? ".000",
+        gb:  gb === "-" ? "0" : String(gb),
+        strk,
+        l10: last10 ? `${last10.wins}-${last10.losses}` : "",
+        cards: tid === STL_ID,
+      });
+    }
+  }
+
+  // Sort by wins desc, then losses asc
+  rows.sort((a, b) => {
+    const [aw, al] = a.wl.split("-").map(Number);
+    const [bw, bl] = b.wl.split("-").map(Number);
+    return bw !== aw ? bw - aw : al - bl;
+  });
+
+  return rows;
+}
+
+async function fetchCardinalsGames(): Promise<{ current_game: GameData | null; next_game: GameData | null }> {
+  const today = new Date().toISOString().slice(0, 10);
+  const url = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=${STL_ID}&startDate=${today}&endDate=${today}&hydrate=linescore,probablePitcher,team`;
+  const res  = await fetch(url);
+  const json = await res.json();
+
+  const todayGames = json.dates?.[0]?.games ?? [];
+  let current_game: GameData | null = null;
+
+  if (todayGames.length > 0) {
+    const g = todayGames[0];
+    const isHome   = g.teams?.home?.team?.id === STL_ID;
+    const opp      = isHome ? g.teams?.away : g.teams?.home;
+    const oppId    = opp?.team?.id ?? 0;
+    const [oppAbbr] = ID_MAP[oppId] ?? ["???", "Unknown"];
+    const status   = g.status?.abstractGameState ?? "";
+    const ls       = g.linescore ?? {};
+    const stlTeam  = isHome ? g.teams?.home : g.teams?.away;
+    const oppTeam  = isHome ? g.teams?.away : g.teams?.home;
+
+    const gameTimeRaw: string | undefined = g.gameDate;
+    let gameTimeFmt = "TBD";
+    if (gameTimeRaw) {
+      const d = new Date(gameTimeRaw);
+      gameTimeFmt = d.toLocaleTimeString("en-US", {
+        hour: "numeric", minute: "2-digit", timeZone: "America/Chicago",
+      }) + " CT";
+    }
+
+    current_game = {
+      game_pk:      g.gamePk,
+      status:       status === "Final" ? "Final" : status === "Live" ? "Live" : "Scheduled",
+      is_home:      isHome,
+      opp_name:     opp?.team?.teamName ?? "",
+      opp_abbr:     oppAbbr,
+      stl_score:    stlTeam?.score ?? null,
+      opp_score:    oppTeam?.score ?? null,
+      inning:       ls.currentInning ?? null,
+      inning_half:  ls.inningHalf ?? null,
+      outs:         ls.outs ?? null,
+      balls:        ls.balls ?? null,
+      strikes:      ls.strikes ?? null,
+      stl_pitcher:  (isHome ? g.teams?.home : g.teams?.away)?.probablePitcher?.fullName ?? null,
+      opp_pitcher:  (isHome ? g.teams?.away : g.teams?.home)?.probablePitcher?.fullName ?? null,
+      game_time:    gameTimeFmt,
+      venue:        g.venue?.name ?? null,
+    };
+  }
+
+  // Next game: look ahead up to 7 days
+  let next_game: GameData | null = null;
+  if (!current_game || current_game.status === "Final") {
+    const start = new Date();
+    start.setDate(start.getDate() + (current_game ? 1 : 0));
+    const end   = new Date(start);
+    end.setDate(end.getDate() + 7);
+    const fmt = (d: Date) => d.toISOString().slice(0, 10);
+    const nUrl = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=${STL_ID}&startDate=${fmt(start)}&endDate=${fmt(end)}&hydrate=probablePitcher,team`;
+    const nRes  = await fetch(nUrl);
+    const nJson = await nRes.json();
+    const nextGames = nJson.dates?.[0]?.games ?? [];
+    if (nextGames.length > 0) {
+      const g      = nextGames[0];
+      const isHome = g.teams?.home?.team?.id === STL_ID;
+      const opp    = isHome ? g.teams?.away : g.teams?.home;
+      const oppId  = opp?.team?.id ?? 0;
+      const [oppAbbr] = ID_MAP[oppId] ?? ["???", "Unknown"];
+      const gameTimeRaw: string | undefined = g.gameDate;
+      let gameTimeFmt = "TBD";
+      if (gameTimeRaw) {
+        const d = new Date(gameTimeRaw);
+        gameTimeFmt = d.toLocaleTimeString("en-US", {
+          hour: "numeric", minute: "2-digit", timeZone: "America/Chicago",
+        }) + " CT";
+      }
+      const dateLabel = gameTimeRaw
+        ? new Date(gameTimeRaw).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "America/Chicago" })
+        : "";
+
+      next_game = {
+        game_pk:     g.gamePk,
+        status:      "Scheduled",
+        is_home:     isHome,
+        opp_name:    opp?.team?.teamName ?? "",
+        opp_abbr:    oppAbbr,
+        stl_score:   null,
+        opp_score:   null,
+        stl_pitcher: (isHome ? g.teams?.home : g.teams?.away)?.probablePitcher?.fullName ?? null,
+        opp_pitcher: (isHome ? g.teams?.away : g.teams?.home)?.probablePitcher?.fullName ?? null,
+        game_time:   gameTimeFmt,
+        venue:       g.venue?.name ?? null,
+        date_label:  dateLabel,
+      };
+    }
+  }
+
+  return { current_game, next_game };
+}
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
 interface RibbonStat {
   label: string;
   value: string;
   valueColor: string;
   glowColor: string;
 }
+
+type Row = {
+  abbr?: string; full?: string; teamName?: string; team_id?: number;
+  wl: string; pct: string; gb: string; strk: string; l10: string; cards?: boolean;
+};
+
+interface GameData {
+  game_pk?: number;
+  status?: string;
+  is_home?: boolean;
+  opp_name?: string;
+  opp_abbr?: string;
+  stl_score?: number | null;
+  opp_score?: number | null;
+  inning?: number | null;
+  inning_half?: string | null;
+  outs?: number | null;
+  balls?: number | null;
+  strikes?: number | null;
+  stl_pitcher?: string | null;
+  opp_pitcher?: string | null;
+  game_time?: string;
+  venue?: string;
+  date_label?: string;
+}
+
+// ─── Sub-components (unchanged from original) ────────────────────────────────
 
 function CardinalsLogo({ size = 36 }: { size?: number }) {
   return (
@@ -178,30 +365,10 @@ function SBHead({ label }: { label: string }) {
   );
 }
 
-type Row = { abbr?: string; full?: string; teamName?: string; team_id?: number; wl: string; pct: string; gb: string; strk: string; l10: string; cards?: boolean };
-
-const ID_MAP: Record<number,[string,string]> = {
-  112:["CHC","Cubs"],     113:["CIN","Reds"],      138:["STL","Cardinals"],
-  158:["MIL","Brewers"],  134:["PIT","Pirates"],   137:["SF","Giants"],
-  119:["LAD","Dodgers"],  135:["SD","Padres"],     109:["ARI","D-backs"],
-  115:["COL","Rockies"],  144:["ATL","Braves"],    121:["NYM","Mets"],
-  143:["PHI","Phillies"], 146:["MIA","Marlins"],   120:["WSH","Nats"],
-  147:["NYY","Yankees"],  111:["BOS","Red Sox"],   141:["TOR","Blue Jays"],
-  139:["TB","Rays"],      110:["BAL","Orioles"],   117:["HOU","Astros"],
-  140:["TEX","Rangers"],  136:["SEA","Mariners"],  108:["LAA","Angels"],
-  133:["OAK","Athletics"],145:["CHW","White Sox"], 114:["CLE","Guardians"],
-  116:["DET","Tigers"],   118:["KC","Royals"],     142:["MIN","Twins"],
-};
-
-// Reverse lookup: abbr → team_id
-const ID_MAP_REVERSE: Record<string, number> = Object.fromEntries(
-  Object.entries(ID_MAP).map(([id, [abbr]]) => [abbr, Number(id)])
-);
-
 function StandingsRow({ row, rank }: { row: Row; rank: number }) {
-  const win     = row.strk?.startsWith("W");
-  const tid     = row.team_id as number;
-  const abbr      = ID_MAP[tid]?.[0] ?? row.abbr ?? "???";
+  const win      = row.strk?.startsWith("W");
+  const tid      = row.team_id as number;
+  const abbr     = ID_MAP[tid]?.[0] ?? row.abbr ?? "???";
   const shortName = ID_MAP[tid]?.[1] ?? row.full ?? "";
 
   const statPanel = (content: React.ReactNode, gold = false) => (
@@ -246,40 +413,18 @@ function StandingsRow({ row, rank }: { row: Row; rank: number }) {
   );
 }
 
-interface GameData {
-  game_pk?: number;
-  status?: string;
-  is_home?: boolean;
-  opp_name?: string;
-  opp_abbr?: string;
-  city?: string;
-  stl_score?: number | null;
-  opp_score?: number | null;
-  inning?: number | null;
-  inning_half?: string | null;
-  outs?: number | null;
-  balls?: number | null;
-  strikes?: number | null;
-  stl_pitcher?: string | null;
-  opp_pitcher?: string | null;
-  game_time?: string;
-  venue?: string;
-  date_label?: string;
-}
-
 function GameBlock({ game, label }: { game: GameData; label: string }) {
   if (!game) return null;
-  const isFinal = game.status === "Final";
-  const isLive  = game.status === "Live";
+  const isFinal  = game.status === "Final";
+  const isLive   = game.status === "Live";
   const hasScore = game.stl_score != null && game.opp_score != null;
-  const stlWin  = hasScore && isFinal && (game.stl_score! > game.opp_score!);
-  const stlLoss = hasScore && isFinal && (game.stl_score! < game.opp_score!);
+  const stlWin   = hasScore && isFinal && (game.stl_score! > game.opp_score!);
+  const stlLoss  = hasScore && isFinal && (game.stl_score! < game.opp_score!);
 
   return (
     <div>
       <SBHead label={label} />
       <div style={{ padding: "6px 8px", background: BG }}>
-        {/* Opponent row */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ fontFamily: FONT, fontSize: 9, color: MUTED }}>
@@ -306,7 +451,6 @@ function GameBlock({ game, label }: { game: GameData; label: string }) {
           </span>
         </div>
 
-        {/* Score / time row */}
         <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
           {hasScore ? (
             <>
@@ -318,6 +462,9 @@ function GameBlock({ game, label }: { game: GameData; label: string }) {
             </>
           ) : (
             <div style={{ flex: 1 }}>
+              {game.date_label && (
+                <div style={{ fontFamily: FONT, fontSize: 9, color: DIM, marginBottom: 2 }}>{game.date_label}</div>
+              )}
               <div style={{ fontFamily: FONT, fontSize: 18, fontWeight: 700, color: GOLD, letterSpacing: "0.04em" }}>
                 {game.game_time ?? "TBD"}
               </div>
@@ -327,7 +474,6 @@ function GameBlock({ game, label }: { game: GameData; label: string }) {
             </div>
           )}
 
-          {/* Live count box */}
           {isLive && game.balls != null && (
             <div style={{ marginLeft: "auto", display: "flex", flexDirection: "column", gap: 2, alignItems: "flex-end" }}>
               <FlipCell value={`${game.balls}-${game.strikes}`} sub="B-S" color="muted" small />
@@ -336,18 +482,13 @@ function GameBlock({ game, label }: { game: GameData; label: string }) {
           )}
         </div>
 
-        {/* Pitchers */}
         {(game.stl_pitcher || game.opp_pitcher) && (
           <div style={{ marginTop: 4, display: "flex", gap: 12 }}>
             {game.stl_pitcher && (
-              <span style={{ fontFamily: FONT, fontSize: 8, color: DIM }}>
-                STL: {game.stl_pitcher}
-              </span>
+              <span style={{ fontFamily: FONT, fontSize: 8, color: DIM }}>STL: {game.stl_pitcher}</span>
             )}
             {game.opp_pitcher && (
-              <span style={{ fontFamily: FONT, fontSize: 8, color: DIM }}>
-                {game.opp_abbr}: {game.opp_pitcher}
-              </span>
+              <span style={{ fontFamily: FONT, fontSize: 8, color: DIM }}>{game.opp_abbr}: {game.opp_pitcher}</span>
             )}
           </div>
         )}
@@ -356,51 +497,39 @@ function GameBlock({ game, label }: { game: GameData; label: string }) {
   );
 }
 
-// ─── Seed stats (shown while projections load) ───────────────────────────────
 const SEED_STATS: RibbonStat[] = [
-  { label: "Proj Wins",   value: "—",  valueColor: GOLD,    glowColor: "rgba(201,168,50,0.4)" },
-  { label: "Playoffs",    value: "—",  valueColor: "#c41e3a", glowColor: "rgba(196,30,58,0.4)" },
-  { label: "NL Central",  value: "—",  valueColor: "#f5f0e0", glowColor: "rgba(245,240,224,0.3)" },
-  { label: "Wild Card",   value: "—",  valueColor: "#4ade80", glowColor: "rgba(74,222,128,0.3)" },
-  { label: "World Series",value: "—",  valueColor: "#60a5fa", glowColor: "rgba(96,165,250,0.3)" },
+  { label: "Proj Wins",    value: "—", valueColor: GOLD,      glowColor: "rgba(201,168,50,0.4)" },
+  { label: "Playoffs",     value: "—", valueColor: "#c41e3a", glowColor: "rgba(196,30,58,0.4)" },
+  { label: "NL Central",   value: "—", valueColor: "#f5f0e0", glowColor: "rgba(245,240,224,0.3)" },
+  { label: "Wild Card",    value: "—", valueColor: "#4ade80", glowColor: "rgba(74,222,128,0.3)" },
+  { label: "World Series", value: "—", valueColor: "#60a5fa", glowColor: "rgba(96,165,250,0.3)" },
 ];
 
-function buildStats(
-  projWins: number | null,
-  playoffPct: number | null,
-  divPct: number | null,
-  wcPct: number | null,
-  wsPct: number | null,
-): RibbonStat[] {
-  const fmt = (v: number | null, suffix = "%") =>
-    v == null ? "—" : `${v}${suffix}`;
-  return [
-    { label: "Proj Wins",    value: projWins != null ? String(projWins) : "—",
-      valueColor: GOLD, glowColor: "rgba(201,168,50,0.4)" },
-    { label: "Playoffs",     value: fmt(playoffPct),
-      valueColor: "#c41e3a", glowColor: "rgba(196,30,58,0.4)" },
-    { label: "NL Central",   value: fmt(divPct),
-      valueColor: "#f5f0e0", glowColor: "rgba(245,240,224,0.3)" },
-    { label: "Wild Card",    value: fmt(wcPct),
-      valueColor: "#4ade80", glowColor: "rgba(74,222,128,0.3)" },
-    { label: "World Series", value: fmt(wsPct),
-      valueColor: "#60a5fa", glowColor: "rgba(96,165,250,0.3)" },
-  ];
-}
-
 // ─── Main Panel ──────────────────────────────────────────────────────────────
+
 export function BaseballPanel() {
-  const [data, setData]               = useState<any>(null);
-  const [ribbonStats, setRibbonStats] = useState<RibbonStat[]>(SEED_STATS);
-  const [ribbonLoading, setRibbonLoading] = useState(true);
+  const [standings,    setStandings]    = useState<Row[]>([]);
+  const [currentGame,  setCurrentGame]  = useState<GameData | null>(null);
+  const [nextGame,     setNextGame]     = useState<GameData | null>(null);
+  const [standingsErr, setStandingsErr] = useState(false);
 
   useEffect(() => {
     const load = async () => {
       try {
-        const backendData = await sportsApi.mlbTeam("cardinals");
-        if (backendData) setData(backendData);
+        const rows = await fetchStandings();
+        setStandings(rows);
+        setStandingsErr(false);
       } catch (err) {
-        console.error("[BaseballPanel] backend fetch failed:", err);
+        console.error("[BaseballPanel] standings fetch failed:", err);
+        setStandingsErr(true);
+      }
+
+      try {
+        const { current_game, next_game } = await fetchCardinalsGames();
+        setCurrentGame(current_game);
+        setNextGame(next_game);
+      } catch (err) {
+        console.error("[BaseballPanel] schedule fetch failed:", err);
       }
     };
 
@@ -409,34 +538,12 @@ export function BaseballPanel() {
     return () => clearInterval(id);
   }, []);
 
-  useEffect(() => {
-    const loadProjections = async () => {
-      try {
-        const d = await sportsApi.mlbProjections("cardinals");
-        if (d) {
-          setRibbonStats(buildStats(d.proj_wins, d.playoff_pct, d.div_pct, d.wc_pct, d.ws_pct));
-        }
-      } catch (err) {
-        console.error("[BaseballPanel] projections fetch failed:", err);
-      } finally {
-        setRibbonLoading(false);
-      }
-    };
-    loadProjections();
-  }, []);
-
-  const currentGame = data?.current_game ?? null;
-  const nextGame    = data?.next_game    ?? null;
-  const standings   = data?.nl_central  ?? [];
-
   return (
     <div style={{ fontFamily: FONT, background: BG, borderRadius: 6, overflow: "hidden",
       border: "1px solid rgba(232,168,32,0.15)" }}>
 
-      {/* ── NL Central Standings ── */}
       <SBHead label="NL Central Standings" />
       <div style={{ background: BG }}>
-        {/* Column headers */}
         <div style={{
           display: "grid",
           gridTemplateColumns: "18px 32px 1fr 54px 38px 52px 40px",
@@ -444,28 +551,26 @@ export function BaseballPanel() {
           background: HEADER_BG,
           borderBottom: "1px solid rgba(232,168,32,0.1)",
         }}>
-          {["#","","Team","W-L","PCT","GB","STRK"].map((h, i) => (
+          {["#", "", "Team", "W-L", "PCT", "GB", "STRK"].map((h, i) => (
             <span key={i} style={{ fontFamily: FONT, fontSize: 7, fontWeight: 700,
               letterSpacing: "0.12em", color: DIM, textAlign: i === 0 ? "center" : "left" as any }}>{h}</span>
           ))}
         </div>
         {standings.length > 0 ? (
-          standings.map((row: Row, i: number) => (
+          standings.map((row, i) => (
             <StandingsRow key={row.team_id ?? i} row={row} rank={i + 1} />
           ))
         ) : (
           <div style={{ padding: "12px 8px", fontFamily: FONT, fontSize: 9, color: DIM, textAlign: "center" }}>
-            {data == null ? "Loading standings…" : "No standings available"}
+            {standingsErr ? "Failed to load standings" : "Loading standings…"}
           </div>
         )}
       </div>
 
-      {/* ── Game blocks ── */}
       {currentGame && <GameBlock game={currentGame} label="Today's Game" />}
       {nextGame    && <GameBlock game={nextGame}    label="Next Game" />}
 
-      {/* ── LED Ribbon Board ── */}
-      <LedRibbonBoard stats={ribbonStats} loading={ribbonLoading} />
+      <LedRibbonBoard stats={SEED_STATS} loading={false} />
     </div>
   );
 }
