@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "react-hot-toast";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
@@ -21,7 +21,9 @@ import { SportsPage }     from "@/pages/SportsPage";
 import { LoginPage }      from "@/pages/LoginPage";
 import { tokenStore }     from "@/lib/api";
 
-const qc = new QueryClient({ defaultOptions:{ queries:{ staleTime:30_000, retry:1 } } });
+function makeQC() {
+  return new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, retry: 1 } } });
+}
 
 function AppShell() {
   const { sidebarCollapsed } = useUIStore();
@@ -46,7 +48,6 @@ function AppShell() {
             <Route path="/crm"       element={<CRMPage />} />
             <Route path="/stats"     element={<StatsPage />} />
             <Route path="/sports"    element={<SportsPage />} />
-            {/* Unknown path → dashboard */}
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </div>
@@ -61,8 +62,10 @@ function AppShell() {
 }
 
 export default function App() {
-  // Read token from cookie (localStorage is blocked in Vercel sandboxed iframes)
   const [token, setToken] = useState<string | null>(() => tokenStore.get());
+  // Each login cycle gets a fresh QueryClient so no stale unauthenticated
+  // queries survive in the cache and fire without a Bearer token.
+  const qcRef = useRef<QueryClient>(makeQC());
 
   useEffect(() => {
     const handleLogout = () => setToken(null);
@@ -70,12 +73,19 @@ export default function App() {
     return () => window.removeEventListener("auth:logout", handleLogout);
   }, []);
 
+  function handleLogin(t: string) {
+    tokenStore.set(t);
+    // Fresh client — no cached 401 results carried over
+    qcRef.current = makeQC();
+    setToken(t);
+  }
+
   if (!token) {
-    return <LoginPage onLogin={(t) => { tokenStore.set(t); setToken(t); }} />;
+    return <LoginPage onLogin={handleLogin} />;
   }
 
   return (
-    <QueryClientProvider client={qc}>
+    <QueryClientProvider client={qcRef.current}>
       <BrowserRouter>
         <AppShell />
       </BrowserRouter>
