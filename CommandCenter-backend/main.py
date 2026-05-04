@@ -1036,6 +1036,77 @@ async def get_active_time_entry(
         return {"active": None}
     return {"active": _time_entry_to_dict(entry)}
 
+@app.post("/time-entries/start")
+@app.post("/time-entries/start/", include_in_schema=False)
+async def start_time_entry(
+    data: dict,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    # Stop any currently running entry first
+    active = session.execute(
+        select(TimeEntry).where(
+            TimeEntry.user_id == user.id,
+            TimeEntry.ended_at == None,  # noqa: E711
+        )
+    ).scalar()
+    if active:
+        active.ended_at = datetime.utcnow()
+        if active.started_at:
+            delta = active.ended_at - active.started_at
+            active.duration_seconds = int(delta.total_seconds())
+        session.add(active)
+
+    task_id = data.get("task_id")
+    note = data.get("description") or data.get("note")
+    entry = TimeEntry(
+        task_id=task_id,
+        note=note,
+        started_at=datetime.utcnow(),
+        user_id=user.id,
+    )
+    session.add(entry)
+    session.commit()
+    session.refresh(entry)
+    return _time_entry_to_dict(entry)
+
+@app.post("/time-entries/{entry_id}/stop")
+@app.post("/time-entries/{entry_id}/stop/", include_in_schema=False)
+async def stop_time_entry(
+    entry_id: str,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    if not entry_id or entry_id == "undefined":
+        # Fallback: stop whatever is active
+        entry = session.execute(
+            select(TimeEntry).where(
+                TimeEntry.user_id == user.id,
+                TimeEntry.ended_at == None,  # noqa: E711
+            ).order_by(TimeEntry.started_at.desc())
+        ).scalar()
+    else:
+        entry = session.execute(
+            select(TimeEntry).where(
+                TimeEntry.id == entry_id,
+                TimeEntry.user_id == user.id,
+            )
+        ).scalar()
+
+    if not entry:
+        raise HTTPException(status_code=404, detail="Time entry not found")
+    if entry.ended_at:
+        return _time_entry_to_dict(entry)
+
+    entry.ended_at = datetime.utcnow()
+    if entry.started_at:
+        delta = entry.ended_at - entry.started_at
+        entry.duration_seconds = int(delta.total_seconds())
+    session.add(entry)
+    session.commit()
+    session.refresh(entry)
+    return _time_entry_to_dict(entry)
+
 @app.post("/time-entries", response_model=TimeEntryResponse)
 @app.post("/time-entries/", response_model=TimeEntryResponse, include_in_schema=False)
 async def create_time_entry(
@@ -1195,14 +1266,26 @@ async def delete_crm_person(
 
 # ── Time Blocks ───────────────────────────────────────────────────────────────
 
-@app.get("/time-blocks", response_model=List[TimeBlockResponse])
+@app.get("/time-blocks")
+@app.get("/time-blocks/", include_in_schema=False)
+@app.get("/api/time-blocks", include_in_schema=False)
+@app.get("/api/time-blocks/", include_in_schema=False)
 async def list_time_blocks(
+    date: Optional[str] = Query(default=None),
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    rows = session.execute(
-        select(TimeBlock).where(TimeBlock.user_id == user.id).order_by(TimeBlock.start_time)
-    ).scalars().all()
+    q = select(TimeBlock).where(TimeBlock.user_id == user.id)
+    if date:
+        try:
+            filter_date = datetime.strptime(date, "%Y-%m-%d").date()
+            day_start = datetime(filter_date.year, filter_date.month, filter_date.day)
+            day_end = day_start + timedelta(days=1)
+            q = q.where(TimeBlock.start_time >= day_start, TimeBlock.start_time < day_end)
+        except ValueError:
+            pass
+    q = q.order_by(TimeBlock.start_time)
+    rows = session.execute(q).scalars().all()
     return rows
 
 @app.post("/time-blocks", response_model=TimeBlockResponse)
@@ -1294,6 +1377,92 @@ async def delete_braindump(
     return {"detail": "deleted"}
 
 # ── Sports ────────────────────────────────────────────────────────────────────
+
+# ESPN team slug -> ESPN team ID mapping for MLB
+_ESPN_MLB_TEAM_IDS = {
+    "angels": 3, "astros": 18, "athletics": 11, "blue-jays": 14,
+    "braves": 15, "brewers": 8, "cardinals": 24, "cubs": 16,
+    "diamondbacks": 29, "dodgers": 19, "giants": 26, "guardians": 5,
+    "mariners": 12, "marlins": 28, "mets": 21, "nationals": 20,
+    "orioles": 1, "padres": 25, "phillies": 22, "pirates": 23,
+    "rangers": 13, "rays": 30, "red-sox": 2, "reds": 17,
+    "rockies": 27, "royals": 7, "tigers": 6, "twins": 9,
+    "white-sox": 4, "yankees": 10,
+}
+
+@app.get("/sports/mlb/{team_slug}")
+@app.get("/sports/mlb/{team_slug}/", include_in_schema=False)
+async def get_mlb_team(
+    team_slug: str,
+    user: User = Depends(get_current_user),
+):
+    team_id = _ESPN_MLB_TEAM_IDS.get(team_slug.lower())
+    if not team_id:
+        raise HTTPException(status_code=404, detail=f"Unknown MLB team slug: {team_slug}")
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        # Fetch schedule (last 5 + next 5 games)
+        try:
+            sched_resp = await client.get(
+                f"https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams/{team_id}/schedule",
+                params={"seasontype": 2, "limit": 10},
+            )
+            sched_data = sched_resp.json() if sched_resp.status_code == 200 else {}
+        except Exception:
+            sched_data = {}
+
+        # Fetch team info
+        try:
+            team_resp = await client.get(
+                f"https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams/{team_id}",
+            )
+            team_data = team_resp.json() if team_resp.status_code == 200 else {}
+        except Exception:
+            team_data = {}
+
+    return {
+        "team_slug": team_slug,
+        "team_id": team_id,
+        "team": team_data.get("team", {}),
+        "schedule": sched_data,
+    }
+
+@app.get("/sports/mlb/{team_slug}/projections")
+@app.get("/sports/mlb/{team_slug}/projections/", include_in_schema=False)
+async def get_mlb_team_projections(
+    team_slug: str,
+    user: User = Depends(get_current_user),
+):
+    team_id = _ESPN_MLB_TEAM_IDS.get(team_slug.lower())
+    if not team_id:
+        raise HTTPException(status_code=404, detail=f"Unknown MLB team slug: {team_slug}")
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        # Fetch standings for win/loss context
+        try:
+            standings_resp = await client.get(
+                "https://site.api.espn.com/apis/v2/sports/baseball/mlb/standings",
+                params={"group": "nlcentral" if team_id in [24, 16, 17, 23, 22] else "alcentral"},
+            )
+            standings_data = standings_resp.json() if standings_resp.status_code == 200 else {}
+        except Exception:
+            standings_data = {}
+
+        # Fetch roster
+        try:
+            roster_resp = await client.get(
+                f"https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams/{team_id}/roster",
+            )
+            roster_data = roster_resp.json() if roster_resp.status_code == 200 else {}
+        except Exception:
+            roster_data = {}
+
+    return {
+        "team_slug": team_slug,
+        "team_id": team_id,
+        "standings_context": standings_data,
+        "roster": roster_data,
+    }
 
 @app.get("/sports/favorite-teams", response_model=List[FavoriteSportsTeamResponse])
 async def list_favorite_teams(
