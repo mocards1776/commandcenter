@@ -27,6 +27,8 @@ from schemas import UserCreate, UserResponse, UserLogin
 app = FastAPI(title="CommandCenter API")
 
 # CORS — allow everything; DO App Platform edge handles TLS termination
+# CORSMiddleware handles OPTIONS preflight automatically — do NOT add a
+# catch-all @app.options handler; it will intercept all routes and return 405.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -34,20 +36,6 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
-
-# Explicit OPTIONS handler — ensures preflight never hits the DO edge CORS filter
-@app.options("/{rest_of_path:path}")
-async def preflight_handler(rest_of_path: str):
-    from fastapi.responses import Response
-    return Response(
-        status_code=200,
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "*",
-            "Access-Control-Max-Age": "86400",
-        },
-    )
 
 # NOTE: datetime.now() respects the TZ environment variable (set to America/Chicago in DO).
 # datetime.utcnow() always returns UTC regardless of TZ — never use it here.

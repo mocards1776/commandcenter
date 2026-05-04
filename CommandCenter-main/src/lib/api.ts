@@ -47,7 +47,7 @@ export const tokenStore = {
   },
 };
 
-// build: 2026-05-03 — all mutations use PUT; PATCH removed to avoid CORS preflight failures
+// build: 2026-05-04 — all mutations use PUT; PATCH removed to avoid CORS preflight failures
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || "https://orca-app-v7oew.ondigitalocean.app",
   headers: { "Content-Type": "application/json" },
@@ -145,20 +145,22 @@ export const habitsApi = {
 
 // ─── Time Entries ─────────────────────────────────────────────
 export const timersApi = {
-  // No trailing slash — DO edge returns 405 on slash-redirect for these routes
+  // No trailing slash — DO edge returns 405 on slash-redirects for these routes
   active: () =>
     api.get<TimeEntry | null>("/time-entries/active").then(r => r.data),
   start: (data: { task_id?: string; habit_id?: string; started_at: string; note?: string }) =>
     api.post<TimeEntry>("/time-entries/start", data).then(r => r.data),
-  stop: (id: string, data: { ended_at: string; note?: string }) =>
-    api.post<TimeEntry>(`/time-entries/${id}/stop/`, data).then(r => r.data),
+  stop: (id: string | undefined, data: { ended_at: string; note?: string }) => {
+    if (!id || id === "undefined") return Promise.reject(new Error("stop called with no entry id"));
+    return api.post<TimeEntry>(`/time-entries/${id}/stop/`, data).then(r => r.data);
+  },
   list: (params?: Record<string, any>) =>
     api.get<TimeEntry[]>("/time-entries/", { params }).then(r => r.data),
 };
 
 // ─── Time Blocks ──────────────────────────────────────────────
 export const timeBlocksApi = {
-  // Removed duplicate /api prefix — baseURL already points to the app root
+  // No /api prefix — baseURL already points to the app root
   list: (date?: string) =>
     api.get<TimeBlock[]>("/time-blocks/", { params: date ? { date } : undefined }).then(r => r.data),
   create: (data: any) =>
