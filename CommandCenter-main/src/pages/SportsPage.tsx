@@ -109,26 +109,23 @@ function NlCentralStandings() {
 function CardinalsSchedule() {
   const { data, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ["cardinals-schedule"],
-    queryFn: () => {
+    queryFn: async () => {
       const today = new Date();
       const startDate = today.toISOString().slice(0, 10);
       const end = new Date(today);
       end.setDate(end.getDate() + 14);
       const endDate = end.toISOString().slice(0, 10);
-      return axios
-        .get(`${MLB_API}/schedule`, {
-          params: {
-            sportId: 1,
-            teamId: CARDINALS_ID,
-            startDate,
-            endDate,
-            hydrate: "team,linescore",
-          },
-        })
-        .then((r) => {
-          const dates = r.data?.dates ?? [];
-          return dates.flatMap((d: any) => (Array.isArray(d.games) ? d.games : []));
-        }),
+      const r = await axios.get(`${MLB_API}/schedule`, {
+        params: {
+          sportId: 1,
+          teamId: CARDINALS_ID,
+          startDate,
+          endDate,
+          hydrate: "team,linescore",
+        },
+      });
+      const dates = r.data?.dates ?? [];
+      return dates.flatMap((d: any) => (Array.isArray(d.games) ? d.games : []));
     },
     staleTime: 300_000,
   });
