@@ -43,12 +43,6 @@ ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
 ]
 
-def _is_allowed_origin(origin: str) -> bool:
-    return (
-        origin in ALLOWED_ORIGINS
-        or (origin.startswith("https://command-center") and origin.endswith(".vercel.app"))
-    )
-
 app = FastAPI(title="CommandCenter API", redirect_slashes=True)
 
 app.add_middleware(
@@ -61,22 +55,6 @@ app.add_middleware(
     expose_headers=["*"],
     max_age=600,
 )
-
-@app.options("/{rest_of_path:path}")
-async def preflight_handler(rest_of_path: str, request: Request):
-    origin = request.headers.get("origin", "")
-    if _is_allowed_origin(origin):
-        return Response(
-            status_code=200,
-            headers={
-                "Access-Control-Allow-Origin": origin,
-                "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-                "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept, X-Requested-With",
-                "Access-Control-Allow-Credentials": "true",
-                "Access-Control-Max-Age": "600",
-            },
-        )
-    return Response(status_code=403)
 
 @app.on_event("startup")
 def _on_startup():
