@@ -32,7 +32,7 @@ const ID_MAP_REVERSE: Record<string, number> = Object.fromEntries(
   Object.entries(ID_MAP).map(([id, [abbr]]) => [abbr, Number(id)])
 );
 
-// ─── MLB Stats API helpers (public, no auth, CORS-safe) ─────────────────────
+// ─── MLB Stats API helpers ──────────────────────────────────────────────────
 
 async function fetchStandings(): Promise<Row[]> {
   const url =
@@ -120,50 +120,51 @@ async function fetchCardinalsGames(): Promise<{ current_game: GameData | null; n
     };
   }
 
-  let next_game: GameData | null = null;
-  if (!current_game || current_game.status === "Final") {
-    const start = new Date();
-    start.setDate(start.getDate() + (current_game ? 1 : 0));
-    const end   = new Date(start);
-    end.setDate(end.getDate() + 7);
-    const fmt = (d: Date) => d.toISOString().slice(0, 10);
-    const nUrl = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=${STL_ID}&startDate=${fmt(start)}&endDate=${fmt(end)}&hydrate=probablePitcher,team`;
-    const nRes  = await fetch(nUrl);
-    const nJson = await nRes.json();
-    const nextGames = nJson.dates?.[0]?.games ?? [];
-    if (nextGames.length > 0) {
-      const g      = nextGames[0];
-      const isHome = g.teams?.home?.team?.id === STL_ID;
-      const opp    = isHome ? g.teams?.away : g.teams?.home;
-      const oppId  = opp?.team?.id ?? 0;
-      const [oppAbbr] = ID_MAP[oppId] ?? ["???", "Unknown"];
-      const gameTimeRaw: string | undefined = g.gameDate;
-      let gameTimeFmt = "TBD";
-      if (gameTimeRaw) {
-        const d = new Date(gameTimeRaw);
-        gameTimeFmt = d.toLocaleTimeString("en-US", {
-          hour: "numeric", minute: "2-digit", timeZone: "America/Chicago",
-        }) + " CT";
-      }
-      const dateLabel = gameTimeRaw
-        ? new Date(gameTimeRaw).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "America/Chicago" })
-        : "";
+  // Always fetch next game regardless of whether today's game is scheduled/live/final
+  // Only skip if today's game is Final (already played, next game is what's up)
+  const nextGameStart = new Date();
+  nextGameStart.setDate(nextGameStart.getDate() + (current_game?.status === "Final" ? 1 : 1));
+  const nextGameEnd = new Date(nextGameStart);
+  nextGameEnd.setDate(nextGameEnd.getDate() + 7);
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
 
-      next_game = {
-        game_pk:     g.gamePk,
-        status:      "Scheduled",
-        is_home:     isHome,
-        opp_name:    opp?.team?.teamName ?? "",
-        opp_abbr:    oppAbbr,
-        stl_score:   null,
-        opp_score:   null,
-        stl_pitcher: (isHome ? g.teams?.home : g.teams?.away)?.probablePitcher?.fullName ?? null,
-        opp_pitcher: (isHome ? g.teams?.away : g.teams?.home)?.probablePitcher?.fullName ?? null,
-        game_time:   gameTimeFmt,
-        venue:       g.venue?.name ?? null,
-        date_label:  dateLabel,
-      };
+  let next_game: GameData | null = null;
+  const nUrl = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=${STL_ID}&startDate=${fmt(nextGameStart)}&endDate=${fmt(nextGameEnd)}&hydrate=probablePitcher,team`;
+  const nRes  = await fetch(nUrl);
+  const nJson = await nRes.json();
+  const nextGames = nJson.dates?.[0]?.games ?? [];
+  if (nextGames.length > 0) {
+    const g      = nextGames[0];
+    const isHome = g.teams?.home?.team?.id === STL_ID;
+    const opp    = isHome ? g.teams?.away : g.teams?.home;
+    const oppId  = opp?.team?.id ?? 0;
+    const [oppAbbr] = ID_MAP[oppId] ?? ["???", "Unknown"];
+    const gameTimeRaw: string | undefined = g.gameDate;
+    let gameTimeFmt = "TBD";
+    if (gameTimeRaw) {
+      const d = new Date(gameTimeRaw);
+      gameTimeFmt = d.toLocaleTimeString("en-US", {
+        hour: "numeric", minute: "2-digit", timeZone: "America/Chicago",
+      }) + " CT";
     }
+    const dateLabel = gameTimeRaw
+      ? new Date(gameTimeRaw).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "America/Chicago" })
+      : "";
+
+    next_game = {
+      game_pk:     g.gamePk,
+      status:      "Scheduled",
+      is_home:     isHome,
+      opp_name:    opp?.team?.teamName ?? "",
+      opp_abbr:    oppAbbr,
+      stl_score:   null,
+      opp_score:   null,
+      stl_pitcher: (isHome ? g.teams?.home : g.teams?.away)?.probablePitcher?.fullName ?? null,
+      opp_pitcher: (isHome ? g.teams?.away : g.teams?.home)?.probablePitcher?.fullName ?? null,
+      game_time:   gameTimeFmt,
+      venue:       g.venue?.name ?? null,
+      date_label:  dateLabel,
+    };
   }
 
   return { current_game, next_game };
@@ -539,15 +540,14 @@ export function BaseballPanel() {
   }, []);
 
   return (
-    <div style={{ fontFamily: FONT, background: BG, borderRadius: 6, overflow: "hidden",
-      border: "1px solid rgba(232,168,32,0.15)" }}>
+    <div style={{ fontFamily: FONT, background: BG, borderRadius: 0, overflow: "hidden" }}>
 
       {/* ── Two-column body: standings LEFT, Cardinals games RIGHT ── */}
       {/* auto on left so standings get natural width; 1fr on right fills remaining */}
-      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", alignItems: "start", borderBottom: "1px solid rgba(232,168,32,0.12)" }}>
 
         {/* LEFT — NL Central Standings */}
-        <div style={{ borderRight: "1px solid rgba(232,168,32,0.12)", minWidth: 320 }}>
+        <div style={{ borderRight: "3px solid #1e3629", minWidth: 320 }}>
           <SBHead label="NL Central Standings" />
           <div style={{ background: BG }}>
             <div style={{

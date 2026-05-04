@@ -19,14 +19,11 @@ function useLiveClock() {
   return now;
 }
 
-// Inline habit row for the dashboard — uses only fields the backend
-// actually returns on /dashboard/. Does NOT depend on Habit type or completions[].
 function DashHabitRow({ entry, todayStr }: { entry: any; todayStr: string }) {
   const qc = useQueryClient();
   const habitId: string = entry?.habit?.id ?? entry?.id ?? "";
   const name: string    = entry?.habit?.name ?? entry?.name ?? "—";
   const icon: string    = entry?.habit?.icon ?? entry?.icon ?? "";
-  // Backend may return `completed: bool` or we fall back to checking completions[]
   const completions: any[] = Array.isArray(entry?.habit?.completions)
     ? entry.habit.completions
     : Array.isArray(entry?.completions) ? entry.completions : [];
@@ -153,11 +150,8 @@ export function DashboardPage() {
 
   const overdueT = data?.overdue_tasks ?? [];
 
-  // Raw entries — could be Habit[], wrapped {habit,completed}[], or anything.
-  // DashHabitRow handles every shape safely.
   const habitEntries: any[] = Array.isArray(data?.today_habits) ? data.today_habits : [];
 
-  // Count completed habits for the stats panel
   const habitsDone = habitEntries.filter((e: any) => {
     if (typeof e?.completed === "boolean") return e.completed;
     const comps = Array.isArray(e?.habit?.completions) ? e.habit.completions
@@ -317,6 +311,10 @@ export function DashboardPage() {
           &ldquo;It is not in the still calm of life that great characters are formed.&rdquo; &#8212; Abigail Adams
         </p>
       </div>
+
+      {/* Section divider — matches the stripe pattern used between all other sections */}
+      <div className="stripe-thin" />
+      <div className="stripe-3" />
 
       {/* Baseball scoreboard panel */}
       <BaseballPanel />
