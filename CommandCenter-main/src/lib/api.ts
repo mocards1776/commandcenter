@@ -145,10 +145,11 @@ export const habitsApi = {
 
 // ─── Time Entries ─────────────────────────────────────────────
 export const timersApi = {
+  // No trailing slash — DO edge returns 405 on slash-redirect for these routes
   active: () =>
-    api.get<TimeEntry | null>("/time-entries/active/").then(r => r.data),
+    api.get<TimeEntry | null>("/time-entries/active").then(r => r.data),
   start: (data: { task_id?: string; habit_id?: string; started_at: string; note?: string }) =>
-    api.post<TimeEntry>("/time-entries/start/", data).then(r => r.data),
+    api.post<TimeEntry>("/time-entries/start", data).then(r => r.data),
   stop: (id: string, data: { ended_at: string; note?: string }) =>
     api.post<TimeEntry>(`/time-entries/${id}/stop/`, data).then(r => r.data),
   list: (params?: Record<string, any>) =>
@@ -157,10 +158,11 @@ export const timersApi = {
 
 // ─── Time Blocks ──────────────────────────────────────────────
 export const timeBlocksApi = {
+  // Removed duplicate /api prefix — baseURL already points to the app root
   list: (date?: string) =>
-    api.get<TimeBlock[]>("/api/time-blocks/", { params: date ? { date } : undefined }).then(r => r.data),
+    api.get<TimeBlock[]>("/time-blocks/", { params: date ? { date } : undefined }).then(r => r.data),
   create: (data: any) =>
-    api.post<TimeBlock>("/api/time-blocks/", data).then(r => r.data),
+    api.post<TimeBlock>("/time-blocks/", data).then(r => r.data),
   update: (id: string, data: any) =>
     api.put<TimeBlock>(`/time-blocks/${id}/`, data).then(r => r.data),
   delete: (id: string) => api.delete(`/time-blocks/${id}/`),
