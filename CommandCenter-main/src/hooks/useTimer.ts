@@ -41,7 +41,7 @@ export function useActiveTimer() {
       return timer;
     },
     enabled: isAuthed,
-    refetchInterval: 60_000,
+    refetchInterval: 5_000, // was 60_000 — poll every 5s so stale timer state clears quickly
   });
 
   const stopRef = useRef<() => void>(() => {});
@@ -98,7 +98,13 @@ export function useActiveTimer() {
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       toast.success("⏹ Timer stopped");
     },
-    onError: () => toast.error("Failed to stop timer"),
+    onError: () => {
+      toast.error("Failed to stop timer");
+      // Force-clear the banner regardless — if the API failed the timer
+      // is likely already gone on the backend (or was never valid)
+      clearTimer();
+      qc.invalidateQueries({ queryKey: ["active-timer"] });
+    },
   });
 
   stopRef.current = () => stopMutation.mutate();

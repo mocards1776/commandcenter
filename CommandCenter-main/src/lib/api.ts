@@ -224,10 +224,11 @@ export const sportsApi = {
   addFavorite: (data: any) =>
     api.post<FavoriteSportsTeam>("/sports/favorites/", data).then(r => r.data),
   removeFavorite: (id: string) => api.delete(`/sports/favorites/${id}/`),
+  // Trailing slashes added — without them DO backend 301-redirects and drops the Auth header
   mlbTeam: (teamSlug: string) =>
-    api.get(`/sports/mlb/${teamSlug}`).then(r => r.data),
+    api.get(`/sports/mlb/${teamSlug}/`).then(r => r.data),
   mlbProjections: (teamSlug: string) =>
-    api.get(`/sports/mlb/${teamSlug}/projections`).then(r => r.data),
+    api.get(`/sports/mlb/${teamSlug}/projections/`).then(r => r.data),
 };
 
 export default api;
