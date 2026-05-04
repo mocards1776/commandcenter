@@ -190,6 +190,12 @@ function NewBlockForm({ onClose, selectedDate }: { onClose: () => void; selected
   );
 }
 
+// Returns true for errors that should not be retried (auth failures, not-found)
+function isNonRetryableError(error: unknown): boolean {
+  const status = (error as any)?.response?.status;
+  return status === 401 || status === 403 || status === 404;
+}
+
 // ── Main page
 export function TimeBlockPage() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
@@ -198,7 +204,13 @@ export function TimeBlockPage() {
 
   const { data: blocks } = useQuery({
     queryKey: ["time-blocks", selectedDate],
-    queryFn: () => timeBlocksApi.list(selectedDate).catch(() => []),
+    queryFn: () => timeBlocksApi.list(selectedDate),
+    retry: (failureCount, error) => {
+      if (isNonRetryableError(error)) return false;
+      return failureCount < 2;
+    },
+    // On 401, return empty array so the page renders cleanly instead of spinning
+    select: (data) => data ?? [],
   });
 
   // Backlog: fetch today's + inbox tasks
@@ -206,6 +218,10 @@ export function TimeBlockPage() {
     queryKey: ["tasks", "backlog-timeblock"],
     queryFn: () => tasksApi.list({ status: "today,inbox,in_progress", limit: 100 }),
     refetchInterval: 60_000,
+    retry: (failureCount, error) => {
+      if (isNonRetryableError(error)) return false;
+      return failureCount < 2;
+    },
   });
   const backlogTasks = (backlogRaw ?? []).filter(
     (t: any) => t.status !== "done" && t.status !== "cancelled"
