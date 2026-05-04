@@ -48,7 +48,7 @@ export const tokenStore = {
 };
 
 // build: 2026-05-04 — all mutations use PUT; PATCH removed to avoid CORS preflight failures
-const api = axios.create({
+export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || "https://orca-app-v7oew.ondigitalocean.app",
   headers: { "Content-Type": "application/json" },
   maxRedirects: 5,
@@ -160,7 +160,6 @@ export const timersApi = {
 
 // ─── Time Blocks ──────────────────────────────────────────────
 export const timeBlocksApi = {
-  // No /api prefix — baseURL already points to the app root
   list: (date?: string) =>
     api.get<TimeBlock[]>("/time-blocks/", { params: date ? { date } : undefined }).then(r => r.data),
   create: (data: any) =>
