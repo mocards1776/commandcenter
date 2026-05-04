@@ -363,6 +363,8 @@ function SBHead({ label }: { label: string }) {
   );
 }
 
+const STANDINGS_COLS = "18px 36px minmax(80px, 1fr) 58px 42px 46px 44px";
+
 function StandingsRow({ row, rank }: { row: Row; rank: number }) {
   const win      = row.strk?.startsWith("W");
   const tid      = row.team_id as number;
@@ -383,7 +385,7 @@ function StandingsRow({ row, rank }: { row: Row; rank: number }) {
   return (
     <div style={{
       display: "grid",
-      gridTemplateColumns: "18px 32px 1fr 54px 38px 52px 40px",
+      gridTemplateColumns: STANDINGS_COLS,
       alignItems: "center", gap: 4,
       padding: "4px 8px",
       background: row.cards ? "rgba(196,30,58,0.07)" : rank % 2 === 0 ? BG : ROW_BG,
@@ -541,15 +543,16 @@ export function BaseballPanel() {
       border: "1px solid rgba(232,168,32,0.15)" }}>
 
       {/* ── Two-column body: standings LEFT, Cardinals games RIGHT ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", alignItems: "start" }}>
+      {/* auto on left so standings get natural width; 1fr on right fills remaining */}
+      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", alignItems: "start" }}>
 
         {/* LEFT — NL Central Standings */}
-        <div style={{ borderRight: "1px solid rgba(232,168,32,0.12)" }}>
+        <div style={{ borderRight: "1px solid rgba(232,168,32,0.12)", minWidth: 320 }}>
           <SBHead label="NL Central Standings" />
           <div style={{ background: BG }}>
             <div style={{
               display: "grid",
-              gridTemplateColumns: "18px 32px 1fr 54px 38px 52px 40px",
+              gridTemplateColumns: STANDINGS_COLS,
               gap: 4, padding: "3px 8px",
               background: HEADER_BG,
               borderBottom: "1px solid rgba(232,168,32,0.1)",

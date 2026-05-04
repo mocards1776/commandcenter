@@ -145,9 +145,10 @@ export const habitsApi = {
 
 // ─── Time Entries ─────────────────────────────────────────────
 export const timersApi = {
-  // No trailing slash — DO edge returns 405 on slash-redirects for these routes
+  // Backend returns { active: TimeEntry | null } — unwrap here
   active: () =>
-    api.get<TimeEntry | null>("/time-entries/active").then(r => r.data),
+    api.get<{ active: TimeEntry | null }>("/time-entries/active")
+      .then(r => r.data?.active ?? null),
   start: (data: { task_id?: string; habit_id?: string; started_at: string; note?: string }) =>
     api.post<TimeEntry>("/time-entries/start", data).then(r => r.data),
   stop: (id: string | undefined, data: { ended_at: string; note?: string }) => {
