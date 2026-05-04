@@ -1,6 +1,8 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
 import type { TimeEntry, Task } from "@/types";
+
+// NOTE: persist middleware uses localStorage which is blocked in Vercel's
+// sandboxed iframe environment. All stores are now in-memory only.
 
 interface TimerState {
   activeTimer: TimeEntry | null;
@@ -12,33 +14,23 @@ interface TimerState {
   clearTimer: () => void;
 }
 export const useTimerStore = create<TimerState>()(
-  persist(
-    (set) => ({
-      activeTimer: null, activeTask: null, elapsedSeconds: 0, startedAtMs: null,
-      setActiveTimer: (timer, task = null) => set((s) => {
-        if (!timer) return { activeTimer: null, activeTask: null, elapsedSeconds: 0, startedAtMs: null };
-        const raw = timer.started_at;
-        const iso = /([zZ]|[+-]\d{2}:?\d{2})$/.test(raw) ? raw : raw + "Z";
-        const startedAtMs = new Date(iso).getTime();
-        return {
-          activeTimer: timer,
-          activeTask: task ?? s.activeTask,
-          startedAtMs,
-          elapsedSeconds: Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000)),
-        };
-      }),
-      setElapsed: (s) => set({ elapsedSeconds: s }),
-      clearTimer: () => set({ activeTimer: null, activeTask: null, elapsedSeconds: 0, startedAtMs: null }),
+  (set) => ({
+    activeTimer: null, activeTask: null, elapsedSeconds: 0, startedAtMs: null,
+    setActiveTimer: (timer, task = null) => set((s) => {
+      if (!timer) return { activeTimer: null, activeTask: null, elapsedSeconds: 0, startedAtMs: null };
+      const raw = timer.started_at;
+      const iso = /([zZ]|[+-]\d{2}:?\d{2})$/.test(raw) ? raw : raw + "Z";
+      const startedAtMs = new Date(iso).getTime();
+      return {
+        activeTimer: timer,
+        activeTask: task ?? s.activeTask,
+        startedAtMs,
+        elapsedSeconds: Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000)),
+      };
     }),
-    {
-      name: "timer-store",
-      partialize: (state) => ({
-        activeTimer: state.activeTimer,
-        activeTask: state.activeTask,
-        startedAtMs: state.startedAtMs,
-      }),
-    }
-  )
+    setElapsed: (s) => set({ elapsedSeconds: s }),
+    clearTimer: () => set({ activeTimer: null, activeTask: null, elapsedSeconds: 0, startedAtMs: null }),
+  })
 );
 
 interface FocusState {
@@ -70,29 +62,20 @@ interface UIState {
   setAddTaskOpen: (v: boolean) => void;
 }
 export const useUIStore = create<UIState>()(
-  persist(
-    (set) => ({
-      sidebarCollapsed: false, addTaskOpen: false,
-      toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
-      setAddTaskOpen: (v) => set({ addTaskOpen: v }),
-    }),
-    { name: "ui-store" }
-  )
+  (set) => ({
+    sidebarCollapsed: false, addTaskOpen: false,
+    toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+    setAddTaskOpen: (v) => set({ addTaskOpen: v }),
+  })
 );
 
-// ─── Pinned top task ──────────────────────────────────────────────────────────
-// Persists which task the user manually dragged/pinned to position #1.
-// Cleared when the task is completed or deleted.
 interface PinnedTaskState {
   pinnedTaskId: string | null;
   setPinnedTask: (id: string | null) => void;
 }
 export const usePinnedTaskStore = create<PinnedTaskState>()(
-  persist(
-    (set) => ({
-      pinnedTaskId: null,
-      setPinnedTask: (id) => set({ pinnedTaskId: id }),
-    }),
-    { name: "pinned-task-store" }
-  )
+  (set) => ({
+    pinnedTaskId: null,
+    setPinnedTask: (id) => set({ pinnedTaskId: id }),
+  })
 );
