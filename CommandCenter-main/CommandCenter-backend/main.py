@@ -24,7 +24,10 @@ from schemas import (
 from auth import get_current_user, create_access_token, verify_token
 from schemas import UserCreate, UserResponse, UserLogin
 
-app = FastAPI(title="CommandCenter API")
+# redirect_slashes=True: FastAPI will 307-redirect /foo to /foo/ (and vice versa)
+# for GET/HEAD. For POST/PUT/PATCH we add explicit aliases below since redirects
+# drop the request body.
+app = FastAPI(title="CommandCenter API", redirect_slashes=True)
 
 # CORS — allow everything; DO App Platform edge handles TLS termination
 # CORSMiddleware handles OPTIONS preflight automatically — do NOT add a
@@ -41,8 +44,9 @@ app.add_middleware(
 # datetime.utcnow() always returns UTC regardless of TZ — never use it here.
 
 # All routes live on this router.
-# It is mounted at both "" (root) AND "/api" so the frontend's calls to
-# /dashboard/, /tasks/, etc. resolve, AND old /api/... URLs still work.
+# Mounted ONCE at root — the old /api prefix mount was removed because double-mounting
+# the same router object causes FastAPI to register duplicate routes, which makes it
+# return 405 on valid paths like /sports/mlb/{team_slug} and /time-blocks/.
 router = APIRouter()
 
 # ─── Auth ─────────────────────────────────────────────
@@ -483,24 +487,22 @@ async def get_habit_streak(
     return {"habit_id": habit_id, "streak": streak}
 
 # ─── Time Entries ─────────────────────────────────────────
-@router.get("/time-entries/active", response_model=Optional[TimeEntryResponse])
-async def get_active_timer(
-    session: Session = Depends(db.get_session),
-    user: User = Depends(get_current_user),
-):
-    entry = session.execute(
+async def _get_active_timer_impl(session: Session, user: User):
+    return session.execute(
         select(TimeEntry)
         .where((TimeEntry.user_id == user.id) & (TimeEntry.ended_at.is_(None)))
         .order_by(TimeEntry.started_at.desc())
     ).scalar()
-    return entry
 
-@router.post("/time-entries/start", response_model=TimeEntryResponse)
-async def start_timer(
-    data: TimeEntryCreate,
+@router.get("/time-entries/active", response_model=Optional[TimeEntryResponse])
+@router.get("/time-entries/active/", response_model=Optional[TimeEntryResponse])
+async def get_active_timer(
     session: Session = Depends(db.get_session),
     user: User = Depends(get_current_user),
 ):
+    return await _get_active_timer_impl(session, user)
+
+async def _start_timer_impl(data: TimeEntryCreate, session: Session, user: User):
     session.execute(
         update(TimeEntry)
         .where((TimeEntry.user_id == user.id) & (TimeEntry.ended_at.is_(None)))
@@ -517,6 +519,15 @@ async def start_timer(
     session.commit()
     session.refresh(entry)
     return entry
+
+@router.post("/time-entries/start", response_model=TimeEntryResponse)
+@router.post("/time-entries/start/", response_model=TimeEntryResponse)
+async def start_timer(
+    data: TimeEntryCreate,
+    session: Session = Depends(db.get_session),
+    user: User = Depends(get_current_user),
+):
+    return await _start_timer_impl(data, session, user)
 
 @router.post("/time-entries/{entry_id}/stop", response_model=TimeEntryResponse)
 async def stop_timer(
@@ -1088,9 +1099,10 @@ async def mlb_projections(team_slug: str, user: User = Depends(get_current_user)
     return {"proj_wins": None, "playoff_pct": None, "div_pct": None,
             "wc_pct": None, "ws_pct": None, "best": None, "record": None}
 
-# ─── Mount router at BOTH "" (root) AND "/api" ─────────────
+# ─── Mount router once at root ─────────────────────────────
+# DO NOT double-mount with app.include_router(router, prefix="/api") —
+# that causes route conflicts manifesting as 405s on valid paths.
 app.include_router(router)
-app.include_router(router, prefix="/api")
 
 # ─── Startup ──────────────────────────────────────────
 @app.on_event("startup")
