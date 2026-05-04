@@ -16,9 +16,8 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import axios from "axios";
 import { cn } from "@/lib/utils";
-import { tasksApi } from "@/lib/api";
+import { tasksApi, timeBlocksApi } from "@/lib/api";
 import { toast } from "react-hot-toast";
 import type { Task, TimeBlock } from "@/types";
 
@@ -649,9 +648,6 @@ export function CalendarPage() {
   };
 
   // ── Backlog ────────────────────────────────────────────────────────────────
-  // Use tasksApi (shared instance) so the correct backend baseURL is always used.
-  // Raw axios.get with apiBase="" would hit the Vercel domain instead of DigitalOcean.
-  const apiBase = import.meta.env.VITE_API_BASE_URL || "";
   const {
     data: tasks = [],
     isLoading: tasksLoading,
@@ -677,9 +673,7 @@ export function CalendarPage() {
     queryKey: ["time-blocks", selectedDate, viewMode],
     queryFn: async () => {
       const results = await Promise.all(
-        dates.map((d) =>
-          axios.get(`${apiBase}/api/time-blocks/`, { params: { date: d } }).then((r) => r.data)
-        )
+        dates.map((d) => timeBlocksApi.list(d))
       );
       return results.flat();
     },
@@ -687,7 +681,7 @@ export function CalendarPage() {
 
   const colorMutation = useMutation({
     mutationFn: ({ id, color }: { id: string; color: string }) =>
-      axios.patch(`${apiBase}/api/time-blocks/${id}/`, { color }),
+      timeBlocksApi.update(id, { color }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["time-blocks"] }); toast.success("Color updated"); },
     onError:   () => toast.error("Failed to update color"),
   });
@@ -699,7 +693,7 @@ export function CalendarPage() {
     if (!taskId) return;
     const task = tasks.find((t) => String(t.id) === taskId);
     try {
-      await axios.post(`${apiBase}/api/time-blocks/`, {
+      await timeBlocksApi.create({
         title: task?.title || "Scheduled Task", date,
         start_time: `${date}T${String(hour).padStart(2, "0")}:00:00`,
         end_time:   `${date}T${String(hour + 1).padStart(2, "0")}:00:00`,
