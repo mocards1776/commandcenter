@@ -33,7 +33,13 @@ from schemas import (
 )
 from auth import get_current_user, create_access_token, verify_token
 
-app = FastAPI(title="CommandCenter API")
+# redirect_slashes=False: Starlette's default behaviour is to issue a 307
+# when a request path doesn't match the trailing-slash expectation of a route.
+# That 307 on a POST drops the request body (RFC 7231) and, through the
+# DigitalOcean proxy, can create an infinite redirect loop.  Disabling it
+# means every route must be hit exactly as registered — the frontend api.ts
+# already uses the correct paths, so nothing breaks.
+app = FastAPI(title="CommandCenter API", redirect_slashes=False)
 
 # CORS — allow_origins=["*"] + allow_credentials=True is illegal; use explicit list.
 ALLOWED_ORIGINS = [
@@ -259,7 +265,11 @@ def parse_telegram_task(text: str) -> dict:
     }
 
 # ─── Telegram Webhook ────────────────────────────────────────────────
+# NOTE: Both with and without trailing slash are registered so Telegram's
+# POST (which never sends a trailing slash) is never 307-redirected — a 307
+# on a POST silently drops the body, breaking the bot.
 @app.post("/telegram/webhook")
+@app.post("/telegram/webhook/", include_in_schema=False)
 async def telegram_webhook(request: Request, session: Session = Depends(db.get_session)):
     """Receive updates from Telegram and process bot commands."""
     if not TELEGRAM_BOT_TOKEN:
@@ -344,6 +354,7 @@ async def telegram_webhook(request: Request, session: Session = Depends(db.get_s
 
 
 @app.get("/telegram/setup-webhook")
+@app.get("/telegram/setup-webhook/", include_in_schema=False)
 async def setup_telegram_webhook():
     """One-time admin call to register this backend's webhook with Telegram."""
     if not TELEGRAM_BOT_TOKEN or not PUBLIC_BACKEND_URL:
@@ -358,6 +369,7 @@ async def setup_telegram_webhook():
 
 
 @app.get("/telegram/webhook-info")
+@app.get("/telegram/webhook-info/", include_in_schema=False)
 async def telegram_webhook_info():
     """Check what Telegram thinks the current webhook is."""
     if not TELEGRAM_BOT_TOKEN:
@@ -495,6 +507,7 @@ async def list_tasks(
     return session.execute(query.order_by(Task.created_at.desc())).scalars().all()
 
 @app.get("/tasks/today", response_model=List[TaskResponse])
+@app.get("/tasks/today/", response_model=List[TaskResponse], include_in_schema=False)
 async def today_tasks(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
@@ -1251,9 +1264,10 @@ async def delete_time_block(
     session.commit()
     return {"ok": True}
 
-# ─── Dashboard ─────────────────────────────────────────────────────────
+# ─── Dashboard ────────────────────────────────────────────────────────
 @app.get("/dashboard/", response_model=DashboardSummary)
-async def get_dashboard(
+@app.get("/dashboard", response_model=DashboardSummary, include_in_schema=False)
+async def dashboard(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
@@ -1265,16 +1279,21 @@ async def get_dashboard(
         ).order_by(Task.sort_order)
     ).scalars().all()
 
+    overdue_tasks = session.execute(
+        _own(select(Task), Task, user).where(
+            Task.due_date < today,
+            Task.status != "done",
+        )
+    ).scalars().all()
+
     backlog_tasks = session.execute(
         _own(select(Task), Task, user).where(
             Task.status == "backlog"
-        ).order_by(Task.created_at.desc()).limit(20)
+        ).order_by(Task.focus_score.desc()).limit(20)
     ).scalars().all()
 
-    projects = session.execute(
-        _own(select(Project), Project, user).where(
-            Project.status != "archived"
-        ).order_by(Project.created_at.desc())
+    active_projects = session.execute(
+        _own(select(Project), Project, user).where(Project.status == "active")
     ).scalars().all()
 
     habits = session.execute(
@@ -1283,50 +1302,74 @@ async def get_dashboard(
 
     habit_completions_today = session.execute(
         select(HabitCompletion).where(
-            HabitCompletion.completed_date == str(today)
+            HabitCompletion.completed_date == str(today),
+            HabitCompletion.habit_id.in_([h.id for h in habits]) if habits else [],
         )
-    ).scalars().all()
+    ).scalars().all() if habits else []
+
     completed_habit_ids = {c.habit_id for c in habit_completions_today}
 
-    today_done = session.execute(
-        _own(select(Task), Task, user).where(
-            Task.status == "done",
-            Task.completed_at >= _ct_midnight_as_utc(),
-        )
-    ).scalars().all()
+    active_timer = session.execute(
+        _own(select(TimeEntry), TimeEntry, user).where(TimeEntry.ended_at == None)  # noqa: E711
+    ).scalar()
 
     return DashboardSummary(
         today_tasks=[_task_to_dict(t) for t in today_tasks],
+        overdue_tasks=[_task_to_dict(t) for t in overdue_tasks],
         backlog_tasks=[_task_to_dict(t) for t in backlog_tasks],
-        projects=[_project_to_dict(p) for p in projects],
-        habits=habits,
+        active_projects=[_project_to_dict(p) for p in active_projects],
+        habits=[h for h in habits],
         completed_habit_ids=list(completed_habit_ids),
-        today_completed_count=len(today_done),
-        streak=0,
+        active_timer=active_timer,
+        today_date=str(today),
     )
 
-# ─── Gamification ──────────────────────────────────────────────────────
+# ─── Gamification ─────────────────────────────────────────────────────
 @app.get("/gamification/")
-async def get_gamification(
-    limit: int = Query(30, ge=1, le=365),
+@app.get("/gamification", include_in_schema=False)
+async def gamification_history(
+    limit: int = Query(30, ge=1, le=200),
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    results = []
-    for i in range(limit):
-        day = _today_ct() - timedelta(days=i)
-        count = session.execute(
-            select(func.count()).select_from(Task).where(
-                Task.user_id == user.id,
-                Task.status == "done",
-                Task.completed_at >= datetime(day.year, day.month, day.day),
-                Task.completed_at < datetime(day.year, day.month, day.day) + timedelta(days=1),
-            )
-        ).scalar() or 0
-        results.append({"date": str(day), "tasks_completed": count, "xp": count * 10})
-    return results
+    """
+    Returns daily XP/completion history for the current user.
+    Each record: { date, tasks_completed, xp_earned, streak_day }
+    """
+    rows = session.execute(
+        _own(select(Task), Task, user)
+        .where(Task.status == "done", Task.completed_at != None)  # noqa: E711
+        .order_by(Task.completed_at.desc())
+    ).scalars().all()
 
-# ─── Sports ────────────────────────────────────────────────────────────
+    by_day: dict = defaultdict(lambda: {"tasks_completed": 0, "xp_earned": 0})
+    for task in rows:
+        if not task.completed_at:
+            continue
+        d = task.completed_at.date() if hasattr(task.completed_at, "date") else task.completed_at
+        day_str = str(d)
+        by_day[day_str]["tasks_completed"] += 1
+        by_day[day_str]["xp_earned"] += (task.focus_score or 1) * 10
+
+    sorted_days = sorted(by_day.keys(), reverse=True)[:limit]
+    streak = 0
+    check = _today_ct()
+    while str(check) in by_day:
+        streak += 1
+        check = check - timedelta(days=1)
+
+    history = []
+    for i, day in enumerate(sorted_days):
+        history.append({
+            "date": day,
+            "tasks_completed": by_day[day]["tasks_completed"],
+            "xp_earned": by_day[day]["xp_earned"],
+            "streak_day": streak if i == 0 else 0,
+        })
+
+    return {"history": history, "current_streak": streak}
+
+# ─── Sports ───────────────────────────────────────────────────────────
 @app.get("/sports/favorites/", response_model=List[FavoriteSportsTeamResponse])
 async def list_favorite_teams(
     user: User = Depends(get_current_user),
@@ -1365,51 +1408,53 @@ async def remove_favorite_team(
     return {"ok": True}
 
 @app.get("/sports/mlb/{team_slug}/")
-async def get_mlb_team(
+@app.get("/sports/mlb/{team_slug}", include_in_schema=False)
+async def mlb_team_data(
     team_slug: str,
     user: User = Depends(get_current_user),
 ):
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(f"https://statsapi.mlb.com/api/v1/teams?sportId=1")
-        teams = resp.json().get("teams", [])
-        matched = next((t for t in teams if t.get("teamName", "").lower().replace(" ", "-") == team_slug or str(t.get("id")) == team_slug), None)
-        if not matched:
-            raise HTTPException(status_code=404, detail="Team not found")
-        return matched
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    """Proxy to MLB Stats API for team schedule/scores."""
+    MLB_TEAM_IDS = {
+        "cardinals": 138, "cubs": 112, "brewers": 158, "reds": 113, "pirates": 134,
+        "braves": 144, "mets": 121, "phillies": 143, "marlins": 146, "nationals": 120,
+        "dodgers": 119, "giants": 137, "padres": 135, "rockies": 115, "diamondbacks": 109,
+        "yankees": 147, "redsox": 111, "rays": 139, "bluejays": 141, "orioles": 110,
+        "whitesox": 145, "guardians": 114, "tigers": 116, "royals": 118, "twins": 142,
+        "astros": 117, "athletics": 133, "rangers": 140, "angels": 108, "mariners": 136,
+    }
+    team_id = MLB_TEAM_IDS.get(team_slug.lower())
+    if not team_id:
+        raise HTTPException(status_code=404, detail=f"Unknown team slug: {team_slug}")
 
-@app.get("/sports/mlb/{team_slug}/projections/")
-async def get_mlb_projections(
-    team_slug: str,
-    user: User = Depends(get_current_user),
-):
+    today = _today_ct()
+    start = (today - timedelta(days=7)).isoformat()
+    end = (today + timedelta(days=7)).isoformat()
+
     try:
-        today = _today_ct()
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(
-                f"https://statsapi.mlb.com/api/v1/schedule",
+                "https://statsapi.mlb.com/api/v1/schedule",
                 params={
+                    "teamId": team_id,
+                    "startDate": start,
+                    "endDate": end,
                     "sportId": 1,
-                    "date": str(today),
-                    "hydrate": "probablePitcher,team,linescore",
-                }
+                    "hydrate": "linescore,decisions,probablePitcher",
+                },
             )
-        data = resp.json()
-        games = []
-        for date_entry in data.get("dates", []):
-            for game in date_entry.get("games", []):
-                away = game.get("teams", {}).get("away", {})
-                home = game.get("teams", {}).get("home", {})
-                away_slug = away.get("team", {}).get("teamName", "").lower().replace(" ", "-")
-                home_slug = home.get("team", {}).get("teamName", "").lower().replace(" ", "-")
-                away_id = str(away.get("team", {}).get("id", ""))
-                home_id = str(home.get("team", {}).get("id", ""))
-                if team_slug in (away_slug, home_slug, away_id, home_id):
-                    games.append(game)
-        return {"games": games, "date": str(today)}
+        return resp.json()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=502, detail=str(e))
+
+@app.get("/sports/mlb/{team_slug}/projections/")
+@app.get("/sports/mlb/{team_slug}/projections", include_in_schema=False)
+async def mlb_team_projections(
+    team_slug: str,
+    user: User = Depends(get_current_user),
+):
+    """Return simple win-probability projection stub (placeholder for model integration)."""
+    return {
+        "team": team_slug,
+        "note": "Projection model not yet integrated.",
+        "win_probability": None,
+    }
