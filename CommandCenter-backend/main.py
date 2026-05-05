@@ -949,6 +949,25 @@ def _time_entry_to_dict(entry: TimeEntry) -> dict:
         "created_at": entry.created_at,
     }
 
+# ── MUST be declared before /time-entries and /time-entries/ list routes ──────
+# FastAPI matches routes top-to-bottom; /active/ must come first or it gets
+# consumed as /{entry_id} by the update_time_entry handler below.
+@app.get("/time-entries/active")
+@app.get("/time-entries/active/", include_in_schema=False)
+async def get_active_time_entry(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    entry = session.execute(
+        select(TimeEntry).where(
+            TimeEntry.user_id == user.id,
+            TimeEntry.ended_at == None,  # noqa: E711
+        ).order_by(TimeEntry.started_at.desc())
+    ).scalar()
+    if not entry:
+        return None
+    return _time_entry_to_dict(entry)
+
 @app.get("/time-entries", response_model=List[TimeEntryResponse])
 @app.get("/time-entries/", response_model=List[TimeEntryResponse], include_in_schema=False)
 async def list_time_entries(
