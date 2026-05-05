@@ -108,8 +108,9 @@ export const tasksApi = {
   update: (id: string, data: TaskUpdate) =>
     api.put<Task>(`/tasks/${id}/`, data).then(r => r.data),
   delete: (id: string) => api.delete(`/tasks/${id}/`),
+  // POST to /complete/ — sets both status="done" AND completed_at (required for dashboard/streaks)
   complete: (id: string) =>
-    api.put<Task>(`/tasks/${id}/`, { status: "done" }).then(r => r.data),
+    api.post<Task>(`/tasks/${id}/complete/`).then(r => r.data),
   reorder: (ids: string[]) => api.post("/tasks/reorder/", { order: ids }),
 };
 
