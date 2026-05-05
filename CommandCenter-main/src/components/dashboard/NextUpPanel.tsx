@@ -57,7 +57,7 @@ function FlipPanel({ value, label, urgent = false }: { value: string; label: str
   );
 }
 
-function EventCountdown({ event }: { event: NextEvent }) {
+function EventCountdown({ event, compact = false }: { event: NextEvent; compact?: boolean }) {
   const [now, setNow] = useState(Date.now);
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, []);
 
@@ -68,7 +68,7 @@ function EventCountdown({ event }: { event: NextEvent }) {
 
   if (diffMs <= 0) {
     return (
-      <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr 1fr", alignItems:"center", minHeight:72,
+      <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr 1fr", alignItems:"center", minHeight: compact ? 52 : 72,
         background:"#2a4a3a", borderBottom:"2px solid #1e3629" }}>
         <div style={{ padding:"8px 8px 8px 14px", borderRight:"2px solid #1e3629",
           display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:4 }}>
@@ -112,7 +112,7 @@ function EventCountdown({ event }: { event: NextEvent }) {
   const grayLabel = "rgba(245,240,224,0.35)";
 
   return (
-    <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr 1fr", alignItems:"center", minHeight:72,
+    <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr 1fr", alignItems:"center", minHeight: compact ? 52 : 72,
       background:"#2a4a3a", borderBottom:"2px solid #1e3629" }}>
       <div style={{ padding:"8px 8px 8px 14px", borderRight:"2px solid #1e3629",
         display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:4 }}>
@@ -193,233 +193,233 @@ function SlotPicker({ x, y, tasks, currentId, onSelect, onClose }: SlotPickerPro
   return (
     <div ref={ref} style={{ position:"fixed", left, top, width:menuW, maxHeight:320,
       overflowY:"auto", background:"#1a2e22", border:"1px solid #2e4a36", borderRadius:4,
-      boxShadow:"0 8px 24px rgba(0,0,0,0.6)", zIndex:9999, padding:"4px 0" }}>
-      <div style={{ padding:"4px 10px 6px", borderBottom:"1px solid rgba(0,0,0,0.3)" }}>
-        <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:8, fontWeight:700,
-          letterSpacing:"0.18em", textTransform:"uppercase", color:"rgba(232,168,32,0.5)" }}>SELECT TASK</span>
-      </div>
-      {safeTasks.map(t => {
-        const accent = ACCENT[t.priority];
-        const isCurrent = t.id === currentId;
-        const overdue = isOverdue(t.due_date);
-        return (
-          <div key={t.id} onClick={() => { onSelect(t); onClose(); }}
-            style={{ display:"flex", alignItems:"center", gap:7, padding:"7px 10px",
-              cursor:"pointer", background:isCurrent ? "rgba(232,168,32,0.08)" : "transparent",
-              borderBottom:"1px solid rgba(0,0,0,0.15)", transition:"background 0.1s" }}
-            onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.06)")}
-            onMouseLeave={e => (e.currentTarget.style.background = isCurrent ? "rgba(232,168,32,0.08)" : "transparent")}>
-            <div style={{ width:6, height:6, borderRadius:9999, flexShrink:0, background: accent }} />
-            <span style={{ flex:1, fontFamily:"'Oswald',Arial,sans-serif", fontSize:11, fontWeight:600,
-              letterSpacing:"0.04em", textTransform:"uppercase",
-              color:isCurrent ? "#e8a820" : "#f5f0e0",
-              whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{t.title}</span>
-            <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:9,
-              color:t.focus_score >= 20 ? "#d94040" : t.focus_score >= 12 ? "#e8a820" : "rgba(245,240,224,0.3)",
-              letterSpacing:"0.06em", flexShrink:0 }}>{t.focus_score}</span>
-            {t.due_date && (
-              <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:8,
-                color:overdue ? "#d94040" : "rgba(245,240,224,0.25)",
-                letterSpacing:"0.06em", flexShrink:0 }}>{t.due_date}</span>
-            )}
-            {isCurrent && <span style={{ color:"rgba(232,168,32,0.6)", fontSize:9, flexShrink:0 }}>●</span>}
-          </div>
-        );
-      })}
+      boxShadow:"0 8px 32px rgba(0,0,0,0.6)", zIndex:9999, padding:4 }}>
+      {safeTasks.length === 0
+        ? <div style={{ padding:"10px 12px", color:"rgba(245,240,224,0.3)",
+            fontSize:11, fontFamily:"'Oswald',Arial,sans-serif", letterSpacing:"0.1em" }}>NO TASKS AVAILABLE</div>
+        : safeTasks.map(t => (
+          <button key={t.id}
+            onClick={() => onSelect(t)}
+            style={{ display:"block", width:"100%", textAlign:"left", padding:"8px 12px",
+              background: t.id === currentId ? "rgba(232,168,32,0.12)" : "transparent",
+              border:"none", borderRadius:3, cursor:"pointer",
+              fontFamily:"'Oswald',Arial,sans-serif", fontSize:12, fontWeight:600,
+              letterSpacing:"0.06em", textTransform:"uppercase",
+              color: t.id === currentId ? "#e8a820" : "rgba(245,240,224,0.85)" }}
+          >{t.title}</button>
+        ))}
     </div>
-  );
-}
-
-interface TaskSlotProps {
-  task: Task; size: "lg" | "sm";
-  allTasks: Task[];
-  onTaskClick: () => void;
-  onOverride: (task: Task) => void;
-}
-
-function TaskSlot({ task, size, allTasks, onTaskClick, onOverride }: TaskSlotProps) {
-  const overdue  = isOverdue(task.due_date);
-  const accent   = ACCENT[task.priority];
-  const fsColor  = task.focus_score >= 20 ? "#d94040" : task.focus_score >= 12 ? "#e8a820" : "rgba(245,240,224,0.3)";
-  const priLabel = task.priority === "critical" ? "CRIT"
-    : task.priority === "high" ? "HIGH"
-    : task.priority === "medium" ? "MED" : "LOW";
-
-  const { isRunning, activeTimer, elapsedSeconds, start, stop } = useActiveTimer();
-  const { setActiveTimer } = useTimerStore();
-  const isThisRunning = isRunning && activeTimer?.task_id === task.id;
-
-  const handleTimerClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (isThisRunning) stop();
-    else { setActiveTimer(null, task); start({ task_id: task.id }); }
-  };
-
-  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
-  const handleContextMenu = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setMenu({ x: e.clientX, y: e.clientY });
-  };
-
-  const safeAllTasks = Array.isArray(allTasks) ? allTasks : [];
-
-  return (
-    <>
-      <div onContextMenu={handleContextMenu} onClick={onTaskClick}
-        title="Click to view tasks · Right-click to change"
-        style={{ display:"grid", gridTemplateColumns:"2fr 1fr 1fr", alignItems:"center",
-          minHeight:size === "lg" ? 72 : 60, background:"#2a4a3a", borderBottom:"2px solid #1e3629",
-          cursor:"pointer", transition:"background 0.1s", position:"relative" }}
-        onMouseEnter={e => (e.currentTarget.style.background = "rgba(232,168,32,0.06)")}
-        onMouseLeave={e => (e.currentTarget.style.background = "#2a4a3a")}>
-        <div style={{ padding:"8px 8px 8px 14px", borderRight:"2px solid #1e3629",
-          display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:4 }}>
-          <div style={{ display:"flex", gap:5, width:"100%", alignItems:"stretch" }}>
-            <div style={{ background:"#1e3629", borderRadius:4, border:"1px solid rgba(0,0,0,0.4)",
-              boxShadow:"inset 0 2px 4px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.05)",
-              padding:"6px 10px", flex:1, textAlign:"center",
-              minHeight:size === "lg" ? 46 : 38, display:"flex", alignItems:"center", justifyContent:"center" }}>
-              <span style={{ fontFamily:"'Oswald',Arial,sans-serif",
-                fontSize:size === "lg" ? 13 : 11, fontWeight:700, letterSpacing:"0.05em",
-                textTransform:"uppercase", color:"#f5f0e0", lineHeight:1.2,
-                display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden" }}>
-                {task.title}
-              </span>
-            </div>
-            <button type="button" title={isThisRunning ? "Stop timer" : "Start timer"}
-              onClick={handleTimerClick}
-              style={{ background:"none", border:"none", cursor:"pointer", padding:"4px 5px",
-                display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
-                gap:3, flexShrink:0, color:isThisRunning ? "#d94040" : "rgba(245,240,224,0.22)",
-                transition:"color 0.15s", borderRadius:3 }}
-              onMouseEnter={e => (e.currentTarget.style.color = isThisRunning ? "#ff6060" : "rgba(245,240,224,0.55)")}
-              onMouseLeave={e => (e.currentTarget.style.color = isThisRunning ? "#d94040" : "rgba(245,240,224,0.22)")}>
-              {isThisRunning ? (
-                <>
-                  <svg width="9" height="9" viewBox="0 0 9 9" fill="currentColor"><rect x="0" y="0" width="9" height="9" rx="1"/></svg>
-                  <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:7, letterSpacing:"0.1em", lineHeight:1 }}>{formatDuration(elapsedSeconds)}</span>
-                </>
-              ) : (
-                <svg width="8" height="9" viewBox="0 0 8 9" fill="currentColor"><path d="M0 0 L8 4.5 L0 9 Z"/></svg>
-              )}
-            </button>
-          </div>
-          {task.due_date && (
-            <div style={{ fontSize:8, fontWeight:600, letterSpacing:"0.1em", textTransform:"uppercase",
-              color:overdue ? "#d94040" : "rgba(245,240,224,0.25)" }}>
-              {overdue ? "⚠ " : ""}{task.due_date}
-            </div>
-          )}
-        </div>
-        <div className="sb-cell" style={{ padding:"6px 6px" }}>
-          <div className="panel panel-sm" style={{ width:48, height:42, margin:"4px auto" }}>
-            <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:11, fontWeight:700,
-              letterSpacing:"0.06em", color:accent, textTransform:"uppercase", lineHeight:1 }}>{priLabel}</span>
-          </div>
-          <div className="panel-sub">PRIORITY</div>
-        </div>
-        <div className="sb-cell" style={{ padding:"6px 6px", borderRight:"none" }}>
-          <div className="panel panel-sm" style={{ width:48, height:42, margin:"4px auto" }}>
-            <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:18, fontWeight:700,
-              color:fsColor, lineHeight:1 }}>{task.focus_score}</span>
-          </div>
-          <div className="panel-sub">FS</div>
-        </div>
-        <div style={{ position:"absolute", bottom:3, right:5, fontFamily:"'Oswald',Arial,sans-serif",
-          fontSize:7, letterSpacing:"0.08em", textTransform:"uppercase",
-          color:"rgba(245,240,224,0.1)", pointerEvents:"none", userSelect:"none" }}>
-          ⌥ right-click to swap
-        </div>
-      </div>
-      {menu && <SlotPicker x={menu.x} y={menu.y} tasks={safeAllTasks} currentId={task.id}
-        onSelect={onOverride} onClose={() => setMenu(null)} />}
-    </>
   );
 }
 
 function SHead({ icon, label }: { icon: string; label: string }) {
   return (
-    <div className="sb-header" style={{ gridTemplateColumns:"1fr" }}>
-      <div className="sb-col-head" style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
-        <span style={{ color:"rgba(232,168,32,0.5)" }}>{icon}</span>
-        {label}
+    <div style={{ display:"flex", alignItems:"center", gap:7, padding:"5px 10px",
+      background:"#12221a", borderBottom:"2px solid #1e3629" }}>
+      <span style={{ fontSize:11 }}>{icon}</span>
+      <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:9, fontWeight:700,
+        letterSpacing:"0.22em", textTransform:"uppercase",
+        color:"rgba(245,240,224,0.35)" }}>{label}</span>
+    </div>
+  );
+}
+
+function TaskRow({ task, slotLabel, onSlotClick, isActiveTimer, elapsedMs }
+  : { task: Task | null; slotLabel: string; onSlotClick: (e: React.MouseEvent) => void;
+      isActiveTimer: boolean; elapsedMs: number }) {
+  const navigate = useNavigate();
+
+  if (!task) {
+    return (
+      <div onClick={onSlotClick}
+        style={{ display:"grid", gridTemplateColumns:"1fr auto", alignItems:"center",
+          minHeight:72, padding:"8px 8px 8px 14px", cursor:"pointer",
+          background:"#2a4a3a", borderBottom:"2px solid #1e3629" }}>
+        <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:10,
+          color:"rgba(245,240,224,0.15)", letterSpacing:"0.14em",
+          textTransform:"uppercase", fontStyle:"italic" }}>&mdash; Assign {slotLabel} &mdash;</span>
+        <span style={{ fontSize:16, opacity:0.2 }}>+</span>
+      </div>
+    );
+  }
+
+  const pColor = ACCENT[task.priority] ?? ACCENT.medium;
+
+  return (
+    <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr 1fr", alignItems:"center",
+      minHeight:72, background:"#2a4a3a", borderBottom:"2px solid #1e3629" }}>
+
+      {/* Title cell */}
+      <div onClick={() => navigate(`/tasks/${task.id}`)}
+        style={{ padding:"8px 8px 8px 14px", borderRight:"2px solid #1e3629",
+          display:"flex", alignItems:"center", gap:10, cursor:"pointer",
+          minHeight:72 }}>
+        <div style={{ width:3, alignSelf:"stretch", background:pColor,
+          borderRadius:2, flexShrink:0 }} />
+        <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:13, fontWeight:700,
+          letterSpacing:"0.05em", textTransform:"uppercase", color:"#f5f0e0",
+          lineHeight:1.2, display:"-webkit-box", WebkitLineClamp:3,
+          WebkitBoxOrient:"vertical", overflow:"hidden" }}>{task.title}</span>
+      </div>
+
+      {/* Stats cell */}
+      <div className="sb-cell" style={{ borderRight:"2px solid #1e3629", padding:"6px" }}>
+        <div className="sb-val" style={{ color:"#e8a820" }}>{task.importance ?? "-"}</div>
+        <div className="sb-label">IMP</div>
+        <div className="sb-divider" />
+        <div className="sb-val" style={{ color:"#4faa6e" }}>{task.difficulty ?? "-"}</div>
+        <div className="sb-label">DIFF</div>
+      </div>
+
+      {/* Timer / score cell */}
+      <div className="sb-cell" style={{ padding:"6px" }} onClick={onSlotClick}>
+        {isActiveTimer ? (
+          <>
+            <div className="live-dot" />
+            <div className="sb-val" style={{ color:"#4faa6e", fontSize:11,
+              fontVariantNumeric:"tabular-nums" }}>{formatDuration(elapsedMs)}</div>
+            <div className="sb-label">LIVE</div>
+          </>
+        ) : (
+          <>
+            <div className="sb-val" style={{ color:"#e8a820" }}>{task.focus_score ?? 0}</div>
+            <div className="sb-label">SCORE</div>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
-export function NextUpPanel({ tasks: tasksProp }: { tasks: Task[] }) {
-  const tasks = Array.isArray(tasksProp) ? tasksProp : [];
-
+export default function NextUpPanel() {
   const navigate = useNavigate();
-  const apiBase = import.meta.env.VITE_API_BASE_URL || "";
-  const today   = todayStr();
+  const { start: timerStart, stop: timerStop, activeTaskId } = useTimerStore();
+  const { pinnedId, pin, unpin } = usePinnedTaskStore();
+  const { elapsedMs } = useActiveTimer();
+  const [picker, setPicker] = useState<{ slot: "next"|"deck"; x: number; y: number } | null>(null);
+  const [nextId, setNextId]  = useState<string | undefined>(undefined);
+  const [deckId, setDeckId]  = useState<string | undefined>(undefined);
 
-  const { pinnedTaskId, setPinnedTask } = usePinnedTaskStore();
-  const [deckOverride, setDeckOverride] = useState<Task | null>(null);
+  // tasks
+  const { data: tasksRaw } = useQuery<Task[]>({
+    queryKey: ["tasks"],
+    queryFn: () => axios.get("/api/tasks").then(r => r.data),
+    refetchInterval: 30_000,
+  });
+  const tasks = Array.isArray(tasksRaw) ? tasksRaw : [];
 
-  const { data: localBlocks = [] } = useQuery<TimeBlock[]>({
-    queryKey: ["time-blocks-dashboard", today],
-    queryFn: () =>
-      axios.get(`${apiBase}/api/time-blocks/`, { params: { date: today } }).then(r => r.data),
-    retry: false,
-    staleTime: 60_000,
+  // timeblocks
+  const { data: blocks } = useQuery<TimeBlock[]>({
+    queryKey: ["timeblocks", "today"],
+    queryFn: () => axios.get(`/api/timeblocks?date=${todayStr()}`).then(r => r.data),
+    refetchInterval: 60_000,
   });
 
-  // ── Google Calendar via backend (uses GCAL_API_KEY + GCAL_CALENDAR_ID env vars on DO) ──
-  const { data: gcalData } = useQuery<{ events: NextEvent[]; configured: boolean }>({
-    queryKey: ["gcal-today-dashboard", today],
-    queryFn: () =>
-      axios.get(`${apiBase}/api/gcal/next-event`).then(r => r.data),
-    retry: false,
-    staleTime: 5 * 60_000,
+  // gcal
+  const { data: gcalData } = useQuery({
+    queryKey: ["gcal"],
+    queryFn: () => axios.get("/api/gcal/next-event").then(r => r.data),
+    refetchInterval: 300_000,
   });
-  const gcalEvents: NextEvent[] = gcalData?.events ?? [];
   const gcalConfigured = gcalData?.configured ?? false;
+  const gcalEvents: NextEvent[] = gcalData?.events ?? [];
 
-  const nowMs      = Date.now();
-  const safeLocalBlocks = Array.isArray(localBlocks) ? localBlocks : [];
-  const localEvts: NextEvent[] = safeLocalBlocks.map(b => ({ title: b.title, startMs: new Date(b.start_time).getTime() }));
-  const allEvents  = [...localEvts, ...gcalEvents]
-    .filter(e => e.startMs > nowMs - 5 * 60_000)
+  // pick active task candidates
+  const activeTasks = tasks
+    .filter(t => (t.status === "today" || t.status === "in_progress") && !t.completed_at)
+    .sort((a, b) => taskScore(b) - taskScore(a));
+
+  // slot resolution
+  const nextTask = activeTasks.find(t => t.id === nextId) ??
+    (pinnedId ? activeTasks.find(t => t.id === pinnedId) : null) ??
+    activeTasks[0] ?? null;
+
+  const deckTask = activeTasks.find(t => t.id === deckId) ??
+    activeTasks.find(t => t.id !== nextTask?.id) ?? null;
+
+  // calendar events — merge gcal + timeblock events, sort by startMs
+  const blockEvents: NextEvent[] = (blocks ?? []).map(b => ({
+    title: b.title,
+    startMs: new Date(b.start_time).getTime(),
+  }));
+  const now = Date.now();
+  const allEvents = [...gcalEvents, ...blockEvents]
+    .filter(e => e.startMs > now - 15 * 60 * 1000)   // include events started <15 min ago
     .sort((a, b) => a.startMs - b.startMs);
-  const nextEvent  = allEvents[0] ?? null;
 
-  const pending    = tasks.filter(t => t.status !== "done" && t.status !== "cancelled");
-  const sorted     = [...pending].sort((a, b) => taskScore(b) - taskScore(a));
+  const nextEvent   = allEvents[0] ?? null;
+  const secondEvent = allEvents[1] ?? null;
 
-  const pinnedTask = pinnedTaskId ? pending.find(t => t.id === pinnedTaskId) ?? null : null;
-  const validTop  = pinnedTask ?? sorted[0] ?? null;
-  const validDeck = deckOverride && pending.find(t => t.id === deckOverride.id) ? deckOverride : null;
-  const autoDeck  = sorted.find(t => t.id !== validTop?.id) ?? null;
-  const onDeckTask = validDeck && validDeck.id !== validTop?.id ? validDeck : autoDeck;
-  const nextTask   = validTop;
+  const handleSlotClick = (slot: "next"|"deck", e: React.MouseEvent) => {
+    setPicker({ slot, x: e.clientX, y: e.clientY });
+  };
+  const handlePick = (slot: "next"|"deck", task: Task) => {
+    if (slot === "next") { setNextId(task.id); pin(task.id); }
+    else                 { setDeckId(task.id); }
+    setPicker(null);
+  };
 
-  const pickableForTop  = pending.filter(t => t.id !== onDeckTask?.id);
-  if (pinnedTaskId && !pending.find(t => t.id === pinnedTaskId)) {
-    setTimeout(() => setPinnedTask(null), 0);
-  }
-  const pickableForDeck = pending.filter(t => t.id !== nextTask?.id);
+  const isNextTimer = activeTaskId === nextTask?.id;
+  const isDeckTimer = activeTaskId === deckTask?.id;
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", height:"100%", background:"#2a4a3a" }}>
-      <SHead icon="▶" label="Next Task" />
-      {nextTask
-        ? <TaskSlot task={nextTask} size="lg" allTasks={pickableForTop}
-            onTaskClick={() => navigate("/todos")}
-            onOverride={t => { setPinnedTask(t.id); if (deckOverride?.id === t.id) setDeckOverride(null); }} />
-        : <EmptySlot text="Clear" />}
-      <SHead icon="⋯" label="On Deck" />
-      {onDeckTask
-        ? <TaskSlot task={onDeckTask} size="sm" allTasks={pickableForDeck}
-            onTaskClick={() => navigate("/todos")}
-            onOverride={t => { setDeckOverride(t); if (pinnedTaskId === t.id) setPinnedTask(null); }} />
-        : <EmptySlot text="Nothing on deck" />}
-      <SHead icon="◷" label="Next Event" />
-      {nextEvent
-        ? <EventCountdown event={nextEvent} />
-        : <EmptySlot text={gcalConfigured ? "Schedule clear" : "No calendar connected"} />}
-    </div>
+    <>
+      {picker && (
+        <SlotPicker
+          x={picker.x} y={picker.y}
+          tasks={activeTasks}
+          currentId={picker.slot === "next" ? nextId : deckId}
+          onSelect={t => handlePick(picker.slot, t)}
+          onClose={() => setPicker(null)}
+        />
+      )}
+
+      <div style={{ display:"flex", flexDirection:"column",
+        background:"#1a2e22", borderRadius:6, overflow:"hidden",
+        border:"2px solid #1e3629", boxShadow:"0 4px 20px rgba(0,0,0,0.5)" }}>
+
+        {/* Header */}
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+          padding:"6px 12px", background:"#12221a",
+          borderBottom:"2px solid #1e3629" }}>
+          <span style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:11, fontWeight:700,
+            letterSpacing:"0.22em", textTransform:"uppercase", color:"#e8a820" }}>◈ NEXT UP</span>
+          {nextTask && (
+            <button
+              onClick={() => {
+                if (activeTaskId === nextTask.id) timerStop();
+                else timerStart(nextTask.id);
+              }}
+              style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:9, fontWeight:700,
+                letterSpacing:"0.14em", padding:"3px 8px",
+                background: activeTaskId === nextTask.id ? "#d94040" : "#4faa6e",
+                border:"none", borderRadius:2, cursor:"pointer",
+                color:"#fff", textTransform:"uppercase" }}
+            >{activeTaskId === nextTask.id ? "⏹ STOP" : "▶ START"}</button>
+          )}
+        </div>
+
+        <SHead icon="★" label="Next Task" />
+        <TaskRow task={nextTask} slotLabel="next task"
+          onSlotClick={e => handleSlotClick("next", e)}
+          isActiveTimer={isNextTimer} elapsedMs={isNextTimer ? elapsedMs : 0} />
+
+        <SHead icon="◈" label="On Deck" />
+        <TaskRow task={deckTask} slotLabel="on deck task"
+          onSlotClick={e => handleSlotClick("deck", e)}
+          isActiveTimer={isDeckTimer} elapsedMs={isDeckTimer ? elapsedMs : 0} />
+
+        <SHead icon="◷" label="Next Events" />
+        {nextEvent
+          ? <EventCountdown event={nextEvent} compact />
+          : <EmptySlot text={gcalConfigured ? "Schedule clear" : "No calendar connected"} />}
+        {nextEvent && (
+          secondEvent
+            ? <EventCountdown event={secondEvent} compact />
+            : <EmptySlot text="No more events" />
+        )}
+
+      </div>
+    </>
   );
 }
