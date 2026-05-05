@@ -26,6 +26,7 @@ export const tasksApi = {
   create: (data: any) => api.post("/tasks/", data).then(r => r.data),
   update: (id: string, data: any) => api.patch(`/tasks/${id}`, data).then(r => r.data),
   delete: (id: string) => api.delete(`/tasks/${id}`),
+  complete: (id: string) => api.post(`/tasks/${id}/complete`).then(r => r.data),
 };
 
 // Projects
@@ -43,7 +44,20 @@ export const tagsApi = {
   list: () => api.get("/tags/").then(r => r.data),
 };
 
-// Time Entries
-export const timeEntriesApi = {
-  active: () => api.get("/time-entries/active").then(r => r.data),
+// Time Entries / Timer
+// Backend routes: POST /time-entries/ (start), PATCH /time-entries/{id} (stop),
+// GET /time-entries/ (list — we filter client-side for the active entry)
+export const timersApi = {
+  active: () =>
+    api.get("/time-entries/").then(r => {
+      const entries: any[] = r.data;
+      return entries.find((e: any) => !e.ended_at) ?? null;
+    }),
+  start: (data: { task_id?: string; started_at: string }) =>
+    api.post("/time-entries/", data).then(r => r.data),
+  stop: (id: string, data: { ended_at: string }) =>
+    api.patch(`/time-entries/${id}`, data).then(r => r.data),
 };
+
+// Legacy alias kept for any remaining imports
+export const timeEntriesApi = timersApi;
