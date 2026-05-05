@@ -839,14 +839,12 @@ async def get_task(
         raise HTTPException(status_code=404, detail="Task not found")
     return _task_to_dict(task)
 
-@app.patch("/tasks/{task_id}", response_model=TaskResponse)
-@app.patch("/tasks/{task_id}/", response_model=TaskResponse, include_in_schema=False)
-async def update_task(
+async def _do_update_task(
     task_id: str,
     data: TaskUpdate,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(db.get_session),
-):
+    user: User,
+    session: Session,
+) -> dict:
     task = session.execute(
         select(Task).where(Task.id == task_id, Task.user_id == user.id)
     ).scalar()
@@ -869,6 +867,27 @@ async def update_task(
     session.commit()
     session.refresh(task)
     return _task_to_dict(task)
+
+@app.patch("/tasks/{task_id}", response_model=TaskResponse)
+@app.patch("/tasks/{task_id}/", response_model=TaskResponse, include_in_schema=False)
+async def update_task(
+    task_id: str,
+    data: TaskUpdate,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    return await _do_update_task(task_id, data, user, session)
+
+@app.put("/tasks/{task_id}", response_model=TaskResponse)
+@app.put("/tasks/{task_id}/", response_model=TaskResponse, include_in_schema=False)
+async def put_update_task(
+    task_id: str,
+    data: TaskUpdate,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    """PUT alias for PATCH — frontend compatibility."""
+    return await _do_update_task(task_id, data, user, session)
 
 @app.delete("/tasks/{task_id}")
 @app.delete("/tasks/{task_id}/", include_in_schema=False)
@@ -1252,6 +1271,21 @@ def _time_entry_to_dict(entry: TimeEntry) -> dict:
         "note": entry.note,
         "created_at": entry.created_at,
     }
+
+@app.get("/time-entries/active")
+@app.get("/time-entries/active/", include_in_schema=False)
+async def get_active_time_entry(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    """Return the currently running (no ended_at) time entry, or null."""
+    entry = session.execute(
+        select(TimeEntry).where(
+            TimeEntry.user_id == user.id,
+            TimeEntry.ended_at == None,  # noqa: E711
+        ).order_by(TimeEntry.started_at.desc())
+    ).scalar()
+    return _time_entry_to_dict(entry)
 
 @app.get("/time-entries", response_model=List[TimeEntryResponse])
 @app.get("/time-entries/", response_model=List[TimeEntryResponse], include_in_schema=False)
