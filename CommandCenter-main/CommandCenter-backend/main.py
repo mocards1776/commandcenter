@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Query, APIRouter
+from fastapi import FastAPI, Depends, HTTPException, Query, APIRouter, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import select, text, update
@@ -46,7 +46,7 @@ app.add_middleware(
 # All routes live on this router.
 router = APIRouter()
 
-# ─── Auth ─────────────────────────────────────────────
+# ─── Auth ─────────────────────────────────────────────────────────────────────
 from models import User
 
 @router.post("/auth/register", response_model=UserResponse)
@@ -69,7 +69,7 @@ async def login(data: UserLogin, session: Session = Depends(db.get_session)):
     token = create_access_token(user.id)
     return {"access_token": token, "token_type": "bearer"}
 
-# ─── Tasks ─────────────────────────────────────────────
+# ─── Tasks ────────────────────────────────────────────────────────────────────
 @router.get("/tasks/", response_model=List[TaskResponse])
 async def list_tasks(
     status: Optional[str] = None,
@@ -208,7 +208,7 @@ async def reorder_tasks(
     session.commit()
     return {"ok": True}
 
-# ─── Projects ────────────────────────────────────────────
+# ─── Projects ─────────────────────────────────────────────────────────────────
 @router.get("/projects/", response_model=List[ProjectResponse])
 async def list_projects(
     session: Session = Depends(db.get_session),
@@ -288,7 +288,7 @@ async def delete_project(
     session.commit()
     return {"ok": True}
 
-# ─── Time Blocks ─────────────────────────────────────────
+# ─── Time Blocks ──────────────────────────────────────────────────────────────
 @router.get("/time-blocks/", response_model=List[TimeBlockResponse])
 async def list_time_blocks(
     date: Optional[str] = None,
@@ -330,7 +330,7 @@ async def delete_time_block(
     session.commit()
     return {"ok": True}
 
-# ─── Habits ────────────────────────────────────────────
+# ─── Habits ───────────────────────────────────────────────────────────────────
 
 def _serialize_habit(data_dict: dict) -> dict:
     """Convert custom_days list to CSV string for storage."""
@@ -483,7 +483,7 @@ async def get_habit_streak(
             break
     return {"habit_id": habit_id, "streak": streak}
 
-# ─── Time Entries ─────────────────────────────────────────
+# ─── Time Entries ─────────────────────────────────────────────────────────────
 async def _get_active_timer_impl(session: Session, user: User):
     return session.execute(
         select(TimeEntry)
@@ -541,7 +541,7 @@ async def stop_timer(
     session.refresh(entry)
     return entry
 
-# ─── Dashboard ──────────────────────────────────────────
+# ─── Dashboard ────────────────────────────────────────────────────────────────
 @router.get("/dashboard/")
 async def get_dashboard(
     session: Session = Depends(db.get_session),
@@ -716,7 +716,7 @@ async def get_dashboard(
         "gamification": gamification,
     }
 
-# ─── Gamification history ──────────────────────────────────
+# ─── Gamification history ──────────────────────────────────────────────────────
 @router.get("/gamification/")
 async def get_gamification_history(
     limit: int = Query(30, ge=1, le=90),
@@ -766,7 +766,7 @@ async def get_gamification_history(
         })
     return list(reversed(results))
 
-# ─── Tags & Categories ─────────────────────────────────────
+# ─── Tags & Categories ────────────────────────────────────────────────────────
 @router.get("/tags/", response_model=List[TagResponse])
 async def list_tags(session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
     return session.execute(select(Tag).where(Tag.user_id == user.id)).scalars().all()
@@ -787,7 +787,7 @@ async def create_category(data: CategoryCreate, session: Session = Depends(db.ge
     session.add(category); session.commit(); session.refresh(category)
     return category
 
-# ─── Notes ────────────────────────────────────────────
+# ─── Notes ────────────────────────────────────────────────────────────────────
 @router.get("/notes/", response_model=List[NoteResponse])
 async def list_notes(session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
     return session.execute(select(Note).where(Note.user_id == user.id).order_by(Note.created_at.desc())).scalars().all()
@@ -826,7 +826,7 @@ async def delete_note(note_id: str, session: Session = Depends(db.get_session), 
     session.delete(note); session.commit()
     return {"ok": True}
 
-# ─── CRM ────────────────────────────────────────────
+# ─── CRM ──────────────────────────────────────────────────────────────────────
 @router.get("/crm/", response_model=List[CRMPersonResponse])
 async def list_crm(session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
     return session.execute(select(CRMPerson).where(CRMPerson.user_id == user.id).order_by(CRMPerson.created_at.desc())).scalars().all()
@@ -881,7 +881,7 @@ async def mark_contacted(person_id: str, session: Session = Depends(db.get_sessi
     session.commit(); session.refresh(person)
     return person
 
-# ─── Braindump ─────────────────────────────────────────
+# ─── Braindump ────────────────────────────────────────────────────────────────
 @router.get("/braindump/", response_model=List[BraindumpEntryResponse])
 async def list_braindump(session: Session = Depends(db.get_session), user: User = Depends(get_current_user)):
     return session.execute(select(BraindumpEntry).where(BraindumpEntry.user_id == user.id).order_by(BraindumpEntry.created_at.desc())).scalars().all()
@@ -901,7 +901,7 @@ async def process_braindump(entry_id: str, session: Session = Depends(db.get_ses
     session.commit(); session.refresh(entry)
     return entry
 
-# ─── Sports — Favorites ────────────────────────────────────
+# ─── Sports — Favorites ───────────────────────────────────────────────────────
 from models import FavoriteSportsTeam
 from schemas import FavoriteSportsTeamCreate, FavoriteSportsTeamResponse
 
@@ -1084,98 +1084,241 @@ async def mlb_projections(team_slug: str, user: User = Depends(get_current_user)
             losses = row.get("L") or row.get("Losses")
             return {
                 "proj_wins":   round(float(wins))   if wins   else None,
-                "playoff_pct": pct(row.get("Playoffs")    or row.get("PlayoffOdds")),
-                "div_pct":     pct(row.get("Division")),
-                "wc_pct":      pct(row.get("WildCard")     or row.get("WC")),
-                "ws_pct":      pct(row.get("WorldSeries")  or row.get("WS")),
-                "best":        f"{int(float(wins))}-{int(float(losses))}" if wins and losses else None,
-                "record":      None,
+                "proj_losses": round(float(losses)) if losses else None,
+                "div_pct":     pct(row.get("Division")   or row.get("DivisionOdds")),
+                "playoff_pct": pct(row.get("Playoffs")   or row.get("PlayoffOdds")),
+                "ws_pct":      pct(row.get("WorldSeries") or row.get("WorldSeriesOdds")),
             }
+        return {"proj_wins": None, "proj_losses": None, "div_pct": None, "playoff_pct": None, "ws_pct": None}
     except Exception:
-        pass
-    return {"proj_wins": None, "playoff_pct": None, "div_pct": None,
-            "wc_pct": None, "ws_pct": None, "best": None, "record": None}
+        return {"proj_wins": None, "proj_losses": None, "div_pct": None, "playoff_pct": None, "ws_pct": None}
 
-# ─── Google Calendar — server-side fixed account via env vars ─────────────────
-_GCAL_API_KEY     = os.environ.get("GCAL_API_KEY", "")
-_GCAL_CALENDAR_ID = os.environ.get("GCAL_CALENDAR_ID", "")
+# ─── Google Calendar ──────────────────────────────────────────────────────────
+GCAL_API_KEY = os.getenv("GCAL_API_KEY", "")
+GCAL_CALENDAR_ID = os.getenv("GCAL_CALENDAR_ID", "")
 
-@router.get("/gcal/next-event")
+@router.get("/api/gcal/next-event")
 async def gcal_next_event(user: User = Depends(get_current_user)):
-    """Return today's Google Calendar events using a server-side API key.
-    No browser OAuth required — reads GCAL_API_KEY + GCAL_CALENDAR_ID from env.
-    Returns {events: [{title, startMs}], configured: bool}
-    """
-    if not _GCAL_API_KEY or not _GCAL_CALENDAR_ID:
-        return {"events": [], "configured": False}
-
-    now_ct = datetime.now(_CT)
-    time_min = now_ct.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-    time_max = now_ct.replace(hour=23, minute=59, second=59, microsecond=0).isoformat()
-
+    if not GCAL_API_KEY or not GCAL_CALENDAR_ID:
+        return {"event": None, "error": "Google Calendar not configured"}
+    now_iso = datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
     url = (
-        f"https://www.googleapis.com/calendar/v3/calendars/"
-        f"{_GCAL_CALENDAR_ID}/events"
-        f"?key={_GCAL_API_KEY}"
-        f"&timeMin={time_min}"
-        f"&timeMax={time_max}"
-        f"&singleEvents=true"
-        f"&orderBy=startTime"
-        f"&maxResults=20"
+        f"https://www.googleapis.com/calendar/v3/calendars/{GCAL_CALENDAR_ID}/events"
+        f"?key={GCAL_API_KEY}&timeMin={now_iso}&maxResults=1&singleEvents=true&orderBy=startTime"
     )
-
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=8.0) as client:
             r = await client.get(url)
             r.raise_for_status()
             data = r.json()
         items = data.get("items", [])
-        events = [
-            {
-                "title":   ev.get("summary") or "(No title)",
-                "startMs": int(
-                    datetime.fromisoformat(
-                        (ev.get("start") or {}).get("dateTime")
-                        or ((ev.get("start") or {}).get("date", "") + "T00:00:00")
-                    ).timestamp() * 1000
-                ),
+        if not items:
+            return {"event": None}
+        ev = items[0]
+        start = ev.get("start", {})
+        start_str = start.get("dateTime") or start.get("date", "")
+        return {
+            "event": {
+                "summary": ev.get("summary", ""),
+                "start": start_str,
+                "location": ev.get("location", ""),
+                "htmlLink": ev.get("htmlLink", ""),
             }
-            for ev in items
-            if (ev.get("start") or {}).get("dateTime") or (ev.get("start") or {}).get("date")
-        ]
-        return {"events": events, "configured": True}
+        }
     except Exception as e:
-        # Return empty but don't crash — calendar failure must never break the dashboard
-        return {"events": [], "configured": True, "error": str(e)}
+        return {"event": None, "error": str(e)}
 
-# ─── Mount router at root AND /api prefix ──────────────────
-# Accepts both /time-blocks/ and /api/time-blocks/ (and all other routes)
-# so stale clients, cached service workers, or misconfigured devices
-# sending the /api prefix can't break the app.
+# ─── Telegram Bot Integration ─────────────────────────────────────────────────
+TELEGRAM_BOT_TOKEN     = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_BOT_USERNAME  = os.getenv("TELEGRAM_BOT_USERNAME", "")
+TELEGRAM_OWNER_USER_ID = os.getenv("TELEGRAM_OWNER_USER_ID", "")
+PUBLIC_BACKEND_URL     = os.getenv("PUBLIC_BACKEND_URL", "")
+
+async def telegram_send_message(chat_id, text: str):
+    if not TELEGRAM_BOT_TOKEN:
+        return
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        await client.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+            json={"chat_id": chat_id, "text": text},
+        )
+
+def calc_focus_score(importance: int, difficulty: int) -> float:
+    return round((importance * 0.6 + difficulty * 0.4), 2)
+
+def parse_telegram_task(text: str) -> dict:
+    """Parse /task command into task fields."""
+    body = text[len("/task"):].strip()
+    if not body:
+        raise ValueError("Please provide a task title after /task")
+    priority = "high" if body.startswith("!") else "medium"
+    title = body.lstrip("! ").strip()
+    if not title:
+        raise ValueError("Task title cannot be empty")
+    return {
+        "title": title,
+        "status": "today",
+        "priority": priority,
+        "importance": 4 if priority == "high" else 3,
+        "difficulty": 3,
+        "notes": "Added via Telegram",
+    }
+
+# ─── Telegram Webhook Routes (no JWT auth — secured by TELEGRAM_OWNER_USER_ID)
+# NOTE: These are registered directly on `app`, not `router`, so they are
+# reachable without the router prefix and without Bearer token auth.
+
+@app.post("/telegram/webhook")
+async def telegram_webhook(request: Request, session: Session = Depends(db.get_session)):
+    """Receive updates from Telegram and process bot commands."""
+    if not TELEGRAM_BOT_TOKEN:
+        return {"ok": False}
+
+    try:
+        update = await request.json()
+    except Exception:
+        return {"ok": False}
+
+    message = update.get("message") or update.get("edited_message")
+    if not message:
+        return {"ok": True}
+
+    chat_id   = message.get("chat", {}).get("id")
+    text      = message.get("text", "").strip()
+    sender_id = str(message.get("from", {}).get("id", ""))
+
+    if not chat_id or not text:
+        return {"ok": True}
+
+    # Security: only respond to the configured owner
+    if TELEGRAM_OWNER_USER_ID and sender_id != TELEGRAM_OWNER_USER_ID:
+        await telegram_send_message(chat_id, "⛔ Unauthorized.")
+        return {"ok": True}
+
+    lower = text.lower()
+
+    if lower in ("/start", "/help"):
+        await telegram_send_message(
+            chat_id,
+            "👋 CommandCenter Bot\n\n"
+            "/task [title] — Add a task (prefix ! for high priority)\n"
+            "/today — List today's tasks\n"
+            "/done [#] — Mark task done by list number\n"
+            "/help — Show this message",
+        )
+        return {"ok": True}
+
+    if lower.startswith("/task"):
+        owner_user = session.execute(select(User)).scalars().first()
+        if not owner_user:
+            await telegram_send_message(chat_id, "❌ No user found in CommandCenter.")
+            return {"ok": True}
+        try:
+            task_data = parse_telegram_task(text)
+        except ValueError as e:
+            await telegram_send_message(chat_id, f"❌ {e}")
+            return {"ok": True}
+        fs = calc_focus_score(task_data["importance"], task_data["difficulty"])
+        task = Task(
+            title=task_data["title"],
+            status=task_data["status"],
+            priority=task_data["priority"],
+            importance=task_data["importance"],
+            difficulty=task_data["difficulty"],
+            focus_score=fs,
+            notes=task_data["notes"],
+            user_id=owner_user.id,
+        )
+        session.add(task)
+        session.commit()
+        session.refresh(task)
+        await telegram_send_message(
+            chat_id,
+            f"✅ Task created: \"{task.title}\"\nPriority: {task.priority} | Status: {task.status}",
+        )
+        return {"ok": True}
+
+    if lower == "/today":
+        owner_user = session.execute(select(User)).scalars().first()
+        if not owner_user:
+            await telegram_send_message(chat_id, "❌ No user found.")
+            return {"ok": True}
+        tasks = session.execute(
+            select(Task).where(
+                Task.user_id == owner_user.id,
+                Task.status.in_(["today", "in_progress"]),
+            ).order_by(Task.order.asc())
+        ).scalars().all()
+        if not tasks:
+            await telegram_send_message(chat_id, "📋 No tasks for today.")
+        else:
+            lines = [f"📋 Today's Tasks ({len(tasks)}):"]
+            for i, t in enumerate(tasks, 1):
+                lines.append(f"{i}. [{t.priority.upper()}] {t.title}")
+            await telegram_send_message(chat_id, "\n".join(lines))
+        return {"ok": True}
+
+    if lower.startswith("/done"):
+        owner_user = session.execute(select(User)).scalars().first()
+        if not owner_user:
+            await telegram_send_message(chat_id, "❌ No user found.")
+            return {"ok": True}
+        tasks = session.execute(
+            select(Task).where(
+                Task.user_id == owner_user.id,
+                Task.status.in_(["today", "in_progress"]),
+            ).order_by(Task.order.asc())
+        ).scalars().all()
+        try:
+            num = int(text.split()[1]) - 1
+            task = tasks[num]
+        except (IndexError, ValueError):
+            await telegram_send_message(chat_id, "❓ Usage: /done [number from /today list]")
+            return {"ok": True}
+        task.status = "done"
+        task.completed_at = datetime.now()
+        session.commit()
+        await telegram_send_message(chat_id, f"✅ Done: \"{task.title}\"")
+        return {"ok": True}
+
+    await telegram_send_message(chat_id, "❓ Unknown command. Send /help for options.")
+    return {"ok": True}
+
+
+@app.get("/telegram/setup-webhook")
+async def setup_telegram_webhook():
+    """One-time admin call to register this backend's webhook URL with Telegram."""
+    if not TELEGRAM_BOT_TOKEN or not PUBLIC_BACKEND_URL:
+        return {"error": "TELEGRAM_BOT_TOKEN or PUBLIC_BACKEND_URL not set"}
+    webhook_url = f"{PUBLIC_BACKEND_URL.rstrip('/')}/telegram/webhook"
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setWebhook",
+            json={"url": webhook_url},
+        )
+    return resp.json()
+
+
+@app.get("/telegram/webhook-info")
+async def telegram_webhook_info():
+    """Check what Telegram currently has registered as the webhook."""
+    if not TELEGRAM_BOT_TOKEN:
+        return {"error": "TELEGRAM_BOT_TOKEN not set"}
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.get(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getWebhookInfo"
+        )
+    return resp.json()
+
+
+# ─── Health & Root ────────────────────────────────────────────────────────────
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+@app.get("/")
+async def root():
+    return {"message": "CommandCenter API", "version": "valley-forge-1.3"}
+
+# Mount all router routes onto the app
 app.include_router(router)
-app.include_router(router, prefix="/api")
-
-# ─── Startup ──────────────────────────────────────────
-@app.on_event("startup")
-async def startup():
-    db.init_db()
-    migrations = [
-        "ALTER TABLE habits RENAME COLUMN title TO name",
-        "ALTER TABLE habits ADD COLUMN IF NOT EXISTS icon VARCHAR(100)",
-        "ALTER TABLE habits ADD COLUMN IF NOT EXISTS custom_days VARCHAR(100)",
-        "ALTER TABLE habits ADD COLUMN IF NOT EXISTS target_minutes INTEGER",
-        "ALTER TABLE habits ADD COLUMN IF NOT EXISTS time_hour INTEGER",
-        "ALTER TABLE habits ADD COLUMN IF NOT EXISTS time_minute INTEGER DEFAULT 0",
-    ]
-    with db.engine.connect() as conn:
-        for sql in migrations:
-            try:
-                conn.execute(text(sql))
-                conn.commit()
-            except Exception:
-                pass
-    print("\u2713 Database initialized and migrated")
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
