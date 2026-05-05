@@ -945,7 +945,6 @@ def _time_entry_to_dict(entry: TimeEntry) -> dict:
         "started_at": entry.started_at,
         "ended_at": entry.ended_at,
         "duration_seconds": entry.duration_seconds,
-        "notes": entry.notes,
         "created_at": entry.created_at,
     }
 
