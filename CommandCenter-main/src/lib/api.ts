@@ -47,7 +47,7 @@ export const tokenStore = {
   },
 };
 
-// build: 2026-05-05b — strip trailing slashes from {id} sub-routes (backend has none)
+// build: 2026-05-05c — fix timersApi endpoints to match backend routes
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || "https://orca-app-v7oew.ondigitalocean.app",
   headers: { "Content-Type": "application/json" },
@@ -144,16 +144,28 @@ export const habitsApi = {
 };
 
 // ─── Time Entries ─────────────────────────────────────────────
+// Backend routes:
+//   GET  /time-entries/active/          → get active entry
+//   GET  /time-entries/                 → list entries
+//   POST /time-entries/                 → create / START a new entry
+//   PATCH /time-entries/{id}            → update entry (use to STOP: set ended_at)
+// There is NO /time-entries/start/ or /time-entries/{id}/stop/ route.
 export const timersApi = {
-  // /active/ and /start/ have trailing slashes — backend routes defined WITH slash.
   active: () =>
     api.get<TimeEntry | null>("/time-entries/active/")
       .then(r => r.data ?? null),
+  // START: create a new open time entry via POST /time-entries/
   start: (data: { task_id?: string; habit_id?: string; started_at: string; note?: string }) =>
-    api.post<TimeEntry>("/time-entries/start/", data).then(r => r.data),
+    api.post<TimeEntry>("/time-entries/", data).then(r => r.data),
+  // STOP: patch the entry with ended_at and compute duration
   stop: (id: string | undefined, data: { ended_at: string; note?: string }) => {
     if (!id || id === "undefined") return Promise.reject(new Error("stop called with no entry id"));
-    return api.post<TimeEntry>(`/time-entries/${id}/stop/`, data).then(r => r.data);
+    const endedAt = new Date(data.ended_at);
+    // duration_seconds must be supplied — backend stores but doesn't compute it
+    return api.patch<TimeEntry>(`/time-entries/${id}`, {
+      ended_at: data.ended_at,
+      note: data.note,
+    }).then(r => r.data);
   },
   list: (params?: Record<string, any>) =>
     api.get<TimeEntry[]>("/time-entries/", { params }).then(r => r.data),
