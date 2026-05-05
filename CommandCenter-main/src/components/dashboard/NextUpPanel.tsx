@@ -308,7 +308,7 @@ export function NextUpPanel() {
   });
   const tasks = Array.isArray(tasksRaw) ? tasksRaw : [];
 
-  // timeblocks — use correct endpoint with params object (avoids 307 redirect)
+  // timeblocks
   const { data: blocks } = useQuery<TimeBlock[]>({
     queryKey: ["timeblocks", "today"],
     queryFn: () => axios.get("/api/time-blocks/", { params: { date: todayStr() } }).then(r => r.data),
@@ -344,7 +344,7 @@ export function NextUpPanel() {
   }));
   const now = Date.now();
   const allEvents = [...gcalEvents, ...blockEvents]
-    .filter(e => e.startMs > now - 15 * 60 * 1000)   // include events started <15 min ago
+    .filter(e => e.startMs > now - 15 * 60 * 1000)
     .sort((a, b) => a.startMs - b.startMs);
 
   const nextEvent   = allEvents[0] ?? null;
