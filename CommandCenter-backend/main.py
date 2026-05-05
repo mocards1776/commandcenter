@@ -174,10 +174,12 @@ async def telegram_send_message(chat_id: int, text: str):
 
 def parse_telegram_task(text: str) -> dict:
     raw = text.strip()
-    if raw.lower().startswith("/task "):
-        raw = raw[6:].strip()
-    elif raw.lower() == "/task":
-        raw = ""
+    parts = raw.split(maxsplit=1)
+    command = parts[0].lower() if parts else ""
+    if "@" in command:
+        command = command.split("@", 1)[0]
+    if command == "/task":
+        raw = parts[1].strip() if len(parts) > 1 else ""
     if not raw:
         raise ValueError("Usage: /task Your task title here")
     priority = "medium"
@@ -227,19 +229,24 @@ async def telegram_webhook(request: Request, session: Session = Depends(db.get_s
         await telegram_send_message(chat_id, "⛔ Unauthorized.")
         return {"ok": True}
 
-    lower = text.lower()
+    # Normalize command token (handles /cmd@botname format from Telegram groups)
+    parts = text.split(maxsplit=1)
+    command = parts[0].lower() if parts else ""
+    if "@" in command:
+        command = command.split("@", 1)[0]
 
-    if lower in ("/start", "/help"):
+    if command in ("/start", "/help"):
         await telegram_send_message(
             chat_id,
             "👋 CommandCenter Bot\n\n"
             "/task [title] — Add a task (prefix ! for high priority)\n"
             "/today — List today's tasks\n"
-            "/help — Show this message",
+            "/help — Show this message\n\n"
+            "Or just type any message to instantly create a task!",
         )
         return {"ok": True}
 
-    if lower.startswith("/task"):
+    if command == "/task":
         owner_user = session.execute(select(User)).scalars().first()
         if not owner_user:
             await telegram_send_message(chat_id, "❌ No user found in CommandCenter.")
@@ -269,7 +276,7 @@ async def telegram_webhook(request: Request, session: Session = Depends(db.get_s
         )
         return {"ok": True}
 
-    if lower == "/today":
+    if command == "/today":
         owner_user = session.execute(select(User)).scalars().first()
         if not owner_user:
             await telegram_send_message(chat_id, "❌ No user found.")
@@ -289,7 +296,41 @@ async def telegram_webhook(request: Request, session: Session = Depends(db.get_s
             await telegram_send_message(chat_id, "\n".join(lines))
         return {"ok": True}
 
-    await telegram_send_message(chat_id, "❓ Unknown command. Send /help for options.")
+    # ── Catch-all: treat any plain-text message as a quick task ──────────────
+    owner_user = session.execute(select(User)).scalars().first()
+    if not owner_user:
+        await telegram_send_message(chat_id, "❌ No user found in CommandCenter.")
+        return {"ok": True}
+
+    raw = text.strip()
+    priority = "medium"
+    importance = 3
+    if raw.startswith("!"):
+        priority = "high"
+        importance = 5
+        raw = raw[1:].strip()
+
+    if not raw:
+        return {"ok": True}
+
+    fs = calc_focus_score(importance, 3)
+    task = Task(
+        title=raw,
+        status="today",
+        priority=priority,
+        importance=importance,
+        difficulty=3,
+        focus_score=fs,
+        notes="Created via Telegram bot",
+        user_id=owner_user.id,
+    )
+    session.add(task)
+    session.commit()
+    session.refresh(task)
+    await telegram_send_message(
+        chat_id,
+        f"✅ Task created: \"{task.title}\"\nPriority: {task.priority} | Status: {task.status}",
+    )
     return {"ok": True}
 
 
