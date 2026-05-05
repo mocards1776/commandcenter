@@ -293,9 +293,10 @@ function TaskRow({ task, slotLabel, onSlotClick, isActiveTimer, elapsedMs }
 
 export default function NextUpPanel() {
   const navigate = useNavigate();
-  const { start: timerStart, stop: timerStop, activeTaskId } = useTimerStore();
-  const { pinnedId, pin, unpin } = usePinnedTaskStore();
-  const { elapsedMs } = useActiveTimer();
+  const { activeTimer } = useTimerStore();
+  const activeTaskId = activeTimer?.task_id ?? null;
+  const { start: timerStart, stop: timerStop, elapsedMs } = useActiveTimer();
+  const { pinnedTaskId: pinnedId, setPinnedTask: pin } = usePinnedTaskStore();
   const [picker, setPicker] = useState<{ slot: "next"|"deck"; x: number; y: number } | null>(null);
   const [nextId, setNextId]  = useState<string | undefined>(undefined);
   const [deckId, setDeckId]  = useState<string | undefined>(undefined);
@@ -388,7 +389,7 @@ export default function NextUpPanel() {
             <button
               onClick={() => {
                 if (activeTaskId === nextTask.id) timerStop();
-                else timerStart(nextTask.id);
+                else timerStart({ task_id: nextTask.id });
               }}
               style={{ fontFamily:"'Oswald',Arial,sans-serif", fontSize:9, fontWeight:700,
                 letterSpacing:"0.14em", padding:"3px 8px",
