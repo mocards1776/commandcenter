@@ -47,7 +47,7 @@ export const tokenStore = {
   },
 };
 
-// build: 2026-05-04 — all mutations use PUT; PATCH removed to avoid CORS preflight failures
+// build: 2026-05-05 — timer endpoints get trailing slashes to match backend routes
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || "https://orca-app-v7oew.ondigitalocean.app",
   headers: { "Content-Type": "application/json" },
@@ -146,12 +146,13 @@ export const habitsApi = {
 
 // ─── Time Entries ─────────────────────────────────────────────
 export const timersApi = {
-  // Backend returns { active: TimeEntry | null } — unwrap here
+  // Trailing slash required — backend route is /time-entries/active/ and DO proxy
+  // drops the Authorization header on FastAPI's 307 redirect if slash is missing.
   active: () =>
-    api.get<{ active: TimeEntry | null }>("/time-entries/active")
-      .then(r => r.data?.active ?? null),
+    api.get<TimeEntry | null>("/time-entries/active/")
+      .then(r => r.data ?? null),
   start: (data: { task_id?: string; habit_id?: string; started_at: string; note?: string }) =>
-    api.post<TimeEntry>("/time-entries/start", data).then(r => r.data),
+    api.post<TimeEntry>("/time-entries/start/", data).then(r => r.data),
   stop: (id: string | undefined, data: { ended_at: string; note?: string }) => {
     if (!id || id === "undefined") return Promise.reject(new Error("stop called with no entry id"));
     return api.post<TimeEntry>(`/time-entries/${id}/stop/`, data).then(r => r.data);
