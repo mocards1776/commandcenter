@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import type { CSSProperties } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { tasksApi, projectsApi, categoriesApi, tagsApi } from "@/lib/api";
 import { useActiveTimer } from "@/hooks/useTimer";
@@ -23,8 +24,8 @@ function Stars({ value, onChange, color, label }: { value:number; onChange:(n:nu
   );
 }
 
-const FIELD: React.CSSProperties = {display:"flex",flexDirection:"column",gap:4};
-const INP: React.CSSProperties = {width:"100%",padding:"7px 10px",fontSize:12};
+const FIELD: CSSProperties = {display:"flex",flexDirection:"column",gap:4};
+const INP: CSSProperties = {width:"100%",padding:"7px 10px",fontSize:12};
 const SHEAD = (text:string) => <div style={{fontSize:9,fontWeight:600,letterSpacing:"0.18em",textTransform:"uppercase",color:"rgba(232,168,32,0.6)",marginBottom:4}}>{text}</div>;
 
 interface Props { open:boolean; onClose:()=>void; task?:Task|null; projectId?:string; parentId?:string; defaultStatus?:TaskStatus; }
