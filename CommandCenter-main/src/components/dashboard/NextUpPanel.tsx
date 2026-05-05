@@ -291,7 +291,7 @@ function TaskRow({ task, slotLabel, onSlotClick, isActiveTimer, elapsedSeconds }
   );
 }
 
-export default function NextUpPanel() {
+export function NextUpPanel() {
   const { activeTimer } = useTimerStore();
   const activeTaskId = activeTimer?.task_id ?? null;
   const { start: timerStart, stop: timerStop, elapsedSeconds } = useActiveTimer();
@@ -423,3 +423,5 @@ export default function NextUpPanel() {
     </>
   );
 }
+
+export default NextUpPanel;
