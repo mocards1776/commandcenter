@@ -258,6 +258,117 @@ def parse_telegram_task(text: str) -> dict:
         "notes": "Created via Telegram bot",
     }
 
+# ─── Telegram Webhook ────────────────────────────────────────────────
+@app.post("/telegram/webhook")
+async def telegram_webhook(request: Request, session: Session = Depends(db.get_session)):
+    """Receive updates from Telegram and process bot commands."""
+    if not TELEGRAM_BOT_TOKEN:
+        return {"ok": False}
+    try:
+        update = await request.json()
+    except Exception:
+        return {"ok": False}
+    message = update.get("message") or update.get("edited_message")
+    if not message:
+        return {"ok": True}
+    chat_id = message.get("chat", {}).get("id")
+    text = message.get("text", "").strip()
+    sender_id = str(message.get("from", {}).get("id", ""))
+    if not chat_id or not text:
+        return {"ok": True}
+    # Security: only allow the configured owner
+    if TELEGRAM_OWNER_USER_ID and sender_id != TELEGRAM_OWNER_USER_ID:
+        await telegram_send_message(chat_id, "\u26d4 Unauthorized.")
+        return {"ok": True}
+    lower = text.lower()
+    if lower in ("/start", "/help"):
+        await telegram_send_message(
+            chat_id,
+            "\U0001f44b CommandCenter Bot\n\n"
+            "/task [title] \u2014 Add a task (prefix ! for high priority)\n"
+            "/today \u2014 List today\u2019s tasks\n"
+            "/done [task id or #] \u2014 Mark task done\n"
+            "/help \u2014 Show this message",
+        )
+        return {"ok": True}
+    if lower.startswith("/task"):
+        owner_user = session.execute(select(User)).scalars().first()
+        if not owner_user:
+            await telegram_send_message(chat_id, "\u274c No user found in CommandCenter.")
+            return {"ok": True}
+        try:
+            task_data = parse_telegram_task(text)
+        except ValueError as e:
+            await telegram_send_message(chat_id, f"\u274c {e}")
+            return {"ok": True}
+        fs = calc_focus_score(task_data["importance"], task_data["difficulty"])
+        task = Task(
+            title=task_data["title"],
+            status=task_data["status"],
+            priority=task_data["priority"],
+            importance=task_data["importance"],
+            difficulty=task_data["difficulty"],
+            focus_score=fs,
+            notes=task_data["notes"],
+            user_id=owner_user.id,
+        )
+        session.add(task)
+        session.commit()
+        session.refresh(task)
+        await telegram_send_message(
+            chat_id,
+            f"\u2705 Task created: \"{task.title}\"\nPriority: {task.priority} | Status: {task.status}",
+        )
+        return {"ok": True}
+    if lower == "/today":
+        owner_user = session.execute(select(User)).scalars().first()
+        if not owner_user:
+            await telegram_send_message(chat_id, "\u274c No user found.")
+            return {"ok": True}
+        tasks = session.execute(
+            select(Task).where(
+                Task.user_id == owner_user.id,
+                Task.status.in_(["today", "in_progress"]),
+            ).order_by(Task.sort_order.asc())
+        ).scalars().all()
+        if not tasks:
+            await telegram_send_message(chat_id, "\U0001f4cb No tasks for today.")
+        else:
+            lines = [f"\U0001f4cb Today's Tasks ({len(tasks)}):"]
+            for i, t in enumerate(tasks, 1):
+                lines.append(f"{i}. [{t.priority.upper()}] {t.title}")
+            await telegram_send_message(chat_id, "\n".join(lines))
+        return {"ok": True}
+    await telegram_send_message(chat_id, "\u2753 Unknown command. Send /help for options.")
+    return {"ok": True}
+
+
+@app.get("/telegram/setup-webhook")
+async def setup_telegram_webhook():
+    """One-time admin call to register this backend's webhook with Telegram."""
+    if not TELEGRAM_BOT_TOKEN or not PUBLIC_BACKEND_URL:
+        return {"error": "TELEGRAM_BOT_TOKEN or PUBLIC_BACKEND_URL not set"}
+    webhook_url = f"{PUBLIC_BACKEND_URL.rstrip('/')}/telegram/webhook"
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setWebhook",
+            json={"url": webhook_url},
+        )
+    return resp.json()
+
+
+@app.get("/telegram/webhook-info")
+async def telegram_webhook_info():
+    """Check what Telegram thinks the current webhook is."""
+    if not TELEGRAM_BOT_TOKEN:
+        return {"error": "TELEGRAM_BOT_TOKEN not set"}
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.get(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getWebhookInfo"
+        )
+    return resp.json()
+
+
 # ─── Auth ────────────────────────────────────────────────────────────
 @app.post("/auth/register", response_model=UserResponse)
 async def register(data: UserCreate, session: Session = Depends(db.get_session)):
@@ -562,6 +673,23 @@ async def update_project(
     session.refresh(project)
     return project
 
+@app.put("/projects/{project_id}", response_model=ProjectResponse)
+async def put_update_project(
+    project_id: str,
+    data: ProjectUpdate,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    """PUT alias for PATCH — frontend compatibility."""
+    project = session.execute(_own(select(Project), Project, user).where(Project.id == project_id)).scalar()
+    if not project:
+        raise HTTPException(status_code=404)
+    for k, v in data.dict(exclude_unset=True).items():
+        setattr(project, k, v)
+    session.commit()
+    session.refresh(project)
+    return project
+
 @app.delete("/projects/{project_id}")
 async def delete_project(
     project_id: str,
@@ -615,6 +743,23 @@ async def update_habit(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
+    habit = session.execute(_own(select(Habit), Habit, user).where(Habit.id == habit_id)).scalar()
+    if not habit:
+        raise HTTPException(status_code=404)
+    for k, v in data.dict(exclude_unset=True).items():
+        setattr(habit, k, v)
+    session.commit()
+    session.refresh(habit)
+    return habit
+
+@app.put("/habits/{habit_id}", response_model=HabitResponse)
+async def put_update_habit(
+    habit_id: str,
+    data: HabitUpdate,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    """PUT alias for PATCH — frontend compatibility."""
     habit = session.execute(_own(select(Habit), Habit, user).where(Habit.id == habit_id)).scalar()
     if not habit:
         raise HTTPException(status_code=404)
@@ -803,6 +948,24 @@ async def update_note(
     session.refresh(note)
     return note
 
+@app.put("/notes/{note_id}", response_model=NoteResponse)
+async def put_update_note(
+    note_id: str,
+    data: NoteUpdate,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    """PUT alias for PATCH — frontend compatibility."""
+    note = session.execute(_own(select(Note), Note, user).where(Note.id == note_id)).scalar()
+    if not note:
+        raise HTTPException(status_code=404)
+    for k, v in data.dict(exclude_unset=True).items():
+        setattr(note, k, v)
+    note.updated_at = datetime.utcnow()
+    session.commit()
+    session.refresh(note)
+    return note
+
 @app.delete("/notes/{note_id}")
 async def delete_note(
     note_id: str,
@@ -859,6 +1022,23 @@ async def update_crm_person(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
+    person = session.execute(_own(select(CRMPerson), CRMPerson, user).where(CRMPerson.id == person_id)).scalar()
+    if not person:
+        raise HTTPException(status_code=404)
+    for k, v in data.dict(exclude_unset=True).items():
+        setattr(person, k, v)
+    session.commit()
+    session.refresh(person)
+    return person
+
+@app.put("/crm/{person_id}", response_model=CRMPersonResponse)
+async def put_update_crm_person(
+    person_id: str,
+    data: CRMPersonUpdate,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    """PUT alias for PATCH — frontend compatibility."""
     person = session.execute(_own(select(CRMPerson), CRMPerson, user).where(CRMPerson.id == person_id)).scalar()
     if not person:
         raise HTTPException(status_code=404)
@@ -986,15 +1166,13 @@ async def create_braindump(
     session.refresh(entry)
     return entry
 
-@app.post("/braindump/{entry_id}/process/", response_model=BraindumpEntryResponse)
+@app.post("/braindump/{entry_id}/process/")
 async def process_braindump(
     entry_id: str,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    entry = session.execute(
-        _own(select(BraindumpEntry), BraindumpEntry, user).where(BraindumpEntry.id == entry_id)
-    ).scalar()
+    entry = session.execute(_own(select(BraindumpEntry), BraindumpEntry, user).where(BraindumpEntry.id == entry_id)).scalar()
     if not entry:
         raise HTTPException(status_code=404)
     entry.processed = True
@@ -1002,196 +1180,155 @@ async def process_braindump(
     session.refresh(entry)
     return entry
 
+# ─── Time Blocks ───────────────────────────────────────────────────────
+@app.get("/time-blocks/", response_model=List[TimeBlockResponse])
+async def list_time_blocks(
+    date: Optional[str] = None,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    query = _own(select(TimeBlock), TimeBlock, user)
+    if date:
+        query = query.where(TimeBlock.date == date)
+    return session.execute(query.order_by(TimeBlock.start_time)).scalars().all()
+
+@app.post("/time-blocks/", response_model=TimeBlockResponse)
+async def create_time_block(
+    data: TimeBlockCreate,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    block = TimeBlock(**data.dict())
+    block.user_id = user.id
+    session.add(block)
+    session.commit()
+    session.refresh(block)
+    return block
+
+@app.patch("/time-blocks/{block_id}", response_model=TimeBlockResponse)
+async def update_time_block(
+    block_id: str,
+    data: TimeBlockUpdate,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    block = session.execute(_own(select(TimeBlock), TimeBlock, user).where(TimeBlock.id == block_id)).scalar()
+    if not block:
+        raise HTTPException(status_code=404)
+    for k, v in data.dict(exclude_unset=True).items():
+        setattr(block, k, v)
+    session.commit()
+    session.refresh(block)
+    return block
+
+@app.put("/time-blocks/{block_id}", response_model=TimeBlockResponse)
+async def put_update_time_block(
+    block_id: str,
+    data: TimeBlockUpdate,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    """PUT alias for PATCH — frontend compatibility."""
+    block = session.execute(_own(select(TimeBlock), TimeBlock, user).where(TimeBlock.id == block_id)).scalar()
+    if not block:
+        raise HTTPException(status_code=404)
+    for k, v in data.dict(exclude_unset=True).items():
+        setattr(block, k, v)
+    session.commit()
+    session.refresh(block)
+    return block
+
+@app.delete("/time-blocks/{block_id}")
+async def delete_time_block(
+    block_id: str,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    block = session.execute(_own(select(TimeBlock), TimeBlock, user).where(TimeBlock.id == block_id)).scalar()
+    if not block:
+        raise HTTPException(status_code=404)
+    session.delete(block)
+    session.commit()
+    return {"ok": True}
+
 # ─── Dashboard ─────────────────────────────────────────────────────────
 @app.get("/dashboard/", response_model=DashboardSummary)
-async def dashboard(
+async def get_dashboard(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
     today = _today_ct()
-    midnight_utc = _ct_midnight_as_utc()
+    today_tasks = session.execute(
+        _own(select(Task), Task, user).where(
+            Task.status.in_(["today", "in_progress"]) |
+            ((Task.due_date == today) & (Task.status != "done"))
+        ).order_by(Task.sort_order)
+    ).scalars().all()
 
-    try:
-        tasks_today_rows = session.execute(
-            _own(select(Task), Task, user).where(Task.status.in_(["today", "in_progress"]))
-        ).scalars().all()
+    backlog_tasks = session.execute(
+        _own(select(Task), Task, user).where(
+            Task.status == "backlog"
+        ).order_by(Task.created_at.desc()).limit(20)
+    ).scalars().all()
 
-        tasks_done_today = session.execute(
-            _own(select(Task), Task, user).where(
-                Task.status == "done",
-                Task.completed_at >= midnight_utc,
-            )
-        ).scalars().all()
+    projects = session.execute(
+        _own(select(Project), Project, user).where(
+            Project.status != "archived"
+        ).order_by(Project.created_at.desc())
+    ).scalars().all()
 
-        overdue_rows = session.execute(
-            _own(select(Task), Task, user).where(
-                Task.due_date < today,
-                Task.status.notin_(["done"]),
-            )
-        ).scalars().all()
+    habits = session.execute(
+        _own(select(Habit), Habit, user)
+    ).scalars().all()
 
-        habits = session.execute(
-            _own(select(Habit), Habit, user).where(Habit.is_active == True)  # noqa: E712
-        ).scalars().all()
-
-        habit_completions_today = session.execute(
-            select(HabitCompletion).where(
-                HabitCompletion.habit_id.in_([h.id for h in habits]),
-                HabitCompletion.completed_date == str(today),
-            )
-        ).scalars().all() if habits else []
-        completed_habit_ids = {c.habit_id for c in habit_completions_today}
-
-        today_habits_list = [
-            {
-                "id": h.id,
-                "name": h.name,
-                "icon": h.icon,
-                "color": h.color,
-                "completed": h.id in completed_habit_ids,
-            }
-            for h in habits
-        ]
-
-        active_projects_orm = session.execute(
-            _own(select(Project), Project, user).where(Project.status == "active")
-        ).scalars().all()
-        active_projects = [_project_to_dict(p) for p in active_projects_orm]
-
-        time_entries_today = session.execute(
-            _own(select(TimeEntry), TimeEntry, user).where(
-                TimeEntry.started_at >= midnight_utc,
-                TimeEntry.ended_at != None,  # noqa: E711
-            )
-        ).scalars().all()
-
-        time_tracked_seconds = 0
-        for entry in time_entries_today:
-            if entry.ended_at and entry.started_at:
-                started = entry.started_at if isinstance(entry.started_at, datetime) else datetime.fromisoformat(str(entry.started_at))
-                ended = entry.ended_at if isinstance(entry.ended_at, datetime) else datetime.fromisoformat(str(entry.ended_at))
-                delta = (ended - started).total_seconds()
-                if delta > 0:
-                    time_tracked_seconds += int(delta)
-
-        focus_score_today = sum(t.focus_score or 0 for t in tasks_done_today)
-
-        streak_days = 0
-        check = today
-        while True:
-            day_start = datetime.combine(check, datetime.min.time())
-            day_end = datetime.combine(check + timedelta(days=1), datetime.min.time())
-            count = session.execute(
-                _own(select(Task), Task, user).where(
-                    Task.status == "done",
-                    Task.completed_at >= day_start,
-                    Task.completed_at < day_end,
-                )
-            ).scalars().first()
-            if count is None:
-                break
-            streak_days += 1
-            check -= timedelta(days=1)
-            if streak_days > 365:
-                break
-
-        habit_completion_rate = (
-            len(completed_habit_ids) / len(habits) if habits else 0.0
+    habit_completions_today = session.execute(
+        select(HabitCompletion).where(
+            HabitCompletion.completed_date == str(today)
         )
+    ).scalars().all()
+    completed_habit_ids = {c.habit_id for c in habit_completions_today}
 
-        serialized_today_tasks = [_task_to_dict(t) for t in tasks_today_rows]
-        serialized_overdue_tasks = [_task_to_dict(t) for t in overdue_rows]
-
-        return DashboardSummary(
-            tasks_today=len(tasks_today_rows),
-            completed_today=len(tasks_done_today),
-            focus_score_today=focus_score_today,
-            time_tracked_seconds=time_tracked_seconds,
-            streak_days=streak_days,
-            today_tasks=serialized_today_tasks,
-            overdue_tasks=serialized_overdue_tasks,
-            today_habits=today_habits_list,
-            active_projects=active_projects,
-            total_tasks_today=len(tasks_today_rows),
-            completed_tasks_today=len(tasks_done_today),
-            habit_completion_rate=habit_completion_rate,
+    today_done = session.execute(
+        _own(select(Task), Task, user).where(
+            Task.status == "done",
+            Task.completed_at >= _ct_midnight_as_utc(),
         )
+    ).scalars().all()
 
-    except Exception as e:
-        print(f"Dashboard query error: {e}")
-        return DashboardSummary(
-            tasks_today=0,
-            completed_today=0,
-            focus_score_today=0,
-            time_tracked_seconds=0,
-            streak_days=0,
-            today_tasks=[],
-            overdue_tasks=[],
-            today_habits=[],
-            active_projects=[],
-            total_tasks_today=0,
-            completed_tasks_today=0,
-            habit_completion_rate=0.0,
-        )
+    return DashboardSummary(
+        today_tasks=[_task_to_dict(t) for t in today_tasks],
+        backlog_tasks=[_task_to_dict(t) for t in backlog_tasks],
+        projects=[_project_to_dict(p) for p in projects],
+        habits=habits,
+        completed_habit_ids=list(completed_habit_ids),
+        today_completed_count=len(today_done),
+        streak=0,
+    )
 
 # ─── Gamification ──────────────────────────────────────────────────────
 @app.get("/gamification/")
-async def gamification_history(
-    limit: int = 30,
+async def get_gamification(
+    limit: int = Query(30, ge=1, le=365),
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    today = _today_ct()
-    window_start = datetime.combine(today - timedelta(days=limit - 1), datetime.min.time())
-    window_end = datetime.combine(today + timedelta(days=1), datetime.min.time())
-
-    all_tasks = session.execute(
-        _own(select(Task), Task, user).where(
-            Task.status == "done",
-            Task.completed_at >= window_start,
-            Task.completed_at < window_end,
-        )
-    ).scalars().all()
-    tasks_by_date: dict = defaultdict(list)
-    for t in all_tasks:
-        if t.completed_at:
-            completed_dt = t.completed_at if isinstance(t.completed_at, datetime) else datetime.fromisoformat(str(t.completed_at))
-            tasks_by_date[completed_dt.date()].append(t)
-
-    habit_ids = [
-        h.id for h in session.execute(
-            _own(select(Habit), Habit, user)
-        ).scalars().all()
-    ]
-
-    completions_by_date: dict = defaultdict(int)
-    if habit_ids:
-        all_completions = session.execute(
-            select(HabitCompletion).where(
-                HabitCompletion.habit_id.in_(habit_ids),
-                HabitCompletion.completed_date >= str(today - timedelta(days=limit - 1)),
-                HabitCompletion.completed_date <= str(today),
-            )
-        ).scalars().all()
-        for c in all_completions:
-            completions_by_date[c.completed_date] += 1
-
     results = []
     for i in range(limit):
-        day = today - timedelta(days=i)
-        tc = len(tasks_by_date.get(day, []))
-        hc = completions_by_date.get(str(day), 0)
-        results.append({
-            "date": str(day),
-            "tasks_completed": tc,
-            "habits_completed": hc,
-            "xp_earned": tc * 10 + hc * 5,
-        })
+        day = _today_ct() - timedelta(days=i)
+        count = session.execute(
+            select(func.count()).select_from(Task).where(
+                Task.user_id == user.id,
+                Task.status == "done",
+                Task.completed_at >= datetime(day.year, day.month, day.day),
+                Task.completed_at < datetime(day.year, day.month, day.day) + timedelta(days=1),
+            )
+        ).scalar() or 0
+        results.append({"date": str(day), "tasks_completed": count, "xp": count * 10})
     return results
 
 # ─── Sports ────────────────────────────────────────────────────────────
-@app.get("/sports/favorites/")
-async def list_favorites(
+@app.get("/sports/favorites/", response_model=List[FavoriteSportsTeamResponse])
+async def list_favorite_teams(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
@@ -1199,8 +1336,8 @@ async def list_favorites(
         _own(select(FavoriteSportsTeam), FavoriteSportsTeam, user)
     ).scalars().all()
 
-@app.post("/sports/favorites/")
-async def add_favorite(
+@app.post("/sports/favorites/", response_model=FavoriteSportsTeamResponse)
+async def add_favorite_team(
     data: FavoriteSportsTeamCreate,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
@@ -1213,7 +1350,7 @@ async def add_favorite(
     return team
 
 @app.delete("/sports/favorites/{team_id}")
-async def remove_favorite(
+async def remove_favorite_team(
     team_id: str,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
@@ -1227,71 +1364,52 @@ async def remove_favorite(
     session.commit()
     return {"ok": True}
 
-# ─── Telegram Webhook ──────────────────────────────────────────────────
-@app.post("/telegram/webhook/")
-async def telegram_webhook(request: Request, session: Session = Depends(db.get_session)):
+@app.get("/sports/mlb/{team_slug}/")
+async def get_mlb_team(
+    team_slug: str,
+    user: User = Depends(get_current_user),
+):
     try:
-        body = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON")
-    message = body.get("message", {})
-    chat_id = message.get("chat", {}).get("id")
-    text = message.get("text", "").strip()
-    tg_user_id = str(message.get("from", {}).get("id", ""))
-    if not chat_id or not text:
-        return {"ok": True}
-    owner_id = TELEGRAM_OWNER_USER_ID.strip()
-    if owner_id and tg_user_id != owner_id:
-        await telegram_send_message(chat_id, "Unauthorized.")
-        return {"ok": True}
-    if text.lower().startswith("/task"):
-        try:
-            task_data = parse_telegram_task(text)
-        except ValueError as e:
-            await telegram_send_message(chat_id, str(e))
-            return {"ok": True}
-        user = session.execute(select(User).order_by(User.id)).scalar()
-        if not user:
-            await telegram_send_message(chat_id, "No user found in system.")
-            return {"ok": True}
-        task_data["tag_ids"] = ""
-        task_data["focus_score"] = calc_focus_score(task_data["importance"], task_data["difficulty"])
-        task = Task(**task_data)
-        task.user_id = user.id
-        session.add(task)
-        session.commit()
-        await telegram_send_message(chat_id, f"Task created: {task.title}")
-    elif text.lower() == "/tasks":
-        user = session.execute(select(User).order_by(User.id)).scalar()
-        if not user:
-            await telegram_send_message(chat_id, "No user found.")
-            return {"ok": True}
-        tasks = session.execute(
-            _own(select(Task), Task, user).where(Task.status.in_(["today", "in_progress"]))
-            .order_by(Task.sort_order)
-        ).scalars().all()
-        if not tasks:
-            await telegram_send_message(chat_id, "No tasks for today.")
-        else:
-            lines = [f"• {t.title} [{t.priority}]" for t in tasks]
-            await telegram_send_message(chat_id, "Today's tasks:\n" + "\n".join(lines))
-    elif text.lower() == "/help":
-        await telegram_send_message(
-            chat_id,
-            "/task <title> — create a task\n/tasks — list today's tasks\n/help — show commands",
-        )
-    else:
-        await telegram_send_message(chat_id, "Unknown command. Try /help")
-    return {"ok": True}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(f"https://statsapi.mlb.com/api/v1/teams?sportId=1")
+        teams = resp.json().get("teams", [])
+        matched = next((t for t in teams if t.get("teamName", "").lower().replace(" ", "-") == team_slug or str(t.get("id")) == team_slug), None)
+        if not matched:
+            raise HTTPException(status_code=404, detail="Team not found")
+        return matched
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/telegram/setup/")
-async def telegram_setup():
-    if not TELEGRAM_BOT_TOKEN or not PUBLIC_BACKEND_URL:
-        return {"error": "TELEGRAM_BOT_TOKEN or PUBLIC_BACKEND_URL not set"}
-    webhook_url = f"{PUBLIC_BACKEND_URL.rstrip('/')}/telegram/webhook/"
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        r = await client.post(
-            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setWebhook",
-            json={"url": webhook_url},
-        )
-    return r.json()
+@app.get("/sports/mlb/{team_slug}/projections/")
+async def get_mlb_projections(
+    team_slug: str,
+    user: User = Depends(get_current_user),
+):
+    try:
+        today = _today_ct()
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                f"https://statsapi.mlb.com/api/v1/schedule",
+                params={
+                    "sportId": 1,
+                    "date": str(today),
+                    "hydrate": "probablePitcher,team,linescore",
+                }
+            )
+        data = resp.json()
+        games = []
+        for date_entry in data.get("dates", []):
+            for game in date_entry.get("games", []):
+                away = game.get("teams", {}).get("away", {})
+                home = game.get("teams", {}).get("home", {})
+                away_slug = away.get("team", {}).get("teamName", "").lower().replace(" ", "-")
+                home_slug = home.get("team", {}).get("teamName", "").lower().replace(" ", "-")
+                away_id = str(away.get("team", {}).get("id", ""))
+                home_id = str(home.get("team", {}).get("id", ""))
+                if team_slug in (away_slug, home_slug, away_id, home_id):
+                    games.append(game)
+        return {"games": games, "date": str(today)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
