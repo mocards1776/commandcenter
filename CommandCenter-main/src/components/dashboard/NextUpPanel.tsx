@@ -224,9 +224,9 @@ function SHead({ icon, label }: { icon: string; label: string }) {
   );
 }
 
-function TaskRow({ task, slotLabel, onSlotClick, isActiveTimer, elapsedMs }
+function TaskRow({ task, slotLabel, onSlotClick, isActiveTimer, elapsedSeconds }
   : { task: Task | null; slotLabel: string; onSlotClick: (e: React.MouseEvent) => void;
-      isActiveTimer: boolean; elapsedMs: number }) {
+      isActiveTimer: boolean; elapsedSeconds: number }) {
   const navigate = useNavigate();
 
   if (!task) {
@@ -277,7 +277,7 @@ function TaskRow({ task, slotLabel, onSlotClick, isActiveTimer, elapsedMs }
           <>
             <div className="live-dot" />
             <div className="sb-val" style={{ color:"#4faa6e", fontSize:11,
-              fontVariantNumeric:"tabular-nums" }}>{formatDuration(elapsedMs)}</div>
+              fontVariantNumeric:"tabular-nums" }}>{formatDuration(elapsedSeconds)}</div>
             <div className="sb-label">LIVE</div>
           </>
         ) : (
@@ -295,7 +295,7 @@ export default function NextUpPanel() {
   const navigate = useNavigate();
   const { activeTimer } = useTimerStore();
   const activeTaskId = activeTimer?.task_id ?? null;
-  const { start: timerStart, stop: timerStop, elapsedMs } = useActiveTimer();
+  const { start: timerStart, stop: timerStop, elapsedSeconds } = useActiveTimer();
   const { pinnedTaskId: pinnedId, setPinnedTask: pin } = usePinnedTaskStore();
   const [picker, setPicker] = useState<{ slot: "next"|"deck"; x: number; y: number } | null>(null);
   const [nextId, setNextId]  = useState<string | undefined>(undefined);
@@ -309,10 +309,10 @@ export default function NextUpPanel() {
   });
   const tasks = Array.isArray(tasksRaw) ? tasksRaw : [];
 
-  // timeblocks
+  // timeblocks — use correct endpoint with params object (avoids 307 redirect)
   const { data: blocks } = useQuery<TimeBlock[]>({
     queryKey: ["timeblocks", "today"],
-    queryFn: () => axios.get(`/api/timeblocks?date=${todayStr()}`).then(r => r.data),
+    queryFn: () => axios.get("/api/time-blocks/", { params: { date: todayStr() } }).then(r => r.data),
     refetchInterval: 60_000,
   });
 
@@ -403,12 +403,12 @@ export default function NextUpPanel() {
         <SHead icon="★" label="Next Task" />
         <TaskRow task={nextTask} slotLabel="next task"
           onSlotClick={e => handleSlotClick("next", e)}
-          isActiveTimer={isNextTimer} elapsedMs={isNextTimer ? elapsedMs : 0} />
+          isActiveTimer={isNextTimer} elapsedSeconds={isNextTimer ? elapsedSeconds : 0} />
 
         <SHead icon="◈" label="On Deck" />
         <TaskRow task={deckTask} slotLabel="on deck task"
           onSlotClick={e => handleSlotClick("deck", e)}
-          isActiveTimer={isDeckTimer} elapsedMs={isDeckTimer ? elapsedMs : 0} />
+          isActiveTimer={isDeckTimer} elapsedSeconds={isDeckTimer ? elapsedSeconds : 0} />
 
         <SHead icon="◷" label="Next Events" />
         {nextEvent
