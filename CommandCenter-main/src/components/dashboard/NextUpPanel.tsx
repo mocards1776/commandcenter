@@ -13,46 +13,6 @@ const ACCENT: Record<string, string> = {
   medium: "rgba(255,255,255,0.45)", low: "rgba(255,255,255,0.18)",
 };
 
-// ─── Calendar token helpers — cookie-based (localStorage blocked in iframes) ─
-const GC_TOKEN_COOKIE    = "cc_gcal_token";
-const GC_EXPIRY_COOKIE   = "cc_gcal_expiry";
-const GC_SELECTED_COOKIE = "cc_gcal_cal_ids";
-
-function getCookie(name: string): string | null {
-  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)(?:;|$)`));
-  return match ? decodeURIComponent(match[1]) : null;
-}
-
-function getStoredToken(): string | null {
-  const cookieToken  = getCookie(GC_TOKEN_COOKIE);
-  const cookieExpiry = getCookie(GC_EXPIRY_COOKIE);
-  if (cookieToken) {
-    if (!cookieExpiry || Date.now() < parseInt(cookieExpiry)) return cookieToken;
-  }
-  try {
-    const token  = localStorage.getItem("gcal_access_token");
-    const expiry = localStorage.getItem("gcal_token_expiry");
-    if (!token || !expiry || Date.now() > parseInt(expiry)) return null;
-    return token;
-  } catch { return null; }
-}
-
-function getSelectedCalIds(): string[] {
-  try {
-    const fromCookie = getCookie(GC_SELECTED_COOKIE);
-    if (fromCookie) {
-      const parsed = JSON.parse(fromCookie);
-      if (Array.isArray(parsed)) return parsed;
-    }
-    const saved = localStorage.getItem("gcal_selected_calendar_ids");
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed)) return parsed;
-    }
-    return ["primary"];
-  } catch { return ["primary"]; }
-}
-
 interface NextEvent { title: string; startMs: number; }
 
 function taskScore(task: Task): number {
@@ -215,7 +175,6 @@ interface SlotPickerProps {
 
 function SlotPicker({ x, y, tasks, currentId, onSelect, onClose }: SlotPickerProps) {
   const ref = useRef<HTMLDivElement>(null);
-  // Guard: ensure tasks is always an array
   const safeTasks = Array.isArray(tasks) ? tasks : [];
 
   useEffect(() => {
@@ -303,7 +262,6 @@ function TaskSlot({ task, size, allTasks, onTaskClick, onOverride }: TaskSlotPro
     setMenu({ x: e.clientX, y: e.clientY });
   };
 
-  // Guard allTasks prop before passing to SlotPicker
   const safeAllTasks = Array.isArray(allTasks) ? allTasks : [];
 
   return (
@@ -392,7 +350,6 @@ function SHead({ icon, label }: { icon: string; label: string }) {
 }
 
 export function NextUpPanel({ tasks: tasksProp }: { tasks: Task[] }) {
-  // Guard against undefined during initial render before data loads
   const tasks = Array.isArray(tasksProp) ? tasksProp : [];
 
   const navigate = useNavigate();
@@ -410,42 +367,21 @@ export function NextUpPanel({ tasks: tasksProp }: { tasks: Task[] }) {
     staleTime: 60_000,
   });
 
-  const gcalToken = getStoredToken();
-  const calIds    = getSelectedCalIds();
-  const { data: gcalEvents = [] } = useQuery<NextEvent[]>({
-    queryKey: ["gcal-today-dashboard", today, gcalToken],
-    enabled: !!gcalToken,
+  // ── Google Calendar via backend (uses GCAL_API_KEY + GCAL_CALENDAR_ID env vars on DO) ──
+  const { data: gcalData } = useQuery<{ events: NextEvent[]; configured: boolean }>({
+    queryKey: ["gcal-today-dashboard", today],
+    queryFn: () =>
+      axios.get(`${apiBase}/api/gcal/next-event`).then(r => r.data),
+    retry: false,
     staleTime: 5 * 60_000,
-    queryFn: async () => {
-      const timeMin = new Date(`${today}T00:00:00`).toISOString();
-      const timeMax = new Date(`${today}T23:59:59`).toISOString();
-      const safeCalIds = Array.isArray(calIds) ? calIds : ["primary"];
-      const results = await Promise.all(
-        safeCalIds.map(calId =>
-          fetch(
-            `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events?timeMin=${timeMin}&timeMax=${timeMax}&singleEvents=true&orderBy=startTime`,
-            { headers: { Authorization: `Bearer ${gcalToken}` } }
-          )
-            .then(r => r.json())
-            .then(d => {
-              const items = d?.items;
-              return Array.isArray(items) ? (items as any[]) : [];
-            })
-            .catch(() => [] as any[])
-        )
-      );
-      return results.flat().map(ev => ({
-        title:   ev.summary || "(No title)",
-        startMs: new Date(ev.start?.dateTime || ev.start?.date + "T00:00:00").getTime(),
-      }));
-    },
   });
+  const gcalEvents: NextEvent[] = gcalData?.events ?? [];
+  const gcalConfigured = gcalData?.configured ?? false;
 
   const nowMs      = Date.now();
   const safeLocalBlocks = Array.isArray(localBlocks) ? localBlocks : [];
-  const safeGcalEvents  = Array.isArray(gcalEvents)  ? gcalEvents  : [];
   const localEvts: NextEvent[] = safeLocalBlocks.map(b => ({ title: b.title, startMs: new Date(b.start_time).getTime() }));
-  const allEvents  = [...localEvts, ...safeGcalEvents]
+  const allEvents  = [...localEvts, ...gcalEvents]
     .filter(e => e.startMs > nowMs - 5 * 60_000)
     .sort((a, b) => a.startMs - b.startMs);
   const nextEvent  = allEvents[0] ?? null;
@@ -483,7 +419,7 @@ export function NextUpPanel({ tasks: tasksProp }: { tasks: Task[] }) {
       <SHead icon="◷" label="Next Event" />
       {nextEvent
         ? <EventCountdown event={nextEvent} />
-        : <EmptySlot text={gcalToken ? "Schedule clear" : "No calendar connected"} />}
+        : <EmptySlot text={gcalConfigured ? "Schedule clear" : "No calendar connected"} />}
     </div>
   );
 }

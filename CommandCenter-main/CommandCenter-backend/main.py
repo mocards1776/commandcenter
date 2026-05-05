@@ -1096,6 +1096,58 @@ async def mlb_projections(team_slug: str, user: User = Depends(get_current_user)
     return {"proj_wins": None, "playoff_pct": None, "div_pct": None,
             "wc_pct": None, "ws_pct": None, "best": None, "record": None}
 
+# ─── Google Calendar — server-side fixed account via env vars ─────────────────
+_GCAL_API_KEY     = os.environ.get("GCAL_API_KEY", "")
+_GCAL_CALENDAR_ID = os.environ.get("GCAL_CALENDAR_ID", "")
+
+@router.get("/gcal/next-event")
+async def gcal_next_event(user: User = Depends(get_current_user)):
+    """Return today's Google Calendar events using a server-side API key.
+    No browser OAuth required — reads GCAL_API_KEY + GCAL_CALENDAR_ID from env.
+    Returns {events: [{title, startMs}], configured: bool}
+    """
+    if not _GCAL_API_KEY or not _GCAL_CALENDAR_ID:
+        return {"events": [], "configured": False}
+
+    now_ct = datetime.now(_CT)
+    time_min = now_ct.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    time_max = now_ct.replace(hour=23, minute=59, second=59, microsecond=0).isoformat()
+
+    url = (
+        f"https://www.googleapis.com/calendar/v3/calendars/"
+        f"{_GCAL_CALENDAR_ID}/events"
+        f"?key={_GCAL_API_KEY}"
+        f"&timeMin={time_min}"
+        f"&timeMax={time_max}"
+        f"&singleEvents=true"
+        f"&orderBy=startTime"
+        f"&maxResults=20"
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.get(url)
+            r.raise_for_status()
+            data = r.json()
+        items = data.get("items", [])
+        events = [
+            {
+                "title":   ev.get("summary") or "(No title)",
+                "startMs": int(
+                    datetime.fromisoformat(
+                        (ev.get("start") or {}).get("dateTime")
+                        or ((ev.get("start") or {}).get("date", "") + "T00:00:00")
+                    ).timestamp() * 1000
+                ),
+            }
+            for ev in items
+            if (ev.get("start") or {}).get("dateTime") or (ev.get("start") or {}).get("date")
+        ]
+        return {"events": events, "configured": True}
+    except Exception as e:
+        # Return empty but don't crash — calendar failure must never break the dashboard
+        return {"events": [], "configured": True, "error": str(e)}
+
 # ─── Mount router at root AND /api prefix ──────────────────
 # Accepts both /time-blocks/ and /api/time-blocks/ (and all other routes)
 # so stale clients, cached service workers, or misconfigured devices
