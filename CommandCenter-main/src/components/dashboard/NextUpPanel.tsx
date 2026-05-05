@@ -4,7 +4,7 @@ import type { Task, TimeBlock } from "@/types";
 import { useNavigate } from "react-router-dom";
 import { useTimerStore, usePinnedTaskStore } from "@/store";
 import { useActiveTimer } from "@/hooks/useTimer";
-import { isOverdue, formatDuration, todayStr } from "@/lib/utils";
+import { formatDuration, todayStr } from "@/lib/utils";
 import axios from "axios";
 
 const PRIORITY_WEIGHT: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
@@ -292,7 +292,6 @@ function TaskRow({ task, slotLabel, onSlotClick, isActiveTimer, elapsedSeconds }
 }
 
 export default function NextUpPanel() {
-  const navigate = useNavigate();
   const { activeTimer } = useTimerStore();
   const activeTaskId = activeTimer?.task_id ?? null;
   const { start: timerStart, stop: timerStop, elapsedSeconds } = useActiveTimer();
