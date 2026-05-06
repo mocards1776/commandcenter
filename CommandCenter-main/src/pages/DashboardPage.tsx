@@ -159,8 +159,14 @@ export function DashboardPage() {
     return comps.some((c: any) => c?.completed_date === today);
   }).length;
 
-  const projects = data?.active_projects ?? [];
-  const allPending = [...(data?.today_tasks ?? []), ...overdueT];
+  const projects = (data?.active_projects ?? []).slice(0, 4);
+  const allPending = [...(data?.today_tasks ?? []), ...overdueT].slice(0, 4);
+  const pendingHabits = habitEntries.filter((e: any) => {
+    if (typeof e?.completed === "boolean") return !e.completed;
+    const comps = Array.isArray(e?.habit?.completions) ? e.habit.completions
+      : Array.isArray(e?.completions) ? e.completions : [];
+    return !comps.some((c: any) => c?.completed_date === today);
+  }).slice(0, 4);
 
   const timeStr = now.toLocaleTimeString("en-US", {
     timeZone: "America/Chicago",
@@ -234,9 +240,9 @@ export function DashboardPage() {
             <span>Today's Habits</span>
             <button className="panel-header-link" onClick={() => navigate("/habits")} style={{ fontSize: 9 }}>Manage &#8594;</button>
           </div>
-          {habitEntries.length === 0 ? (
+          {pendingHabits.length === 0 ? (
             <p style={{ padding: "12px 14px", fontFamily: "'IM Fell English',Georgia,serif", fontStyle: "italic", fontSize: 11, color: "rgba(245,240,224,0.2)" }}>No habits configured</p>
-          ) : habitEntries.slice(0, 6).map((entry: any, idx: number) => {
+          ) : pendingHabits.map((entry: any, idx: number) => {
             const id = entry?.habit?.id ?? entry?.id ?? idx;
             return <DashHabitRow key={id} entry={entry} todayStr={today} />;
           })}
@@ -251,7 +257,7 @@ export function DashboardPage() {
           {projects.length === 0 ? (
             <p style={{ padding: "12px 14px", fontFamily: "'IM Fell English',Georgia,serif", fontStyle: "italic", fontSize: 11, color: "rgba(245,240,224,0.2)" }}>No active projects</p>
           ) : projects.map((p: any) => (
-            <div key={p.id} className="proj-row" onClick={() => navigate("/projects")}>
+            <div key={p.id} className="proj-row" onClick={() => navigate(`/projects/${p.id}`)}>
               <div className="proj-name-line">
                 <span className="proj-name">{p.title}</span>
                 <span className="proj-pct">{p.completion_percentage ?? 0}%</span>

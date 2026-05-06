@@ -5,6 +5,7 @@ import { Loader2, ArrowLeft, Plus, ChevronRight, CheckCircle2, Circle, Pencil, X
 import { TaskModal } from "@/components/todos/TaskModal";
 import type { ProjectSummary, Task, Project } from "@/types";
 import { toast } from "react-hot-toast";
+import { useParams } from "react-router-dom";
 
 // ─── Flip-panel primitives ──────────────────────────────────────────────────────
 
@@ -552,6 +553,7 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
 // ─── Projects list page ────────────────────────────────────────────────────────
 
 export function ProjectsPage() {
+  const { projectId } = useParams<{ projectId?: string }>();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingProject, setEditingProject] = useState<ProjectSummary | null>(null);
   const [newTitle, setNewTitle] = useState("");
@@ -600,6 +602,10 @@ export function ProjectsPage() {
     },
     onError: () => toast.error("Could not complete campaign"),
   });
+
+  useEffect(() => {
+    if (projectId) setSelectedId(projectId);
+  }, [projectId]);
 
   const visibleProjects = hideCompleted
     ? projects.filter(p => p.status !== "completed")

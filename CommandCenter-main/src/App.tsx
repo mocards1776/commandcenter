@@ -40,6 +40,7 @@ function AppShell() {
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/todos"     element={<TodosPage />} />
             <Route path="/projects"  element={<ProjectsPage />} />
+            <Route path="/projects/:projectId" element={<ProjectsPage />} />
             <Route path="/habits"    element={<HabitsPage />} />
             <Route path="/calendar"  element={<CalendarPage />} />
             <Route path="/focus"     element={<FocusPage />} />
