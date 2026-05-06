@@ -164,6 +164,35 @@ def tags_to_str(tag_ids) -> str:
 def calc_focus_score(importance: int, difficulty: int) -> int:
     return importance * difficulty
 
+def _sync_task_schedule_block(session: Session, task: Task):
+    existing = session.execute(
+        select(TimeBlock).where(TimeBlock.user_id == task.user_id, TimeBlock.task_id == task.id)
+    ).scalar()
+    if not task.scheduled_start_at:
+        if existing:
+            session.delete(existing)
+        return
+    start_at = task.scheduled_start_at
+    duration_min = task.time_estimate_minutes or 60
+    end_at = start_at + timedelta(minutes=max(15, duration_min))
+    if existing:
+        existing.title = task.title
+        existing.start_time = start_at
+        existing.end_time = end_at
+        if not existing.color:
+            existing.color = "#e8a820"
+        session.add(existing)
+        return
+    block = TimeBlock(
+        user_id=task.user_id,
+        task_id=task.id,
+        title=task.title,
+        start_time=start_at,
+        end_time=end_at,
+        color="#e8a820",
+    )
+    session.add(block)
+
 def _own(query, model, user: User):
     return query.where(model.user_id == user.id)
 
@@ -710,6 +739,7 @@ async def create_task(
         difficulty=data.difficulty or 3,
         focus_score=focus,
         due_date=data.due_date,
+        scheduled_start_at=data.scheduled_start_at,
         time_estimate_minutes=data.time_estimate_minutes,
         project_id=data.project_id,
         parent_id=data.parent_id,
@@ -719,6 +749,8 @@ async def create_task(
         user_id=user.id,
     )
     session.add(task)
+    session.flush()
+    _sync_task_schedule_block(session, task)
     session.commit()
     session.refresh(task)
     return _task_to_dict(task)
@@ -767,6 +799,9 @@ async def update_task(
             task.completed_at = datetime.now(_CT)
     elif "status" in update_data and update_data["status"] != "done":
         task.completed_at = None
+
+    if "title" in update_data or "scheduled_start_at" in update_data or "time_estimate_minutes" in update_data:
+        _sync_task_schedule_block(session, task)
 
     session.add(task)
     session.commit()

@@ -150,6 +150,7 @@ class TimeBlock(Base):
     __tablename__ = "time_blocks"
     id = Column(String(36), primary_key=True, default=gen_id)
     user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
+    task_id = Column(String(36), ForeignKey("tasks.id"), nullable=True, index=True)
     title = Column(String(255), nullable=False)
     start_time = Column(DateTime, nullable=False)
     end_time = Column(DateTime, nullable=False)
