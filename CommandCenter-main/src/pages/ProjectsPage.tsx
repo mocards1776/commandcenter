@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { projectsApi, tasksApi, tagsApi } from "@/lib/api";
+import { projectsApi, tasksApi, tagsApi, categoriesApi } from "@/lib/api";
 import { Loader2, ArrowLeft, Plus, ChevronRight, CheckCircle2, Circle, Pencil, X, Save } from "lucide-react";
 import { TaskModal } from "@/components/todos/TaskModal";
+import { TaskContextMenu } from "@/components/todos/TaskContextMenu";
 import type { ProjectSummary, Task, Project } from "@/types";
 import { toast } from "react-hot-toast";
 import { useParams } from "react-router-dom";
@@ -376,6 +377,16 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
     queryFn: tagsApi.list,
     staleTime: 5 * 60_000,
   });
+  const { data: allProjects = [] } = useQuery({
+    queryKey: ["projects"],
+    queryFn: () => projectsApi.list(),
+    staleTime: 60_000,
+  });
+  const { data: allCategories = [] } = useQuery({
+    queryKey: ["categories"],
+    queryFn: categoriesApi.list,
+    staleTime: 60_000,
+  });
 
   const addTaskMut = useMutation({
     mutationFn: (title: string) => tasksApi.create({
@@ -408,6 +419,15 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
       qc.invalidateQueries({ queryKey: ["projects"] });
     },
     onError: () => toast.error("Failed to update task"),
+  });
+  const quickUpdateMut = useMutation({
+    mutationFn: ({ taskId, patch }: { taskId: string; patch: Record<string, any> }) => tasksApi.update(taskId, patch),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["project", id] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+    },
+    onError: () => toast.error("Update failed"),
   });
 
   if (isLoading || !p) {
@@ -523,48 +543,84 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
           <div style={{ padding: 40, textAlign: "center", color: "rgba(255,255,255,0.3)" }}>No tasks assigned to this campaign.</div>
         ) : (
           visibleTasks.map((t: Task) => (
-            <div
+            <TaskContextMenu
               key={t.id}
-              className="sb-row"
-              style={{
-                display: "grid", gridTemplateColumns: "1fr 92px 86px 86px 120px 120px",
-                background: t.status === "done" ? "rgba(30,54,41,0.5)" : "#1e3629",
-                padding: "0",
-                marginBottom: 8,
-                borderLeft: t.priority === "critical" ? "4px solid #d94040" : t.priority === "high" ? "4px solid #e8a820" : "none",
-                cursor: "pointer",
-                transition: "background 0.12s",
+              task={t}
+              projects={allProjects as any[]}
+              categories={allCategories as any[]}
+              tags={allTags as any[]}
+              onSetDueDate={(dateIso?: string) => quickUpdateMut.mutate({ taskId: t.id, patch: { due_date: dateIso ? `${dateIso}T00:00:00Z` : null } })}
+              onSetStartTime={(iso?: string) => quickUpdateMut.mutate({ taskId: t.id, patch: { scheduled_start_at: iso ?? null } })}
+              onSetImportance={(n: number) => quickUpdateMut.mutate({ taskId: t.id, patch: { importance: n } })}
+              onSetDifficulty={(n: number) => quickUpdateMut.mutate({ taskId: t.id, patch: { difficulty: n } })}
+              onSetProject={(projectId?: string) => quickUpdateMut.mutate({ taskId: t.id, patch: { project_id: projectId ?? null } })}
+              onSetCategory={(categoryId?: string) => quickUpdateMut.mutate({ taskId: t.id, patch: { category_id: categoryId ?? null } })}
+              onToggleTag={(tagId: string) => {
+                const cur = t.tag_ids ?? [];
+                const next = cur.includes(tagId) ? cur.filter(id => id !== tagId) : [...cur, tagId];
+                quickUpdateMut.mutate({ taskId: t.id, patch: { tag_ids: next } });
               }}
-              onMouseEnter={e => (e.currentTarget.style.background = "#244232")}
-              onMouseLeave={e => (e.currentTarget.style.background = t.status === "done" ? "rgba(30,54,41,0.5)" : "#1e3629")}
-              onClick={() => setSelectedTask({ ...t, tag_ids: t.tag_ids ?? [], subtasks: t.subtasks ?? [] })}
+              onEdit={() => setSelectedTask({ ...t, tag_ids: t.tag_ids ?? [], subtasks: t.subtasks ?? [] })}
+              onDelete={() => {
+                if (!window.confirm(`Delete "${t.title}"?`)) return;
+                tasksApi.delete(t.id).then(() => {
+                  qc.invalidateQueries({ queryKey: ["project", id] });
+                  qc.invalidateQueries({ queryKey: ["projects"] });
+                });
+              }}
             >
-              <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 10 }}>
-                {toggleTaskMut.isPending
-                  ? <Loader2 size={16} style={{ color: "#e8a820", animation: "spin 1s linear infinite", flexShrink: 0 }} />
-                  : t.status === "done"
-                    ? <CheckCircle2 size={16} color="#e8a820" style={{ flexShrink: 0 }} />
-                    : <Circle size={16} color="rgba(255,255,255,0.2)" style={{ flexShrink: 0 }} />}
-                <span style={{ fontWeight: 600, fontSize: 14, color: t.status === "done" ? "rgba(255,255,255,0.35)" : "#fff", textDecoration: t.status === "done" ? "line-through" : "none" }}>
-                  {t.title}
-                </span>
+              <div
+                className="sb-row"
+                style={{
+                  display: "grid", gridTemplateColumns: "1fr 92px 86px 86px 120px 120px",
+                  background: t.status === "done" ? "rgba(30,54,41,0.5)" : "#1e3629",
+                  padding: "0",
+                  marginBottom: 8,
+                  borderLeft: t.priority === "critical" ? "4px solid #d94040" : t.priority === "high" ? "4px solid #e8a820" : "none",
+                  cursor: "pointer",
+                  transition: "background 0.12s",
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = "#244232")}
+                onMouseLeave={e => (e.currentTarget.style.background = t.status === "done" ? "rgba(30,54,41,0.5)" : "#1e3629")}
+                onClick={() => setSelectedTask({ ...t, tag_ids: t.tag_ids ?? [], subtasks: t.subtasks ?? [] })}
+              >
+                <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 10 }}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleTaskMut.mutate(t);
+                    }}
+                    style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center" }}
+                    title={t.status === "done" ? "Mark active" : "Mark complete"}
+                  >
+                    {toggleTaskMut.isPending
+                      ? <Loader2 size={16} style={{ color: "#e8a820", animation: "spin 1s linear infinite", flexShrink: 0 }} />
+                      : t.status === "done"
+                        ? <CheckCircle2 size={16} color="#e8a820" style={{ flexShrink: 0 }} />
+                        : <Circle size={16} color="rgba(255,255,255,0.2)" style={{ flexShrink: 0 }} />}
+                  </button>
+                  <span style={{ fontWeight: 600, fontSize: 14, color: t.status === "done" ? "rgba(255,255,255,0.35)" : "#fff", textDecoration: t.status === "done" ? "line-through" : "none" }}>
+                    {t.title}
+                  </span>
+                </div>
+                <div style={{ textAlign: "center", fontSize: 10, textTransform: "uppercase", opacity: 0.75, display: "flex", alignItems: "center", justifyContent: "center", color: t.priority === "critical" ? "#d94040" : t.priority === "high" ? "#e8a820" : "rgba(245,240,224,0.75)", letterSpacing: "0.08em", fontFamily: "'Oswald', Arial, sans-serif" }}>
+                  {t.priority}
+                </div>
+                <div style={{ textAlign: "center", fontWeight: 700, color: "#e8a820", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Oswald', Arial, sans-serif", letterSpacing: "0.06em" }}>
+                  {t.focus_score ?? 0}
+                </div>
+                <div style={{ textAlign: "center", fontWeight: 700, color: "rgba(245,240,224,0.75)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Oswald', Arial, sans-serif", letterSpacing: "0.06em" }}>
+                  {t.time_estimate_minutes ? `${t.time_estimate_minutes}m` : "—"}
+                </div>
+                <div style={{ textAlign: "center", fontWeight: 700, color: "rgba(245,240,224,0.75)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Oswald', Arial, sans-serif", letterSpacing: "0.06em" }}>
+                  {t.scheduled_start_at ? new Date(t.scheduled_start_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : t.due_date ? new Date(t.due_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}
+                </div>
+                <div style={{ textAlign: "center", fontWeight: 700, color: "rgba(245,240,224,0.75)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Oswald', Arial, sans-serif", letterSpacing: "0.06em" }}>
+                  {t.tag_ids?.[0] ? (tagMap[t.tag_ids[0]] || t.tag_ids[0]) : "—"}
+                </div>
               </div>
-              <div style={{ textAlign: "center", fontSize: 10, textTransform: "uppercase", opacity: 0.75, display: "flex", alignItems: "center", justifyContent: "center", color: t.priority === "critical" ? "#d94040" : t.priority === "high" ? "#e8a820" : "rgba(245,240,224,0.75)", letterSpacing: "0.08em", fontFamily: "'Oswald', Arial, sans-serif" }}>
-                {t.priority}
-              </div>
-              <div style={{ textAlign: "center", fontWeight: 700, color: "#e8a820", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Oswald', Arial, sans-serif", letterSpacing: "0.06em" }}>
-                {t.focus_score ?? 0}
-              </div>
-              <div style={{ textAlign: "center", fontWeight: 700, color: "rgba(245,240,224,0.75)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Oswald', Arial, sans-serif", letterSpacing: "0.06em" }}>
-                {t.time_estimate_minutes ? `${t.time_estimate_minutes}m` : "—"}
-              </div>
-              <div style={{ textAlign: "center", fontWeight: 700, color: "rgba(245,240,224,0.75)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Oswald', Arial, sans-serif", letterSpacing: "0.06em" }}>
-                {t.scheduled_start_at ? new Date(t.scheduled_start_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : t.due_date ? new Date(t.due_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}
-              </div>
-              <div style={{ textAlign: "center", fontWeight: 700, color: "rgba(245,240,224,0.75)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Oswald', Arial, sans-serif", letterSpacing: "0.06em" }}>
-                {t.tag_ids?.[0] ? (tagMap[t.tag_ids[0]] || t.tag_ids[0]) : "—"}
-              </div>
-            </div>
+            </TaskContextMenu>
           ))
         )}
       </div>

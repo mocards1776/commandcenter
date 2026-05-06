@@ -121,6 +121,19 @@ export function DailySummaryPage() {
   }, [gcalEvents, tomorrow, day2, day3]);
 
   const yesterday = (history as any[]).find((h) => h.stat_date === yesterdayISO);
+  const todayHist = (history as any[]).find((h) => h.stat_date === todayISO);
+  const last7 = (history as any[]).slice(-7);
+  const last30 = (history as any[]).slice(-30);
+  const avg = (arr: number[]) => (arr.length ? Math.round(arr.reduce((s, v) => s + v, 0) / arr.length) : 0);
+  const best = (arr: number[]) => (arr.length ? Math.max(...arr) : 0);
+  const tasksDoneToday = todayHist?.tasks_completed ?? tasks.filter((t) => t.status === "done" && dateKey(t.completed_at) === todayISO).length;
+  const focusToday = todayHist?.total_focus_minutes ?? 0;
+  const weekAvgTasks = avg(last7.map((h: any) => h.tasks_completed ?? 0));
+  const monthAvgTasks = avg(last30.map((h: any) => h.tasks_completed ?? 0));
+  const bestEverTasks = best((history as any[]).map((h) => h.tasks_completed ?? 0));
+  const weekAvgFocus = avg(last7.map((h: any) => h.total_focus_minutes ?? 0));
+  const monthAvgFocus = avg(last30.map((h: any) => h.total_focus_minutes ?? 0));
+  const bestEverFocus = best((history as any[]).map((h) => h.total_focus_minutes ?? 0));
 
   return (
     <div>
@@ -132,7 +145,9 @@ export function DailySummaryPage() {
           {scheduledToday.length === 0 ? <div style={{ opacity: 0.55 }}>No tasks scheduled today.</div> : scheduledToday.map((t) => (
             <div key={t.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12, padding: "3px 0" }}>
               <span>{t.title}</span>
-              <span style={{ color: "rgba(245,240,224,0.6)" }}>{new Date(t.scheduled_start_at || "").toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>
+              <span style={{ color: "rgba(245,240,224,0.6)" }}>
+                {t.scheduled_start_at ? new Date(t.scheduled_start_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "—"}
+              </span>
             </div>
           ))}
         </section>
@@ -156,6 +171,23 @@ export function DailySummaryPage() {
               <div><div style={{ opacity: 0.55, fontSize: 10 }}>Batting Avg</div><div style={{ fontSize: 20, color: "#e8a820" }}>{(yesterday.batting_average ?? 0).toFixed(3).replace(/^0/, ".")}</div></div>
             </div>
           )}
+        </section>
+
+        <section style={{ background: "#1e3629", border: "1px solid rgba(232,168,32,0.25)", padding: 12 }}>
+          <div style={{ fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "#e8a820", marginBottom: 8 }}>Today vs Week / Month / All-Time</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1.2fr repeat(3, minmax(110px,1fr))", gap: 10, alignItems: "center" }}>
+            <div style={{ fontSize: 11, opacity: 0.7, letterSpacing: "0.08em", textTransform: "uppercase" }}>Tasks Done</div>
+            <div style={{ fontSize: 12 }}>Today: <b>{tasksDoneToday}</b></div>
+            <div style={{ fontSize: 12 }}>Week Avg: <b>{weekAvgTasks}</b></div>
+            <div style={{ fontSize: 12 }}>Month Avg: <b>{monthAvgTasks}</b></div>
+            <div style={{ fontSize: 12 }}>Best Ever: <b>{bestEverTasks}</b></div>
+
+            <div style={{ fontSize: 11, opacity: 0.7, letterSpacing: "0.08em", textTransform: "uppercase" }}>Focus Minutes</div>
+            <div style={{ fontSize: 12 }}>Today: <b>{focusToday}</b></div>
+            <div style={{ fontSize: 12 }}>Week Avg: <b>{weekAvgFocus}</b></div>
+            <div style={{ fontSize: 12 }}>Month Avg: <b>{monthAvgFocus}</b></div>
+            <div style={{ fontSize: 12 }}>Best Ever: <b>{bestEverFocus}</b></div>
+          </div>
         </section>
 
         <section style={{ background: "#1e3629", border: "1px solid rgba(66,133,244,0.35)", padding: 12 }}>
