@@ -5,6 +5,8 @@ import { Loader2, ArrowLeft, Plus, ChevronRight, CheckCircle2, Circle, Pencil, X
 import { TaskModal } from "@/components/todos/TaskModal";
 import { TaskContextMenu } from "@/components/todos/TaskContextMenu";
 import { CompletionDialog } from "@/components/todos/CompletionDialog";
+import { useActiveTimer } from "@/hooks/useTimer";
+import { useTimerStore } from "@/store";
 import type { ProjectSummary, Task, Project } from "@/types";
 import { toast } from "react-hot-toast";
 import { useParams } from "react-router-dom";
@@ -369,6 +371,8 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const [completionTask, setCompletionTask] = useState<Task | null>(null);
   const [hideCompleted, setHideCompleted] = useState(false);
   const qc = useQueryClient();
+  const { isRunning, activeTimer, elapsedSeconds, start, stop } = useActiveTimer();
+  const { setActiveTimer } = useTimerStore();
 
   const { data: p, isLoading } = useQuery<Project>({
     queryKey: ["project", id],
@@ -458,6 +462,13 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const due = p.due_date ? new Date(p.due_date) : null;
   const dueStr  = due ? due.toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "-";
   const timeStr = due ? due.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "-";
+  const formatTimer = (secs: number) => {
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = secs % 60;
+    if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    return `${m}:${String(s).padStart(2, "0")}`;
+  };
 
   return (
     <div className="sb-shell" style={{ minHeight: "100vh" }}>
@@ -607,6 +618,45 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
                   <span style={{ fontWeight: 600, fontSize: 14, color: t.status === "done" ? "rgba(255,255,255,0.35)" : "#fff", textDecoration: t.status === "done" ? "line-through" : "none" }}>
                     {t.title}
                   </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const isThisRunning = isRunning && activeTimer?.task_id === t.id;
+                      if (isThisRunning) {
+                        stop();
+                        return;
+                      }
+                      setActiveTimer(null, t);
+                      start({ task_id: t.id });
+                    }}
+                    title={(isRunning && activeTimer?.task_id === t.id) ? "Stop timer" : "Start timer"}
+                    style={{
+                      marginLeft: "auto",
+                      width: 24,
+                      height: 24,
+                      borderRadius: 3,
+                      border: "1px solid rgba(245,240,224,0.22)",
+                      background: "transparent",
+                      color: (isRunning && activeTimer?.task_id === t.id) ? "#d94040" : "rgba(245,240,224,0.55)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                      padding: 0,
+                    }}
+                  >
+                    {(isRunning && activeTimer?.task_id === t.id) ? (
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><rect x="1" y="1" width="8" height="8" rx="1" /></svg>
+                    ) : (
+                      <svg width="9" height="10" viewBox="0 0 9 10" fill="currentColor"><path d="M1 1 L8 5 L1 9 Z" /></svg>
+                    )}
+                  </button>
+                  {(isRunning && activeTimer?.task_id === t.id) && (
+                    <span style={{ fontSize: 10, letterSpacing: "0.08em", color: "#d94040", fontFamily: "'Oswald', Arial, sans-serif", minWidth: 36, textAlign: "right" }}>
+                      {formatTimer(elapsedSeconds)}
+                    </span>
+                  )}
                 </div>
                 <div style={{ textAlign: "center", fontSize: 10, textTransform: "uppercase", opacity: 0.75, display: "flex", alignItems: "center", justifyContent: "center", color: t.priority === "critical" ? "#d94040" : t.priority === "high" ? "#e8a820" : "rgba(245,240,224,0.75)", letterSpacing: "0.08em", fontFamily: "'Oswald', Arial, sans-serif" }}>
                   {t.priority}

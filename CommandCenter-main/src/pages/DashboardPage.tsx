@@ -159,9 +159,18 @@ export function DashboardPage() {
     return comps.some((c: any) => c?.completed_date === today);
   }).length;
 
-  const projects = (data?.active_projects ?? []).slice(0, 4);
+  const projects = (data?.active_projects ?? []).slice(0, 3);
   const allPending = [...(data?.today_tasks ?? []), ...overdueT].slice(0, 4);
+  const nowChicago = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
   const pendingHabits = habitEntries.filter((e: any) => {
+    const hh = e?.habit?.time_hour ?? e?.time_hour;
+    const mm = e?.habit?.time_minute ?? e?.time_minute;
+    // Default behavior on dashboard: hide habits until their scheduled time arrives.
+    if (typeof hh === "number" && typeof mm === "number") {
+      const startMins = hh * 60 + mm;
+      const nowMins = nowChicago.getHours() * 60 + nowChicago.getMinutes();
+      if (nowMins < startMins) return false;
+    }
     if (typeof e?.completed === "boolean") return !e.completed;
     const comps = Array.isArray(e?.habit?.completions) ? e.habit.completions
       : Array.isArray(e?.completions) ? e.completions : [];
