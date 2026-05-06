@@ -334,3 +334,401 @@ input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepi
 }
 .task-ctx-icon--gold { color: #e8a820; opacity: 0.85; }
 .task-ctx-icon--red  { color: #d94040; opacity: 0.85; }
+
+/* ═════════════════════════════════════════════════════════════
+   NOTEBOOK DESIGN — Notes Page Redesign
+   ═════════════════════════════════════════════════════════════ */
+
+/* Import script fonts */
+@import url('https://fonts.googleapis.com/css2?family=Tangerine:wght@400;700&family=Oswald:wght@400;600;700&display=swap');
+
+/* ── Notes page layout ── */
+.notes-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.notes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.notes-title {
+  font-family: 'Oswald', Arial, sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #1e3629;
+}
+
+.search-input {
+  width: 100%;
+  padding: 12px 16px;
+  font-family: 'Oswald', Arial, sans-serif;
+  font-size: 14px;
+  background: #faf8f3;
+  border: 2px solid #d4d4d4;
+  border-radius: 4px;
+  color: #3a3a3a;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.search-input:focus {
+  border-color: #d94040;
+}
+
+.search-input::placeholder {
+  color: #a0a0a0;
+}
+
+.btn-new-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #d94040;
+  color: #faf8f3;
+  border: none;
+  border-radius: 4px;
+  font-family: 'Oswald', Arial, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-new-note:hover {
+  background: #c23535;
+}
+
+/* ── Notes container ── */
+.notes-container {
+  flex: 1;
+}
+
+.notes-section {
+  margin-bottom: 2.5rem;
+}
+
+.section-label {
+  font-family: 'Oswald', Arial, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #999;
+  margin-bottom: 1.5rem;
+}
+
+.notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+/* ── Notebook entry ── */
+.notebook-entry {
+  display: flex;
+  background: #faf8f3;
+  border-radius: 2px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  transition: box-shadow 0.2s;
+}
+
+.notebook-entry:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.notebook-margin {
+  width: 8px;
+  background: #d94040;
+  flex-shrink: 0;
+}
+
+.notebook-content {
+  flex: 1;
+  padding: 24px;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent,
+    transparent 28px,
+    #d4d4d4 28px,
+    #d4d4d4 29px
+  );
+  background-position: 0 0;
+  color: #2a2a2a;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── Entry header ── */
+.entry-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.entry-meta {
+  flex: 1;
+}
+
+.entry-date {
+  font-family: 'Oswald', Arial, sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #999;
+}
+
+.entry-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.icon-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid #d94040;
+  border-radius: 3px;
+  color: #d94040;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.icon-btn:hover {
+  background: #d94040;
+  color: #faf8f3;
+}
+
+.icon-btn.is-pinned {
+  background: #d94040;
+  color: #faf8f3;
+}
+
+.delete-btn:hover {
+  border-color: #c23535;
+  background: #c23535;
+}
+
+/* ── Entry headline (title) ── */
+.entry-headline {
+  font-family: 'Tangerine', cursive;
+  font-size: 32px;
+  font-weight: 700;
+  color: #1e3629;
+  margin: 8px 0 0 0;
+  line-height: 1.2;
+}
+
+/* ── Entry text content ── */
+.entry-text {
+  font-family: 'Tangerine', cursive;
+  font-size: 24px;
+  color: #2a2a2a;
+  line-height: 1.8;
+  cursor: pointer;
+  white-space: pre-wrap;
+  word-break: break-word;
+  transition: color 0.2s;
+  margin: 12px 0 0 0;
+}
+
+.entry-text:hover {
+  color: #1e3629;
+}
+
+/* ── Edit form ── */
+.edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 12px 0 0 0;
+}
+
+.edit-textarea {
+  font-family: 'Tangerine', cursive;
+  font-size: 24px;
+  padding: 12px;
+  background: #fff;
+  border: 2px solid #d94040;
+  border-radius: 3px;
+  color: #2a2a2a;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.2s;
+  line-height: 1.8;
+}
+
+.edit-textarea:focus {
+  border-color: #1e3629;
+}
+
+.edit-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-save,
+.btn-cancel {
+  padding: 8px 16px;
+  border-radius: 3px;
+  border: none;
+  font-family: 'Oswald', Arial, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-save {
+  background: #d94040;
+  color: #faf8f3;
+}
+
+.btn-save:hover {
+  background: #c23535;
+}
+
+.btn-cancel {
+  background: transparent;
+  border: 1px solid #d4d4d4;
+  color: #999;
+}
+
+.btn-cancel:hover {
+  border-color: #d94040;
+  color: #d94040;
+}
+
+/* ── New note form ── */
+.new-note-form {
+  background: #faf8f3;
+  border: 2px solid #d94040;
+  border-radius: 4px;
+  padding: 20px;
+  margin-bottom: 1.5rem;
+}
+
+.form-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.form-header h3 {
+  font-family: 'Oswald', Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #1e3629;
+  margin: 0;
+}
+
+.close-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.close-btn:hover {
+  color: #d94040;
+}
+
+.form-input,
+.form-textarea {
+  width: 100%;
+  padding: 12px;
+  font-family: 'Tangerine', cursive;
+  font-size: 20px;
+  background: #fff;
+  border: 1px solid #d4d4d4;
+  border-radius: 3px;
+  color: #2a2a2a;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.form-input:focus,
+.form-textarea:focus {
+  border-color: #d94040;
+}
+
+.form-input::placeholder,
+.form-textarea::placeholder {
+  color: #a0a0a0;
+}
+
+.form-textarea {
+  resize: vertical;
+  line-height: 1.6;
+}
+
+.btn-submit {
+  width: 100%;
+  padding: 12px;
+  margin-top: 8px;
+  background: #d94040;
+  color: #faf8f3;
+  border: none;
+  border-radius: 3px;
+  font-family: 'Oswald', Arial, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-submit:hover:not(:disabled) {
+  background: #c23535;
+}
+
+.btn-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Loading state ── */
+.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 60px 20px;
+  color: #d94040;
+}
+
+/* ── Empty state ── */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: #999;
+  font-family: 'Oswald', Arial, sans-serif;
+  font-size: 14px;
+}
