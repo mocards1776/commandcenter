@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { gamificationApi, tasksApi } from "@/lib/api";
 import type { Task } from "@/types";
-import { todayStr } from "@/lib/utils";
+import { toDateStr, todayStr } from "@/lib/utils";
 
 const GC_TOKEN_KEY = "gcal_access_token";
 const GC_EXPIRY_KEY = "gcal_token_expiry";
@@ -19,7 +19,7 @@ function dateKey(value?: string): string | null {
   if (!value) return null;
   const m = value.match(/^(\d{4}-\d{2}-\d{2})/);
   if (m) return m[1];
-  return new Date(value).toISOString().slice(0, 10);
+  return toDateStr(value);
 }
 
 function addDays(dateStr: string, n: number): string {
@@ -93,7 +93,18 @@ export function DailySummaryPage() {
   });
 
   const scheduledToday = useMemo(
-    () => tasks.filter((t) => dateKey(t.scheduled_start_at) === todayISO),
+    () =>
+      tasks
+        .filter((t) => {
+          const scheduled = dateKey(t.scheduled_start_at);
+          const due = dateKey(t.due_date);
+          return scheduled === todayISO || (!scheduled && (t.status === "today" || due === todayISO));
+        })
+        .sort((a, b) => {
+          const am = a.scheduled_start_at ? Date.parse(a.scheduled_start_at) : Number.MAX_SAFE_INTEGER;
+          const bm = b.scheduled_start_at ? Date.parse(b.scheduled_start_at) : Number.MAX_SAFE_INTEGER;
+          return am - bm;
+        }),
     [tasks, todayISO]
   );
   const gcalToday = useMemo(
