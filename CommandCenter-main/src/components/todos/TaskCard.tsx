@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { tasksApi, tagsApi } from "@/lib/api";
+import { tasksApi, tagsApi, projectsApi, categoriesApi } from "@/lib/api";
 import { useActiveTimer } from "@/hooks/useTimer";
 import { useTimerStore, useCelebrationStore, useFocusStore, usePinnedTaskStore } from "@/store";
 import { TaskModal } from "./TaskModal";
@@ -156,6 +156,8 @@ export function TaskCard({ task, isPinned = false, onPin, onUnpin }: { task: Tas
   const qc = useQueryClient();
   const { isRunning, activeTimer, elapsedSeconds, start, stop } = useActiveTimer();
   const { data: allTags = [] } = useQuery({ queryKey: ["tags"], queryFn: tagsApi.list, staleTime: 5 * 60_000 });
+  const { data: allProjects = [] } = useQuery({ queryKey: ["projects"], queryFn: () => projectsApi.list(), staleTime: 60_000 });
+  const { data: allCategories = [] } = useQuery({ queryKey: ["categories"], queryFn: categoriesApi.list, staleTime: 60_000 });
   const tagMap = Object.fromEntries(allTags.map((t: any) => [t.id, t]));
   const resolvedTags = (task.tag_ids ?? []).map((id: any) => tagMap[id]?.name ?? id).filter(Boolean);
   const { setActiveTimer }     = useTimerStore();
@@ -189,6 +191,29 @@ export function TaskCard({ task, isPinned = false, onPin, onUnpin }: { task: Tas
     },
   });
 
+  const quickUpdateMut = useMutation({
+    mutationFn: (patch: Record<string, any>) => tasksApi.update(task.id, patch),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+    },
+    onError: () => toast.error("Update failed"),
+  });
+
+  const setDueDate = (dateIso?: string) => {
+    quickUpdateMut.mutate({ due_date: dateIso ? `${dateIso}T00:00:00Z` : null });
+  };
+  const setImportance = (n: number) => quickUpdateMut.mutate({ importance: n });
+  const setDifficulty = (n: number) => quickUpdateMut.mutate({ difficulty: n });
+  const setProject = (id?: string) => quickUpdateMut.mutate({ project_id: id });
+  const setCategory = (id?: string) => quickUpdateMut.mutate({ category_id: id });
+  const toggleTag = (id: string) => {
+    const cur = task.tag_ids ?? [];
+    const next = cur.includes(id) ? cur.filter(t => t !== id) : [...cur, id];
+    quickUpdateMut.mutate({ tag_ids: next });
+  };
+
   const toggleTimer = () => {
     if (isThisRunning) stop();
     else { setActiveTimer(null, task); start({ task_id: task.id }); }
@@ -200,9 +225,24 @@ export function TaskCard({ task, isPinned = false, onPin, onUnpin }: { task: Tas
   if (task.status === "done") {
     return (
       <>
-        <TaskContextMenu task={task} isTimerRunning={false}
-          onEdit={() => setModalOpen(true)} onComplete={() => {}}
-          onToggleTimer={() => {}} onDelete={() => deleteMut.mutate()}>
+        <TaskContextMenu task={task}
+          dueDate={task.due_date}
+          importance={task.importance}
+          difficulty={task.difficulty}
+          projectId={task.project_id}
+          categoryId={task.category_id}
+          tagIds={task.tag_ids ?? []}
+          projects={allProjects as any[]}
+          categories={allCategories as any[]}
+          tags={allTags as any[]}
+          onSetDueDate={setDueDate}
+          onSetImportance={setImportance}
+          onSetDifficulty={setDifficulty}
+          onSetProject={setProject}
+          onSetCategory={setCategory}
+          onToggleTag={toggleTag}
+          onEdit={() => setModalOpen(true)}
+          onDelete={() => deleteMut.mutate()}>
           <div style={{
             margin: "0 10px 3px", display: "flex", alignItems: "center", gap: 8,
             padding: "5px 10px", background: "rgba(0,0,0,0.15)",
@@ -238,10 +278,25 @@ export function TaskCard({ task, isPinned = false, onPin, onUnpin }: { task: Tas
   // ── Active task — scoreboard card ────────────────────────────
   return (
     <>
-      <TaskContextMenu task={task} isTimerRunning={isThisRunning}
+      <TaskContextMenu task={task}
         isPinned={isPinned} onPin={onPin} onUnpin={onUnpin}
-        onEdit={() => setModalOpen(true)} onComplete={() => openCompletion()}
-        onToggleTimer={toggleTimer} onDelete={handleDelete}>
+        dueDate={task.due_date}
+        importance={task.importance}
+        difficulty={task.difficulty}
+        projectId={task.project_id}
+        categoryId={task.category_id}
+        tagIds={task.tag_ids ?? []}
+        projects={allProjects as any[]}
+        categories={allCategories as any[]}
+        tags={allTags as any[]}
+        onSetDueDate={setDueDate}
+        onSetImportance={setImportance}
+        onSetDifficulty={setDifficulty}
+        onSetProject={setProject}
+        onSetCategory={setCategory}
+        onToggleTag={toggleTag}
+        onEdit={() => setModalOpen(true)}
+        onDelete={handleDelete}>
         <div style={{ margin: "0 10px 5px" }}>
 
           {/* ── Main card ── */}
