@@ -7,7 +7,7 @@ import { TaskModal } from "@/components/todos/TaskModal";
 import { Loader2 } from "lucide-react";
 import type { TaskStatus } from "@/types";
 import { useTimerStore, useUIStore, usePinnedTaskStore } from "@/store";
-import { battingAvgStr } from "@/lib/utils";
+import { battingAvgStr, todayStr } from "@/lib/utils";
 
 type TodoMode = "today" | "upcoming" | "done";
 
@@ -163,24 +163,34 @@ export function TodosPage() {
   const moBA  = last30.length ? battingAvgStr(histAvg(last30.map(h => h.batting_average))) : null;
   const bestBA = all.length   ? battingAvgStr(histBest(all.map(h => h.batting_average)))   : null;
 
-  const todayISO = new Date().toISOString().slice(0, 10);
+  const todayISO = todayStr();
+  const startDateOnly = (v?: string) => (v ? new Date(v).toISOString().slice(0, 10) : undefined);
   const filtered = (tasks ?? []).filter(t => {
-    const statusPass = mode === "done"
-      ? t.status === "done"
-      : mode === "today"
-      ? (t.status === "today" || t.status === "in_progress")
-      : t.status !== "done";
-    const dueDateOnly = t.due_date?.slice(0, 10);
+    const statusPass = mode === "done" ? t.status === "done" : t.status !== "done" && t.status !== "cancelled";
+    const dueDateOnly = t.due_date ? new Date(t.due_date).toISOString().slice(0, 10) : undefined;
+    const scheduledDay = startDateOnly((t as any).scheduled_start_at);
     const modePass = mode === "today"
-      ? (dueDateOnly === todayISO || t.status === "today" || t.status === "in_progress")
+      ? (
+          t.status === "in_progress" ||
+          scheduledDay === todayISO ||
+          (!scheduledDay && (t.status === "today" || dueDateOnly === todayISO))
+        )
       : mode === "upcoming"
-      ? (!dueDateOnly || dueDateOnly > todayISO)
+      ? (
+          t.status !== "in_progress" &&
+          (
+            !scheduledDay ||
+            scheduledDay > todayISO ||
+            (scheduledDay === todayISO && new Date((t as any).scheduled_start_at).getTime() > Date.now())
+          )
+        )
       : true;
     const categoryTabPass = !categoryTab || t.category_id === categoryTab;
     const tagPass = !tagFilter || (t.tag_ids ?? []).includes(tagFilter.id);
     const categoryPass = !categoryFilter || t.category_id === categoryFilter.id;
     const projectPass = !projectFilter || t.project_id === projectFilter.id;
-    const startPass = !hideNotStarted || !t.scheduled_start_at || new Date(t.scheduled_start_at).getTime() <= Date.now();
+    const startMs = (t as any).scheduled_start_at ? new Date((t as any).scheduled_start_at).getTime() : null;
+    const startPass = !hideNotStarted || startMs === null || Number.isNaN(startMs) || startMs <= Date.now();
     return statusPass && modePass && categoryTabPass && tagPass && categoryPass && projectPass && startPass;
   });
   const activeTaskId = activeTimer?.task_id;
