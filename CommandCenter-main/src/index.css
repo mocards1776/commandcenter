@@ -739,6 +739,7 @@ input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepi
 .notes-page--notebook {
   --notebook-rule-gap: 40px;
   --notebook-rule-line: #b7c3cd;
+  --notebook-baseline-offset: 9px;
   min-height: calc(100vh - 40px);
   padding: 12px;
   background: #eae6dc;
@@ -890,8 +891,17 @@ input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepi
 .notes-page--notebook .notebook-content {
   background-image: none;
   color: #1a2434;
-  padding: 4px 12px 0;
+  padding: 0 12px 0;
   gap: 8px;
+}
+
+.notes-page--notebook .notes-list {
+  gap: calc(var(--notebook-rule-gap) * 0.5);
+}
+
+.notes-page--notebook .notes-container {
+  flex: 1;
+  margin-top: calc(var(--notebook-rule-gap) * 0.25);
 }
 
 .notes-page--notebook .entry-date,
@@ -908,7 +918,7 @@ input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepi
   color: #111a28;
   line-height: var(--notebook-rule-gap);
   margin: 0;
-  padding-top: 2px;
+  padding-top: var(--notebook-baseline-offset);
 }
 
 .notes-page--notebook .icon-btn {
@@ -946,7 +956,7 @@ input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepi
 .notes-page--notebook .form-textarea,
 .notes-page--notebook .edit-textarea {
   line-height: var(--notebook-rule-gap);
-  padding-top: 2px;
+  padding-top: var(--notebook-baseline-offset);
 }
 
 .notes-page--notebook .form-input:focus,
