@@ -198,11 +198,11 @@ export function TodosPage() {
     const overdue = !!dueDay && dueDay < todayISO;
     const modePass = mode === "today"
       ? (
-          scheduledToday || overdue
+          scheduledToday || overdue || t.status === "today"
         )
       : mode === "upcoming"
       ? (
-          !scheduledToday && !overdue
+          !scheduledToday && !overdue && t.status !== "today"
         )
       : true;
     const priorityPass = priorityFilter === "all" || t.priority === priorityFilter;

@@ -302,7 +302,7 @@ export function TaskCard({
           }}>
 
             {/* ── Main layout: left (checkbox+title+play) | right (scoreboard panels) ── */}
-            <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 1.1fr) minmax(380px, 1fr)", alignItems: "stretch" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(360px, 1.2fr) minmax(520px, 1fr)", alignItems: "stretch" }}>
 
               {/* LEFT: checkbox + title + subtasks toggle + play */}
               <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 8, padding: "7px 12px 7px 10px" }}>
@@ -352,11 +352,11 @@ export function TaskCard({
               {/* RIGHT: scoreboard stat panels — fixed columns for alignment */}
               <div style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(8, minmax(52px, 1fr))",
+                gridTemplateColumns: "repeat(6, minmax(72px, 1fr))",
                 alignItems: "center",
                 justifyItems: "center",
-                gap: 8,
-                padding: "6px 8px",
+                gap: 12,
+                padding: "6px 14px",
                 borderLeft: "1px solid rgba(0,0,0,0.35)",
                 minWidth: 0,
               }}>
@@ -388,26 +388,12 @@ export function TaskCard({
                   onClick={(task as any).project_id ? () => onProjectClick?.((task as any).project_id, projectMap[(task as any).project_id]?.title || "Project") : undefined}
                 />
 
-                {/* Category — always show, dash if none */}
-                <PanelCell
-                  value={(categoryMap[(task as any).category_id]?.name || (task as any).category_name || "—").toString().slice(0, 12)}
-                  sub="CAT"
-                  color={(task as any).category_id ? "muted" : "dim"}
-                  onClick={(task as any).category_id ? () => onCategoryClick?.((task as any).category_id, categoryMap[(task as any).category_id]?.name || "Category") : undefined}
-                />
-
                 {/* Tags — resolved names, always show, dash if none */}
                 <PanelCell
                   value={resolvedTags[0] ? (resolvedTags[0].length > 9 ? resolvedTags[0].slice(0, 9) + "…" : resolvedTags[0]) : "—"}
                   sub="TAG"
                   color="dim"
                   onClick={task.tag_ids?.[0] ? () => onTagClick?.(task.tag_ids[0], resolvedTags[0]) : undefined}
-                />
-                <PanelCell
-                  value={resolvedTags[1] ? (resolvedTags[1].length > 9 ? resolvedTags[1].slice(0, 9) + "…" : resolvedTags[1]) : "—"}
-                  sub=""
-                  color="dim"
-                  onClick={task.tag_ids?.[1] ? () => onTagClick?.(task.tag_ids[1], resolvedTags[1]) : undefined}
                 />
 
               </div>
