@@ -165,70 +165,88 @@ export function NotesPage() {
   const unpinned = filtered?.filter(n => !n.is_pinned) ?? [];
 
   return (
-    <div className="notes-page">
-      <div className="notes-header">
-        <h1 className="notes-title">Notes Hub</h1>
-        <button
-          onClick={() => setShowNew(!showNew)}
-          className="btn-new-note"
-        >
-          <Plus className="w-4 h-4" /> New Note
-        </button>
-      </div>
+    <div className="notes-page notes-page--notebook">
+      <div className="notes-frame">
+        <aside className="notes-rail" aria-hidden="true">
+          <div className="rail-dot" />
+          <div className="rail-pill" />
+          <div className="rail-pill rail-pill--active" />
+          <div className="rail-pill" />
+          <div className="rail-spacer" />
+          <div className="rail-dot rail-dot--bottom" />
+        </aside>
 
-      <input
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-        placeholder="Search notes…"
-        className="search-input"
-      />
-
-      {showNew && <NewNoteForm onClose={() => setShowNew(false)} />}
-
-      <div className="notes-container">
-        {isLoading ? (
-          <div className="loading">
-            <Loader2 className="w-6 h-6 animate-spin" />
+        <div className="notes-paper">
+          <div className="notes-paper-head">
+            <span className="paper-brand">ARCHUTE</span>
+            <span className="paper-menu">NOTS ☰</span>
           </div>
-        ) : (
-          <>
-            {pinned.length > 0 && (
-              <div className="notes-section">
-                <h2 className="section-label">📌 Pinned</h2>
-                <div className="notes-list">
-                  {pinned.map(n => (
-                    <NoteEntry
-                      key={n.id}
-                      note={n}
-                      onDelete={() => deleteMutation.mutate(n.id)}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
 
-            {unpinned.length > 0 && (
-              <div className="notes-section">
-                {pinned.length > 0 && <h2 className="section-label">📝 All Notes</h2>}
-                <div className="notes-list">
-                  {unpinned.map(n => (
-                    <NoteEntry
-                      key={n.id}
-                      note={n}
-                      onDelete={() => deleteMutation.mutate(n.id)}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
+          <div className="notes-header">
+            <h1 className="notes-title">Notes Hub</h1>
+            <button
+              onClick={() => setShowNew(!showNew)}
+              className="btn-new-note"
+            >
+              <Plus className="w-4 h-4" /> New Note
+            </button>
+          </div>
 
-            {filtered?.length === 0 && (
-              <div className="empty-state">
-                <p>{search ? "No notes match your search." : "No notes yet. Create one above!"}</p>
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search notes…"
+            className="search-input"
+          />
+
+          {showNew && <NewNoteForm onClose={() => setShowNew(false)} />}
+
+          <div className="notes-container">
+            {isLoading ? (
+              <div className="loading">
+                <Loader2 className="w-6 h-6 animate-spin" />
               </div>
+            ) : (
+              <>
+                {pinned.length > 0 && (
+                  <div className="notes-section">
+                    <h2 className="section-label">📌 Pinned</h2>
+                    <div className="notes-list">
+                      {pinned.map(n => (
+                        <NoteEntry
+                          key={n.id}
+                          note={n}
+                          onDelete={() => deleteMutation.mutate(n.id)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {unpinned.length > 0 && (
+                  <div className="notes-section">
+                    {pinned.length > 0 && <h2 className="section-label">📝 All Notes</h2>}
+                    <div className="notes-list">
+                      {unpinned.map(n => (
+                        <NoteEntry
+                          key={n.id}
+                          note={n}
+                          onDelete={() => deleteMutation.mutate(n.id)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {filtered?.length === 0 && (
+                  <div className="empty-state">
+                    <p>{search ? "No notes match your search." : "No notes yet. Create one above!"}</p>
+                  </div>
+                )}
+              </>
             )}
-          </>
-        )}
+          </div>
+        </div>
       </div>
     </div>
   );
