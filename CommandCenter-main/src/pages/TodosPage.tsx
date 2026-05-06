@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { tasksApi, dashboardApi, gamificationApi, categoriesApi } from "@/lib/api";
 import { TaskCard } from "@/components/todos/TaskCard";
@@ -7,7 +8,7 @@ import { TaskModal } from "@/components/todos/TaskModal";
 import { Loader2 } from "lucide-react";
 import type { TaskStatus } from "@/types";
 import { useTimerStore, useUIStore, usePinnedTaskStore } from "@/store";
-import { battingAvgStr, todayStr } from "@/lib/utils";
+import { battingAvgStr, toDateStr, todayStr } from "@/lib/utils";
 
 type TodoMode = "today" | "upcoming" | "done";
 
@@ -65,6 +66,7 @@ const COLS = "2fr 1fr 1fr 1fr 1fr";
 const DASH = "—";
 
 export function TodosPage() {
+  const [searchParams] = useSearchParams();
   const [mode, setMode] = useState<TodoMode>("today");
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"manual" | "due_date" | "importance" | "focus_score">("manual");
@@ -85,6 +87,17 @@ export function TodosPage() {
       setAddTaskOpen(false);
     }
   }, [addTaskOpen, setAddTaskOpen]);
+  useEffect(() => {
+    const tagId = searchParams.get("tag");
+    const tagName = searchParams.get("tagName");
+    if (!tagId) return;
+    setMode("upcoming");
+    setSearch("");
+    setTagFilter({ id: tagId, name: tagName || "Selected Tag" });
+    setCategoryFilter(null);
+    setProjectFilter(null);
+    setCategoryTab(null);
+  }, [searchParams]);
 
   const reorderMut = useMutation({
     mutationFn: (ids: string[]) => tasksApi.reorder(ids),
@@ -164,14 +177,13 @@ export function TodosPage() {
   const bestBA = all.length   ? battingAvgStr(histBest(all.map(h => h.batting_average)))   : null;
 
   const todayISO = todayStr();
-  const startDateOnly = (v?: string) => (v ? new Date(v).toISOString().slice(0, 10) : undefined);
+  const startDateOnly = (v?: string) => (v ? toDateStr(v) : undefined);
   const filtered = (tasks ?? []).filter(t => {
     const statusPass = mode === "done" ? t.status === "done" : t.status !== "done" && t.status !== "cancelled";
-    const dueDateOnly = t.due_date ? new Date(t.due_date).toISOString().slice(0, 10) : undefined;
+    const dueDateOnly = t.due_date ? toDateStr(t.due_date) : undefined;
     const scheduledDay = startDateOnly((t as any).scheduled_start_at);
     const modePass = mode === "today"
       ? (
-          t.status === "in_progress" ||
           scheduledDay === todayISO ||
           (!scheduledDay && (t.status === "today" || dueDateOnly === todayISO))
         )
