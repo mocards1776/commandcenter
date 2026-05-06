@@ -11,6 +11,7 @@ from typing import Optional, List
 import asyncio
 from collections import defaultdict
 from pydantic import BaseModel
+import re
 
 import db
 from models import (
@@ -255,12 +256,12 @@ async def telegram_send_message(chat_id: int, text: str):
 
 def parse_telegram_task(text: str) -> dict:
     raw = text.strip()
-    if raw.lower().startswith("/task "):
-        raw = raw[6:].strip()
-    elif raw.lower() == "/task":
-        raw = ""
+    # Backward-compatible: still accept optional /task prefix,
+    # but regular messages are treated as tasks too.
+    if raw.lower().startswith("/task"):
+        raw = raw[5:].strip()
     if not raw:
-        raise ValueError("Usage: /task Your task title here")
+        raise ValueError("Task text cannot be empty")
     priority = "medium"
     status = "today"
     importance = 3
@@ -279,6 +280,19 @@ def parse_telegram_task(text: str) -> dict:
         "importance": importance, "difficulty": difficulty,
         "notes": "Created via Telegram bot",
     }
+
+def _telegram_channel_tag_name(message: dict) -> str:
+    chat = message.get("chat", {}) or {}
+    source = (
+        chat.get("title")
+        or chat.get("username")
+        or chat.get("first_name")
+        or chat.get("last_name")
+        or "Telegram"
+    )
+    tokens = re.findall(r"[A-Za-z0-9]+", str(source))
+    compact = "".join(tokens)[:90] or "Telegram"
+    return f"#{compact}"
 
 @app.post("/auth/register", response_model=UserResponse)
 async def register(data: UserCreate, session: Session = Depends(db.get_session)):
@@ -1483,20 +1497,19 @@ async def telegram_webhook(request: Request, session: Session = Depends(db.get_s
 
     chat_id = message.get("chat", {}).get("id")
     from_id = str(message.get("from", {}).get("id", ""))
-    text = message.get("text", "").strip()
+    text = (message.get("text") or message.get("caption") or "").strip()
 
     if TELEGRAM_OWNER_USER_ID and from_id != TELEGRAM_OWNER_USER_ID:
         return Response(status_code=200)
 
-    if not text.lower().startswith("/task"):
+    # Ignore commands (/start, /help, etc). Any non-command text becomes a task.
+    if not text or text.startswith("/"):
         return Response(status_code=200)
 
     # Look up the owner user from DB
-    owner_user = None
-    if TELEGRAM_OWNER_USER_ID:
-        owner_user = session.execute(
-            select(User).order_by(User.id)
-        ).scalar()
+    owner_user = session.execute(
+        select(User).order_by(User.created_at.asc())
+    ).scalar()
 
     if not owner_user:
         await telegram_send_message(chat_id, "No user account found.")
@@ -1509,6 +1522,19 @@ async def telegram_webhook(request: Request, session: Session = Depends(db.get_s
         return Response(status_code=200)
 
     focus = calc_focus_score(task_data["importance"], task_data["difficulty"])
+    tag_name = _telegram_channel_tag_name(message)
+    tag = session.execute(
+        select(Tag).where(
+            Tag.user_id == owner_user.id,
+            func.lower(Tag.name) == tag_name.lower(),
+        )
+    ).scalar()
+    if not tag:
+        tag = Tag(name=tag_name, color="#4a7fa8", user_id=owner_user.id)
+        session.add(tag)
+        session.commit()
+        session.refresh(tag)
+    chat_title = (message.get("chat", {}) or {}).get("title") or "Telegram"
     task = Task(
         title=task_data["title"],
         status=task_data["status"],
@@ -1516,7 +1542,8 @@ async def telegram_webhook(request: Request, session: Session = Depends(db.get_s
         importance=task_data["importance"],
         difficulty=task_data["difficulty"],
         focus_score=focus,
-        notes=task_data["notes"],
+        notes=f'{task_data["notes"]} · Source: {chat_title}',
+        tag_ids=tags_to_str([tag.id]),
         user_id=owner_user.id,
         show_in_daily=True,
     )
@@ -1525,7 +1552,7 @@ async def telegram_webhook(request: Request, session: Session = Depends(db.get_s
     session.refresh(task)
     await telegram_send_message(
         chat_id,
-        f"✅ Task created: {task.title}\nPriority: {task.priority} | Status: {task.status}"
+        f"✅ Task created: {task.title}\nPriority: {task.priority} | Status: {task.status}\nTag: {tag_name}"
     )
     return Response(status_code=200)
 
