@@ -14,6 +14,7 @@ interface TaskContextMenuProps {
   onPin?: () => void;
   onUnpin?: () => void;
   onSetDueDate?: (v?: string) => void;
+  onSetStartTime?: (iso?: string) => void;
   onSetImportance?: (v: number) => void;
   onSetDifficulty?: (v: number) => void;
   onSetProject?: (projectId?: string) => void;
@@ -33,6 +34,7 @@ export function TaskContextMenu({
   onPin,
   onUnpin,
   onSetDueDate,
+  onSetStartTime,
   onSetImportance,
   onSetDifficulty,
   onSetProject,
@@ -45,6 +47,14 @@ export function TaskContextMenu({
   const nextWeek = new Date(dueBase);
   nextWeek.setDate(nextWeek.getDate() + 7);
   const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const nowIso = () => new Date().toISOString();
+  const plusMinutesIso = (mins: number) => new Date(Date.now() + mins * 60_000).toISOString();
+  const tomorrowMorningIso = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    d.setHours(9, 0, 0, 0);
+    return d.toISOString();
+  };
 
   return (
     <ContextMenu.Root>
@@ -75,6 +85,22 @@ export function TaskContextMenu({
                 <ContextMenu.Item className="task-ctx-item" onSelect={() => onSetDueDate?.(iso(tomorrow))}>Tomorrow</ContextMenu.Item>
                 <ContextMenu.Item className="task-ctx-item" onSelect={() => onSetDueDate?.(iso(nextWeek))}>+7 Days</ContextMenu.Item>
                 <ContextMenu.Item className="task-ctx-item" onSelect={() => onSetDueDate?.(undefined)}>No Due Date</ContextMenu.Item>
+              </ContextMenu.SubContent>
+            </ContextMenu.Portal>
+          </ContextMenu.Sub>
+
+          <ContextMenu.Sub>
+            <ContextMenu.SubTrigger className="task-ctx-item">
+              <CalendarDays size={11} className="task-ctx-icon" />
+              Start Time
+            </ContextMenu.SubTrigger>
+            <ContextMenu.Portal>
+              <ContextMenu.SubContent className="task-ctx-menu">
+                <ContextMenu.Item className="task-ctx-item" onSelect={() => onSetStartTime?.(nowIso())}>Now</ContextMenu.Item>
+                <ContextMenu.Item className="task-ctx-item" onSelect={() => onSetStartTime?.(plusMinutesIso(30))}>+30 min</ContextMenu.Item>
+                <ContextMenu.Item className="task-ctx-item" onSelect={() => onSetStartTime?.(plusMinutesIso(60))}>+1 hour</ContextMenu.Item>
+                <ContextMenu.Item className="task-ctx-item" onSelect={() => onSetStartTime?.(tomorrowMorningIso())}>Tomorrow 9:00</ContextMenu.Item>
+                <ContextMenu.Item className="task-ctx-item" onSelect={() => onSetStartTime?.(undefined)}>No Start Time</ContextMenu.Item>
               </ContextMenu.SubContent>
             </ContextMenu.Portal>
           </ContextMenu.Sub>

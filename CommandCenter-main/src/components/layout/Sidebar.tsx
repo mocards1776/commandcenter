@@ -1,4 +1,4 @@
-import { LayoutDashboard,CheckSquare,FolderKanban,Flame,Calendar,Brain,StickyNote,Users,BarChart3,Trophy,ChevronLeft,ChevronRight } from "lucide-react";
+import { LayoutDashboard,CheckSquare,FolderKanban,Flame,Calendar,Brain,StickyNote,Users,BarChart3,Trophy,Tags,Shapes,ChevronLeft,ChevronRight } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useUIStore } from "@/store";
 
@@ -6,6 +6,7 @@ const NAV = [
   {id:"dashboard",label:"Dashboard",icon:LayoutDashboard},{id:"todos",label:"Daily Todos",icon:CheckSquare},
   {id:"projects",label:"Projects",icon:FolderKanban},{id:"habits",label:"Habits",icon:Flame},
   {id:"calendar",label:"Calendar",icon:Calendar},
+  {id:"categories",label:"Categories",icon:Shapes},{id:"tags",label:"Tags",icon:Tags},
   {id:"braindump",label:"AI Braindump",icon:Brain},{id:"notes",label:"Notes",icon:StickyNote},
   {id:"crm",label:"People CRM",icon:Users},{id:"stats",label:"Stats",icon:BarChart3},{id:"sports",label:"Sports",icon:Trophy},
 ];

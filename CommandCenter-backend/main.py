@@ -202,6 +202,7 @@ def _task_to_dict(task: Task) -> dict:
         "difficulty": task.difficulty,
         "focus_score": task.focus_score or 0,
         "due_date": due_date,
+        "scheduled_start_at": task.scheduled_start_at,
         "time_estimate_minutes": task.time_estimate_minutes,
         "project_id": task.project_id,
         "parent_id": task.parent_id,

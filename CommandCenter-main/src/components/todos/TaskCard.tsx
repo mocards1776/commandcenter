@@ -202,6 +202,9 @@ export function TaskCard({
   const setDueDate = (dateIso?: string) => {
     quickUpdateMut.mutate({ due_date: dateIso ? `${dateIso}T00:00:00Z` : null });
   };
+  const setStartTime = (iso?: string) => {
+    quickUpdateMut.mutate({ scheduled_start_at: iso ?? null });
+  };
   const setImportance = (n: number) => quickUpdateMut.mutate({ importance: n });
   const setDifficulty = (n: number) => quickUpdateMut.mutate({ difficulty: n });
   const setProject = (id?: string) => quickUpdateMut.mutate({ project_id: id });
@@ -228,6 +231,7 @@ export function TaskCard({
           categories={allCategories as any[]}
           tags={allTags as any[]}
           onSetDueDate={setDueDate}
+          onSetStartTime={setStartTime}
           onSetImportance={setImportance}
           onSetDifficulty={setDifficulty}
           onSetProject={setProject}
@@ -276,6 +280,7 @@ export function TaskCard({
         categories={allCategories as any[]}
         tags={allTags as any[]}
         onSetDueDate={setDueDate}
+        onSetStartTime={setStartTime}
         onSetImportance={setImportance}
         onSetDifficulty={setDifficulty}
         onSetProject={setProject}

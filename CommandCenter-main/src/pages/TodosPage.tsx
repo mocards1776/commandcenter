@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { tasksApi, dashboardApi, gamificationApi } from "@/lib/api";
+import { tasksApi, dashboardApi, gamificationApi, categoriesApi } from "@/lib/api";
 import { TaskCard } from "@/components/todos/TaskCard";
 import { QuickAdd } from "@/components/todos/QuickAdd";
 import { TaskModal } from "@/components/todos/TaskModal";
@@ -9,7 +9,7 @@ import type { TaskStatus } from "@/types";
 import { useTimerStore, useUIStore, usePinnedTaskStore } from "@/store";
 import { battingAvgStr } from "@/lib/utils";
 
-const FILTERS: [string, string][] = [["today","📌 Today"],["inbox","📥 Inbox"],["in_progress","⚡ Active"],["waiting","⏳ Waiting"],["all","All"],["done","✅ Done"]];
+type TodoMode = "today" | "upcoming" | "done";
 
 function histAvg(arr: number[]): number {
   return arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : 0;
@@ -65,9 +65,11 @@ const COLS = "2fr 1fr 1fr 1fr 1fr";
 const DASH = "—";
 
 export function TodosPage() {
-  const [filter, setFilter] = useState("today");
+  const [mode, setMode] = useState<TodoMode>("today");
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"manual" | "due_date" | "importance" | "focus_score">("manual");
+  const [hideNotStarted, setHideNotStarted] = useState(true);
+  const [categoryTab, setCategoryTab] = useState<string | null>(null);
   const [tagFilter, setTagFilter] = useState<{ id: string; name: string } | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<{ id: string; name: string } | null>(null);
   const [projectFilter, setProjectFilter] = useState<{ id: string; name: string } | null>(null);
@@ -104,15 +106,18 @@ export function TodosPage() {
   };
 
   const { data: tasks, isLoading } = useQuery({
-    queryKey: ["tasks", filter, search],
+    queryKey: ["tasks", search],
     queryFn: () => {
       const p: any = {};
-      if (filter === "today") p.status = "today,in_progress";
-      else if (filter !== "all") p.status = filter;
       if (search) p.search = search;
       return tasksApi.list(p);
     },
     refetchInterval: 30_000,
+  });
+  const { data: categories = [] } = useQuery({
+    queryKey: ["categories"],
+    queryFn: categoriesApi.list,
+    staleTime: 5 * 60_000,
   });
 
   const { data: dash } = useQuery({
@@ -158,12 +163,25 @@ export function TodosPage() {
   const moBA  = last30.length ? battingAvgStr(histAvg(last30.map(h => h.batting_average))) : null;
   const bestBA = all.length   ? battingAvgStr(histBest(all.map(h => h.batting_average)))   : null;
 
+  const todayISO = new Date().toISOString().slice(0, 10);
   const filtered = (tasks ?? []).filter(t => {
-    const statusPass = filter === "done" ? t.status === "done" : t.status !== "done";
+    const statusPass = mode === "done"
+      ? t.status === "done"
+      : mode === "today"
+      ? (t.status === "today" || t.status === "in_progress")
+      : t.status !== "done";
+    const dueDateOnly = t.due_date?.slice(0, 10);
+    const modePass = mode === "today"
+      ? (dueDateOnly === todayISO || t.status === "today" || t.status === "in_progress")
+      : mode === "upcoming"
+      ? (!dueDateOnly || dueDateOnly > todayISO)
+      : true;
+    const categoryTabPass = !categoryTab || t.category_id === categoryTab;
     const tagPass = !tagFilter || (t.tag_ids ?? []).includes(tagFilter.id);
     const categoryPass = !categoryFilter || t.category_id === categoryFilter.id;
     const projectPass = !projectFilter || t.project_id === projectFilter.id;
-    return statusPass && tagPass && categoryPass && projectPass;
+    const startPass = !hideNotStarted || !t.scheduled_start_at || new Date(t.scheduled_start_at).getTime() <= Date.now();
+    return statusPass && modePass && categoryTabPass && tagPass && categoryPass && projectPass && startPass;
   });
   const activeTaskId = activeTimer?.task_id;
 
@@ -267,9 +285,16 @@ export function TodosPage() {
 
       {/* Filter bar */}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", padding: "8px 12px", background: "#1e3629", borderBottom: "2px solid #162a1c" }}>
-        {FILTERS.map(([id, label]) => (
-          <button key={id} onClick={() => setFilter(id)} style={{ padding: "4px 10px", border: `1px solid ${filter === id ? "rgba(232,168,32,0.5)" : "rgba(232,168,32,0.15)"}`, background: filter === id ? "rgba(232,168,32,0.1)" : "transparent", color: filter === id ? "#e8a820" : "rgba(245,240,224,0.3)", fontFamily: "'Oswald',Arial,sans-serif", fontSize: 10, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer", borderRadius: 2, transition: "all 0.1s" }}>{label}</button>
+        <button onClick={() => setMode("today")} style={{ padding: "4px 10px", border: `1px solid ${mode === "today" ? "rgba(232,168,32,0.5)" : "rgba(232,168,32,0.15)"}`, background: mode === "today" ? "rgba(232,168,32,0.1)" : "transparent", color: mode === "today" ? "#e8a820" : "rgba(245,240,224,0.3)", fontFamily: "'Oswald',Arial,sans-serif", fontSize: 10, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer", borderRadius: 2 }}>{new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}</button>
+        <button onClick={() => setMode("upcoming")} style={{ padding: "4px 10px", border: `1px solid ${mode === "upcoming" ? "rgba(232,168,32,0.5)" : "rgba(232,168,32,0.15)"}`, background: mode === "upcoming" ? "rgba(232,168,32,0.1)" : "transparent", color: mode === "upcoming" ? "#e8a820" : "rgba(245,240,224,0.3)", fontFamily: "'Oswald',Arial,sans-serif", fontSize: 10, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer", borderRadius: 2 }}>Upcoming & Undated</button>
+        <button onClick={() => setMode("done")} style={{ padding: "4px 10px", border: `1px solid ${mode === "done" ? "rgba(232,168,32,0.5)" : "rgba(232,168,32,0.15)"}`, background: mode === "done" ? "rgba(232,168,32,0.1)" : "transparent", color: mode === "done" ? "#e8a820" : "rgba(245,240,224,0.3)", fontFamily: "'Oswald',Arial,sans-serif", fontSize: 10, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer", borderRadius: 2 }}>Done</button>
+        {categories.map((c: any) => (
+          <button key={c.id} onClick={() => setCategoryTab(categoryTab === c.id ? null : c.id)} style={{ padding: "4px 10px", border: `1px solid ${categoryTab === c.id ? "rgba(232,168,32,0.5)" : "rgba(232,168,32,0.12)"}`, background: categoryTab === c.id ? "rgba(232,168,32,0.1)" : "transparent", color: categoryTab === c.id ? "#e8a820" : "rgba(245,240,224,0.25)", fontFamily: "'Oswald',Arial,sans-serif", fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", cursor: "pointer", borderRadius: 2 }}>{c.name}</button>
         ))}
+        <label style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8, color: "rgba(245,240,224,0.6)", fontSize: 10, fontFamily: "'Oswald',Arial,sans-serif", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+          <input type="checkbox" checked={hideNotStarted} onChange={e => setHideNotStarted(e.target.checked)} />
+          Hide not started
+        </label>
         <select
           value={sortBy}
           onChange={e => setSortBy(e.target.value as typeof sortBy)}
@@ -293,9 +318,9 @@ export function TodosPage() {
           <option value="focus_score">Sort: Focus Score</option>
         </select>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…" style={{ marginLeft: "auto", padding: "4px 10px", fontSize: 11, width: 130 }} />
-        {(tagFilter || categoryFilter || projectFilter) && (
+        {(tagFilter || categoryFilter || projectFilter || categoryTab) && (
           <button
-            onClick={() => { setTagFilter(null); setCategoryFilter(null); setProjectFilter(null); }}
+            onClick={() => { setTagFilter(null); setCategoryFilter(null); setProjectFilter(null); setCategoryTab(null); }}
             style={{ padding: "4px 10px", border: "1px solid rgba(217,64,64,0.45)", background: "transparent", color: "#d94040", fontFamily: "'Oswald',Arial,sans-serif", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer", borderRadius: 2 }}
           >
             Clear Context
@@ -310,7 +335,7 @@ export function TodosPage() {
         </div>
       )}
 
-      <QuickAdd defaultStatus={filter === "all" || filter === "done" ? "today" : filter as TaskStatus} />
+      <QuickAdd defaultStatus={mode === "done" ? "today" : "today" as TaskStatus} />
       <TaskModal open={modalOpen} onClose={() => setModalOpen(false)} defaultStatus="today" />
 
       {isLoading ? (
@@ -330,21 +355,21 @@ export function TodosPage() {
           onPin={() => pinTask(t, filtered)}
           onUnpin={() => unpinTask(filtered)}
           onTagClick={(id, name) => {
-            setFilter("all");
+            setMode("upcoming");
             setSearch("");
             setTagFilter({ id, name });
             setCategoryFilter(null);
             setProjectFilter(null);
           }}
           onCategoryClick={(id, name) => {
-            setFilter("all");
+            setMode("upcoming");
             setSearch("");
             setCategoryFilter({ id, name });
             setTagFilter(null);
             setProjectFilter(null);
           }}
           onProjectClick={(id, name) => {
-            setFilter("all");
+            setMode("upcoming");
             setSearch("");
             setProjectFilter({ id, name });
             setTagFilter(null);

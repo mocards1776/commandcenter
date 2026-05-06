@@ -18,6 +18,8 @@ import { NotesPage }      from "@/pages/NotesPage";
 import { CRMPage }        from "@/pages/CRMPage";
 import { StatsPage }      from "@/pages/StatsPage";
 import { SportsPage }     from "@/pages/SportsPage";
+import { CategoriesPage } from "@/pages/CategoriesPage";
+import { TagsPage }       from "@/pages/TagsPage";
 import { LoginPage }      from "@/pages/LoginPage";
 import { tokenStore }     from "@/lib/api";
 
@@ -47,6 +49,8 @@ function AppShell() {
             <Route path="/braindump" element={<BraindumpPage />} />
             <Route path="/notes"     element={<NotesPage />} />
             <Route path="/crm"       element={<CRMPage />} />
+            <Route path="/categories" element={<CategoriesPage />} />
+            <Route path="/tags" element={<TagsPage />} />
             <Route path="/stats"     element={<StatsPage />} />
             <Route path="/sports"    element={<SportsPage />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />

@@ -52,6 +52,7 @@ class Task(Base):
     focus_score = Column(Integer, default=0)
 
     due_date = Column(Date, nullable=True, index=True)
+    scheduled_start_at = Column(DateTime, nullable=True, index=True)
     time_estimate_minutes = Column(Integer, nullable=True)
     show_in_daily = Column(Boolean, default=True)
     sort_order = Column(Integer, default=0)

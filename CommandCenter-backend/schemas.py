@@ -30,6 +30,7 @@ class TaskCreate(BaseModel):
     importance: int = 3
     difficulty: int = 3
     due_date: Optional[datetime] = None
+    scheduled_start_at: Optional[datetime] = None
     time_estimate_minutes: Optional[int] = None
     project_id: Optional[str] = None
     parent_id: Optional[str] = None
@@ -46,6 +47,7 @@ class TaskUpdate(BaseModel):
     importance: Optional[int] = None
     difficulty: Optional[int] = None
     due_date: Optional[datetime] = None
+    scheduled_start_at: Optional[datetime] = None
     time_estimate_minutes: Optional[int] = None
     project_id: Optional[str] = None
     category_id: Optional[str] = None
@@ -65,6 +67,7 @@ class TaskResponse(BaseModel):
     difficulty: int
     focus_score: int = 0
     due_date: Optional[datetime] = None
+    scheduled_start_at: Optional[datetime] = None
     time_estimate_minutes: Optional[int] = None
     project_id: Optional[str] = None
     parent_id: Optional[str] = None

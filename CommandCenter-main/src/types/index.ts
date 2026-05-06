@@ -33,6 +33,7 @@ export interface Subtask {
   actual_time_minutes: number;
   due_date?: string;
   scheduled_date?: string;
+  scheduled_start_at?: string;
   completed_at?: string;
   sort_order: number;
   show_in_daily: boolean;
@@ -56,6 +57,7 @@ export interface Task {
   time_variance_minutes?: number;
   due_date?: string;
   scheduled_date?: string;
+  scheduled_start_at?: string;
   completed_at?: string;
   show_in_daily: boolean;
   tag_ids: string[];

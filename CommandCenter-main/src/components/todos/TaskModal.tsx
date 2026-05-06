@@ -252,6 +252,8 @@ export function TaskModal({ open, onClose, task, projectId, parentId, defaultSta
   const [difficulty,setDifficulty]   = useState(task?.difficulty??3);
   const [dueDate,setDueDate]         = useState(task?.due_date ?? initialDueDate ?? todayISO());
   const [dueTime,setDueTime]         = useState(task?.due_date ? task.due_date.includes("T") ? task.due_date.slice(11,16) : "" : initialDueTime ?? "");
+  const [startDate, setStartDate]    = useState(task?.scheduled_start_at ? task.scheduled_start_at.slice(0, 10) : "");
+  const [startTime, setStartTime]    = useState(task?.scheduled_start_at ? task.scheduled_start_at.slice(11, 16) : "");
   const [timeEst,setTimeEst]         = useState(task?.time_estimate_minutes?.toString()??"");
   const [selProject,setSelProject]   = useState(task?.project_id??projectId??"");
   const [selCategory,setSelCategory] = useState(task?.category_id??"");
@@ -285,6 +287,8 @@ export function TaskModal({ open, onClose, task, projectId, parentId, defaultSta
     setDueDate(task?.due_date ?? initialDueDate ?? todayISO());
     // Parse time out of task due_date if present, else use initialDueTime
     setDueTime(task?.due_date ? (task.due_date.includes("T") ? task.due_date.slice(11,16) : "") : (initialDueTime ?? ""));
+    setStartDate(task?.scheduled_start_at ? task.scheduled_start_at.slice(0, 10) : "");
+    setStartTime(task?.scheduled_start_at ? task.scheduled_start_at.slice(11, 16) : "");
     setTimeEst(task?.time_estimate_minutes?.toString()??"");
     setSelProject(task?.project_id??projectId??"");
     setSelCategory(task?.category_id??"");
@@ -321,10 +325,16 @@ export function TaskModal({ open, onClose, task, projectId, parentId, defaultSta
     // Send timezone-aware ISO datetime so FastAPI/Pydantic accepts it.
     // Appending "Z" (UTC) prevents 422 "datetime has no timezone" errors.
     let due_date: string | undefined;
+    let scheduled_start_at: string | undefined;
     if (dueDate && dueTime) {
       due_date = `${dueDate}T${dueTime}:00Z`;
     } else if (dueDate) {
       due_date = `${dueDate}T00:00:00Z`;
+    }
+    if (startDate && startTime) {
+      scheduled_start_at = `${startDate}T${startTime}:00Z`;
+    } else if (startDate) {
+      scheduled_start_at = `${startDate}T00:00:00Z`;
     }
     return {
       title: title.trim(),
@@ -335,6 +345,7 @@ export function TaskModal({ open, onClose, task, projectId, parentId, defaultSta
       importance,
       difficulty,
       due_date,
+      scheduled_start_at,
       time_estimate_minutes: timeEst ? parseInt(timeEst) : undefined,
       project_id: selProject || undefined,
       category_id: selCategory || undefined,
@@ -434,6 +445,10 @@ export function TaskModal({ open, onClose, task, projectId, parentId, defaultSta
               </div>
               <div style={FIELD}>{SHEAD("Due Date")}<input type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)} style={INP}/></div>
               <div style={FIELD}>{SHEAD("Due Time")}<input type="time" value={dueTime} onChange={e=>setDueTime(e.target.value)} style={INP}/></div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              <div style={FIELD}>{SHEAD("Start Date")}<input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} style={INP}/></div>
+              <div style={FIELD}>{SHEAD("Start Time")}<input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} style={INP}/></div>
             </div>
 
             {/* Row 2: Importance + Difficulty */}
