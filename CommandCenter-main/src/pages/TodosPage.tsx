@@ -67,15 +67,39 @@ const DASH = "—";
 
 export function TodosPage() {
   const [searchParams] = useSearchParams();
-  const [mode, setMode] = useState<TodoMode>("today");
-  const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState<"manual" | "due_date" | "importance" | "focus_score">("manual");
-  const [priorityFilter, setPriorityFilter] = useState<"all" | Priority>("all");
-  const [hideNotStarted, setHideNotStarted] = useState(true);
-  const [categoryTab, setCategoryTab] = useState<string | null>(null);
-  const [tagFilter, setTagFilter] = useState<{ id: string; name: string } | null>(null);
-  const [categoryFilter, setCategoryFilter] = useState<{ id: string; name: string } | null>(null);
-  const [projectFilter, setProjectFilter] = useState<{ id: string; name: string } | null>(null);
+  const [mode, setMode] = useState<TodoMode>(() => {
+    const v = localStorage.getItem("todos_mode");
+    return v === "today" || v === "upcoming" || v === "done" ? v : "today";
+  });
+  const [search, setSearch] = useState(() => localStorage.getItem("todos_search") ?? "");
+  const [sortBy, setSortBy] = useState<"manual" | "due_date" | "importance" | "focus_score">(() => {
+    const v = localStorage.getItem("todos_sort");
+    return v === "manual" || v === "due_date" || v === "importance" || v === "focus_score" ? v : "manual";
+  });
+  const [priorityFilter, setPriorityFilter] = useState<"all" | Priority>(() => {
+    const v = localStorage.getItem("todos_priority");
+    return v === "all" || v === "critical" || v === "high" || v === "medium" || v === "low" ? v : "all";
+  });
+  const [hideNotStarted, setHideNotStarted] = useState(() => {
+    const v = localStorage.getItem("todos_hide_not_started");
+    return v == null ? true : v === "1";
+  });
+  const [categoryTab, setCategoryTab] = useState<string | null>(() => localStorage.getItem("todos_category_tab") || null);
+  const [tagFilter, setTagFilter] = useState<{ id: string; name: string } | null>(() => {
+    const id = localStorage.getItem("todos_tag_id");
+    const name = localStorage.getItem("todos_tag_name");
+    return id ? { id, name: name || "Selected Tag" } : null;
+  });
+  const [categoryFilter, setCategoryFilter] = useState<{ id: string; name: string } | null>(() => {
+    const id = localStorage.getItem("todos_category_filter_id");
+    const name = localStorage.getItem("todos_category_filter_name");
+    return id ? { id, name: name || "Selected Category" } : null;
+  });
+  const [projectFilter, setProjectFilter] = useState<{ id: string; name: string } | null>(() => {
+    const id = localStorage.getItem("todos_project_filter_id");
+    const name = localStorage.getItem("todos_project_filter_name");
+    return id ? { id, name: name || "Selected Project" } : null;
+  });
   const { activeTimer } = useTimerStore();
   const { addTaskOpen, setAddTaskOpen } = useUIStore();
   const { pinnedTaskId, setPinnedTask } = usePinnedTaskStore();
@@ -99,6 +123,42 @@ export function TodosPage() {
     setProjectFilter(null);
     setCategoryTab(null);
   }, [searchParams]);
+  useEffect(() => { localStorage.setItem("todos_mode", mode); }, [mode]);
+  useEffect(() => { localStorage.setItem("todos_search", search); }, [search]);
+  useEffect(() => { localStorage.setItem("todos_sort", sortBy); }, [sortBy]);
+  useEffect(() => { localStorage.setItem("todos_priority", priorityFilter); }, [priorityFilter]);
+  useEffect(() => { localStorage.setItem("todos_hide_not_started", hideNotStarted ? "1" : "0"); }, [hideNotStarted]);
+  useEffect(() => {
+    if (categoryTab) localStorage.setItem("todos_category_tab", categoryTab);
+    else localStorage.removeItem("todos_category_tab");
+  }, [categoryTab]);
+  useEffect(() => {
+    if (tagFilter) {
+      localStorage.setItem("todos_tag_id", tagFilter.id);
+      localStorage.setItem("todos_tag_name", tagFilter.name);
+    } else {
+      localStorage.removeItem("todos_tag_id");
+      localStorage.removeItem("todos_tag_name");
+    }
+  }, [tagFilter]);
+  useEffect(() => {
+    if (categoryFilter) {
+      localStorage.setItem("todos_category_filter_id", categoryFilter.id);
+      localStorage.setItem("todos_category_filter_name", categoryFilter.name);
+    } else {
+      localStorage.removeItem("todos_category_filter_id");
+      localStorage.removeItem("todos_category_filter_name");
+    }
+  }, [categoryFilter]);
+  useEffect(() => {
+    if (projectFilter) {
+      localStorage.setItem("todos_project_filter_id", projectFilter.id);
+      localStorage.setItem("todos_project_filter_name", projectFilter.name);
+    } else {
+      localStorage.removeItem("todos_project_filter_id");
+      localStorage.removeItem("todos_project_filter_name");
+    }
+  }, [projectFilter]);
 
   const reorderMut = useMutation({
     mutationFn: (ids: string[]) => tasksApi.reorder(ids),
@@ -195,14 +255,14 @@ export function TodosPage() {
     const scheduledDay = dateKey(scheduledRaw);
     const scheduledToday = !!scheduledRaw && scheduledDay === todayISO;
     const dueDay = dateKey(t.due_date);
-    const overdue = !!dueDay && dueDay < todayISO;
+    const dueTodayOrOverdue = !!dueDay && dueDay <= todayISO;
     const modePass = mode === "today"
       ? (
-          scheduledToday || overdue || t.status === "today"
+          scheduledToday || dueTodayOrOverdue
         )
       : mode === "upcoming"
       ? (
-          !scheduledToday && !overdue && t.status !== "today"
+          !scheduledToday && !dueTodayOrOverdue
         )
       : true;
     const priorityPass = priorityFilter === "all" || t.priority === priorityFilter;
