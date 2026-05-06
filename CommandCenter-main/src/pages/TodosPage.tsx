@@ -67,6 +67,7 @@ const DASH = "—";
 export function TodosPage() {
   const [filter, setFilter] = useState("today");
   const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState<"manual" | "due_date" | "importance" | "focus_score">("manual");
   const { activeTimer } = useTimerStore();
   const { addTaskOpen, setAddTaskOpen } = useUIStore();
   const { pinnedTaskId, setPinnedTask } = usePinnedTaskStore();
@@ -132,7 +133,10 @@ export function TodosPage() {
   const focusMinutes   = gam?.total_focus_minutes ?? Math.round((dash?.time_tracked_seconds ?? 0) / 60);
   const critical       = gam?.home_runs ?? 0;
   const ba             = gam?.batting_average ?? 0;
-  const focusScore     = dash?.focus_score_today ?? 0;
+  const completedTodayFocus = (tasks ?? [])
+    .filter(t => t.status === "done" && !!t.completed_at)
+    .reduce((sum, t) => sum + (t.focus_score ?? 0), 0);
+  const focusScoreToday = dash?.focus_score_today ?? completedTodayFocus;
 
   // ── History stats ─────────────────────────────────────────────
   const all    = gamHistory ?? [];
@@ -159,11 +163,26 @@ export function TodosPage() {
 
   const visible = (() => {
     const base = [...filtered];
-    // Active timer always floats to top first
+
+    // Sort body according to selected rule.
+    if (sortBy === "due_date") {
+      base.sort((a, b) => {
+        const am = a.due_date ? new Date(a.due_date).getTime() : Number.MAX_SAFE_INTEGER;
+        const bm = b.due_date ? new Date(b.due_date).getTime() : Number.MAX_SAFE_INTEGER;
+        return am - bm;
+      });
+    } else if (sortBy === "importance") {
+      base.sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0));
+    } else if (sortBy === "focus_score") {
+      base.sort((a, b) => (b.focus_score ?? 0) - (a.focus_score ?? 0));
+    } else {
+      base.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+    }
+
+    // Active timer/pin still float to top regardless of sort.
     if (activeTaskId) {
       base.sort((a, b) => (a.id === activeTaskId ? -1 : b.id === activeTaskId ? 1 : 0));
     } else if (pinnedExists) {
-      // No active timer — respect manual pin
       base.sort((a, b) => (a.id === pinnedTaskId ? -1 : b.id === pinnedTaskId ? 1 : 0));
     }
     return base;
@@ -229,7 +248,7 @@ export function TodosPage() {
         {/* Focus Score */}
         <div className="sb-row" style={{ gridTemplateColumns: COLS }}>
           <div className="sb-label">Focus Score</div>
-          <SbCell value={focusScore > 0 ? Math.round(focusScore) : DASH} sub="today" color="white" />
+          <SbCell value={Math.round(focusScoreToday)} sub="today" color="white" />
           <SbCell value={DASH} color="empty" />
           <SbCell value={DASH} color="empty" />
           <SbCell value={DASH} sub="best day" color="empty" />
@@ -242,6 +261,28 @@ export function TodosPage() {
         {FILTERS.map(([id, label]) => (
           <button key={id} onClick={() => setFilter(id)} style={{ padding: "4px 10px", border: `1px solid ${filter === id ? "rgba(232,168,32,0.5)" : "rgba(232,168,32,0.15)"}`, background: filter === id ? "rgba(232,168,32,0.1)" : "transparent", color: filter === id ? "#e8a820" : "rgba(245,240,224,0.3)", fontFamily: "'Oswald',Arial,sans-serif", fontSize: 10, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer", borderRadius: 2, transition: "all 0.1s" }}>{label}</button>
         ))}
+        <select
+          value={sortBy}
+          onChange={e => setSortBy(e.target.value as typeof sortBy)}
+          style={{
+            marginLeft: 8,
+            padding: "4px 8px",
+            fontSize: 10,
+            fontFamily: "'Oswald',Arial,sans-serif",
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            background: "transparent",
+            color: "#e8a820",
+            border: "1px solid rgba(232,168,32,0.35)",
+            borderRadius: 2,
+          }}
+          title="Sort tasks"
+        >
+          <option value="manual">Sort: Manual</option>
+          <option value="due_date">Sort: Due Date</option>
+          <option value="importance">Sort: Importance</option>
+          <option value="focus_score">Sort: Focus Score</option>
+        </select>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…" style={{ marginLeft: "auto", padding: "4px 10px", fontSize: 11, width: 130 }} />
       </div>
 

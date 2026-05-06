@@ -448,6 +448,7 @@ async def get_dashboard(
 
     completed_tasks_today = len(completed_today_tasks)
     total_tasks_today = len(today_tasks) + completed_tasks_today
+    focus_score_today = sum((t.focus_score or 0) for t in completed_today_tasks)
 
     # Time tracked today (seconds)
     time_entries_today = session.execute(
@@ -512,6 +513,16 @@ async def get_dashboard(
         d["completion_percentage"] = pct
         active_projects.append(d)
 
+    # Project completion bonus: each completed project today adds +30 focus score.
+    completed_projects_today = session.execute(
+        select(func.count(Project.id)).where(
+            Project.user_id == user.id,
+            Project.status == "completed",
+            Project.updated_at >= today_dt,
+        )
+    ).scalar() or 0
+    focus_score_today += completed_projects_today * 30
+
     # Gamification block — batting average stats the scoreboard needs
     attempted = total_tasks_today
     batting_avg = (completed_tasks_today / attempted) if attempted > 0 else 0.0
@@ -559,6 +570,7 @@ async def get_dashboard(
         "completed_tasks_today": completed_tasks_today,
         "total_tasks_today": total_tasks_today,
         "time_tracked_seconds": time_tracked_seconds,
+        "focus_score_today": focus_score_today,
         "gamification": gamification,
         "date": today.isoformat(),
     }
