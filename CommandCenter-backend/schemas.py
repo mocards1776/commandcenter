@@ -259,12 +259,14 @@ class TimeBlockCreate(BaseModel):
     start_time: datetime
     end_time: datetime
     color: Optional[str] = None
+    task_id: Optional[str] = None
 
 class TimeBlockUpdate(BaseModel):
     title: Optional[str] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     color: Optional[str] = None
+    task_id: Optional[str] = None
 
 class TimeBlockResponse(BaseModel):
     id: str
@@ -272,6 +274,7 @@ class TimeBlockResponse(BaseModel):
     start_time: datetime
     end_time: datetime
     color: Optional[str] = None
+    task_id: Optional[str] = None
     created_at: datetime
 
     class Config:

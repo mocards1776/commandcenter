@@ -50,6 +50,7 @@ def init_db():
     Base.metadata.create_all(bind=engine)
     _migrate_habits()
     _migrate_tasks()
+    _migrate_time_blocks()
     _backfill_user_ownership()
 
 
@@ -127,3 +128,17 @@ def _migrate_tasks():
             except Exception as e:
                 conn.rollback()
                 print(f"Migration warning for tasks.{col}: {e}")
+
+def _migrate_time_blocks():
+    """Add new columns to time_blocks table if they don't exist yet."""
+    new_columns = [
+        ("task_id", "VARCHAR(36)"),
+    ]
+    with engine.connect() as conn:
+        for col, col_def in new_columns:
+            try:
+                conn.execute(text(f"ALTER TABLE time_blocks ADD COLUMN IF NOT EXISTS {col} {col_def}"))
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                print(f"Migration warning for time_blocks.{col}: {e}")
