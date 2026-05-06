@@ -362,13 +362,14 @@ function SBHead({ label }: { label: string }) {
   );
 }
 
-const STANDINGS_COLS = "18px 36px minmax(80px, 1fr) 58px 42px 46px 44px";
+const STANDINGS_COLS = "28px minmax(220px, 2fr) minmax(80px, 1fr) minmax(72px, 1fr) minmax(72px, 1fr) minmax(72px, 1fr)";
 
 function StandingsRow({ row, rank }: { row: Row; rank: number }) {
   const win      = row.strk?.startsWith("W");
   const tid      = row.team_id as number;
   const abbr     = ID_MAP[tid]?.[0] ?? row.abbr ?? "???";
   const shortName = ID_MAP[tid]?.[1] ?? row.full ?? "";
+  const fullTeamName = tid === 138 ? "St. Louis Cardinals" : `${shortName}`;
 
   const statPanel = (content: React.ReactNode, gold = false) => (
     <div style={{
@@ -391,12 +392,18 @@ function StandingsRow({ row, rank }: { row: Row; rank: number }) {
       borderBottom: "1px solid rgba(0,0,0,0.3)",
       borderLeft: row.cards ? "2px solid rgba(196,30,58,0.6)" : "2px solid transparent",
     }}>
-      <span style={{ fontFamily: FONT, fontSize: 9, color: DIM, textAlign: "center" }}>{rank}</span>
-      {statPanel(<span style={{ fontFamily: FONT, fontSize: 11, fontWeight: 800,
-        color: row.cards ? "#c41e3a" : GOLD, letterSpacing: "0.05em" }}>{abbr}</span>, row.cards)}
-      <span style={{ fontFamily: FONT, fontSize: 9, color: row.cards ? FG : MUTED,
-        fontWeight: row.cards ? 700 : 400, whiteSpace: "nowrap" as const, overflow: "hidden",
-        textOverflow: "ellipsis" }}>{shortName}</span>
+      <span style={{ fontFamily: FONT, fontSize: 11, color: DIM, textAlign: "center" }}>{rank}</span>
+      {statPanel(
+        <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%" }}>
+          <span style={{ fontFamily: FONT, fontSize: 14, fontWeight: 800,
+            color: row.cards ? "#c41e3a" : GOLD, letterSpacing: "0.05em", flexShrink: 0 }}>{abbr}</span>
+          <span style={{ fontFamily: FONT, fontSize: 12, color: row.cards ? FG : MUTED,
+            fontWeight: row.cards ? 700 : 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {fullTeamName}
+          </span>
+        </div>,
+        row.cards
+      )}
       {statPanel(<span style={{ fontFamily: FONT, fontSize: 11, color: row.cards ? GOLD : FG,
         fontWeight: row.cards ? 700 : 400 }}>{row.wl}</span>)}
       {statPanel(<span style={{ fontFamily: FONT, fontSize: 10, color: MUTED }}>{row.pct}</span>)}
@@ -550,11 +557,11 @@ export function BaseballPanel() {
             <div style={{
               display: "grid",
               gridTemplateColumns: STANDINGS_COLS,
-              gap: 4, padding: "3px 8px",
+              gap: 8, padding: "5px 10px",
               background: HEADER_BG,
               borderBottom: "1px solid rgba(232,168,32,0.1)",
             }}>
-              {["#", "", "Team", "W-L", "PCT", "GB", "STRK"].map((h, i) => (
+              {["#", "Team", "W-L", "PCT", "GB", "STRK"].map((h, i) => (
                 <span key={i} style={{ fontFamily: FONT, fontSize: 7, fontWeight: 700,
                   letterSpacing: "0.12em", color: DIM, textAlign: i === 0 ? "center" : "left" as any }}>{h}</span>
               ))}

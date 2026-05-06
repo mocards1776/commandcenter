@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { projectsApi, tasksApi } from "@/lib/api";
+import { projectsApi, tasksApi, tagsApi } from "@/lib/api";
 import { Loader2, ArrowLeft, Plus, ChevronRight, CheckCircle2, Circle, Pencil, X, Save } from "lucide-react";
 import { TaskModal } from "@/components/todos/TaskModal";
 import type { ProjectSummary, Task, Project } from "@/types";
@@ -364,11 +364,17 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [hideCompleted, setHideCompleted] = useState(false);
   const qc = useQueryClient();
 
   const { data: p, isLoading } = useQuery<Project>({
     queryKey: ["project", id],
     queryFn: () => projectsApi.get(id),
+  });
+  const { data: allTags = [] } = useQuery({
+    queryKey: ["tags"],
+    queryFn: tagsApi.list,
+    staleTime: 5 * 60_000,
   });
 
   const addTaskMut = useMutation({
@@ -413,6 +419,14 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
   }
 
   const allTasks = p.tasks || [];
+  const sortedTasks = [...allTasks].sort((a, b) => {
+    const aDone = a.status === "done" || a.status === "cancelled";
+    const bDone = b.status === "done" || b.status === "cancelled";
+    if (aDone !== bDone) return aDone ? 1 : -1;
+    return (a.sort_order ?? 0) - (b.sort_order ?? 0);
+  });
+  const visibleTasks = hideCompleted ? sortedTasks.filter(t => t.status !== "done" && t.status !== "cancelled") : sortedTasks;
+  const tagMap: Record<string, string> = Object.fromEntries((allTags as any[]).map((t: any) => [t.id, t.name]));
   const completedCount = allTasks.reduce((acc, t) =>
     acc + (t.status === "done" ? 1 : 0) + (t.subtasks || []).filter(s => s.status === "done").length
   , 0);
@@ -489,21 +503,31 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
           </div>
         )}
 
-        <div className="sb-header" style={{ gridTemplateColumns: "1fr 110px 100px" }}>
-          <div className="sb-col-head" style={{ textAlign: "left", paddingLeft: 16 }}>OBJECTIVE</div>
-          <div className="sb-col-head">STATUS</div>
-          <div className="sb-col-head">SUBTASKS</div>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(245,240,224,0.55)", fontFamily: "'Oswald', Arial, sans-serif" }}>
+            <input type="checkbox" checked={hideCompleted} onChange={e => setHideCompleted(e.target.checked)} />
+            Hide Completed
+          </label>
         </div>
 
-        {allTasks.length === 0 ? (
+        <div className="sb-header" style={{ gridTemplateColumns: "1fr 92px 86px 86px 120px 120px" }}>
+          <div className="sb-col-head" style={{ textAlign: "left", paddingLeft: 16 }}>OBJECTIVE</div>
+          <div className="sb-col-head">PRIORITY</div>
+          <div className="sb-col-head">FS</div>
+          <div className="sb-col-head">EST</div>
+          <div className="sb-col-head">DATE</div>
+          <div className="sb-col-head">TAG</div>
+        </div>
+
+        {visibleTasks.length === 0 ? (
           <div style={{ padding: 40, textAlign: "center", color: "rgba(255,255,255,0.3)" }}>No tasks assigned to this campaign.</div>
         ) : (
-          allTasks.map((t: Task) => (
+          visibleTasks.map((t: Task) => (
             <div
               key={t.id}
               className="sb-row"
               style={{
-                display: "grid", gridTemplateColumns: "1fr 110px 100px",
+                display: "grid", gridTemplateColumns: "1fr 92px 86px 86px 120px 120px",
                 background: t.status === "done" ? "rgba(30,54,41,0.5)" : "#1e3629",
                 padding: "0",
                 marginBottom: 8,
@@ -525,11 +549,20 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
                   {t.title}
                 </span>
               </div>
-              <div style={{ textAlign: "center", fontSize: 9, textTransform: "uppercase", opacity: 0.5, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                {t.status}
+              <div style={{ textAlign: "center", fontSize: 10, textTransform: "uppercase", opacity: 0.75, display: "flex", alignItems: "center", justifyContent: "center", color: t.priority === "critical" ? "#d94040" : t.priority === "high" ? "#e8a820" : "rgba(245,240,224,0.75)", letterSpacing: "0.08em", fontFamily: "'Oswald', Arial, sans-serif" }}>
+                {t.priority}
               </div>
-              <div style={{ textAlign: "center", fontWeight: 700, color: "#e8a820", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                {t.subtasks?.length ? `${t.subtasks.filter(s => s.status === "done").length}/${t.subtasks.length}` : "-"}
+              <div style={{ textAlign: "center", fontWeight: 700, color: "#e8a820", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Oswald', Arial, sans-serif", letterSpacing: "0.06em" }}>
+                {t.focus_score ?? 0}
+              </div>
+              <div style={{ textAlign: "center", fontWeight: 700, color: "rgba(245,240,224,0.75)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Oswald', Arial, sans-serif", letterSpacing: "0.06em" }}>
+                {t.time_estimate_minutes ? `${t.time_estimate_minutes}m` : "—"}
+              </div>
+              <div style={{ textAlign: "center", fontWeight: 700, color: "rgba(245,240,224,0.75)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Oswald', Arial, sans-serif", letterSpacing: "0.06em" }}>
+                {t.scheduled_start_at ? new Date(t.scheduled_start_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : t.due_date ? new Date(t.due_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}
+              </div>
+              <div style={{ textAlign: "center", fontWeight: 700, color: "rgba(245,240,224,0.75)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Oswald', Arial, sans-serif", letterSpacing: "0.06em" }}>
+                {t.tag_ids?.[0] ? (tagMap[t.tag_ids[0]] || t.tag_ids[0]) : "—"}
               </div>
             </div>
           ))
