@@ -163,6 +163,11 @@ export function TaskCard({
 
   const isThisRunning = isRunning && activeTimer?.task_id === task.id;
   const overdue       = isOverdue(task.due_date);
+  const dueDateObj = task.due_date ? new Date(task.due_date) : null;
+  const dueDateTxt = dueDateObj ? dueDateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—";
+  const dueTimeTxt = dueDateObj && !Number.isNaN(dueDateObj.getTime())
+    ? dueDateObj.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+    : "—";
   const activeSubs    = task.subtasks.filter(s => s.status !== "done");
   const priColor      = PRIORITY_COLOR[task.priority] ?? MUTED;
 
@@ -352,7 +357,7 @@ export function TaskCard({
               {/* RIGHT: scoreboard stat panels — fixed columns for alignment */}
               <div style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(6, minmax(72px, 1fr))",
+                gridTemplateColumns: "repeat(7, minmax(72px, 1fr))",
                 alignItems: "center",
                 justifyItems: "center",
                 gap: 12,
@@ -375,9 +380,14 @@ export function TaskCard({
 
                 {/* Due date */}
                 <PanelCell
-                  value={task.due_date ?? "—"}
-                  sub={task.due_date ? (overdue ? "⚠ OVR" : "DUE") : "DUE"}
+                  value={dueDateTxt}
+                  sub={task.due_date ? (overdue ? "⚠ OVR" : "DUE DATE") : "DUE DATE"}
                   color={task.due_date ? (overdue ? "red" : "muted") : "dim"}
+                />
+                <PanelCell
+                  value={dueTimeTxt}
+                  sub="DUE TIME"
+                  color={task.due_date ? "muted" : "dim"}
                 />
 
                 {/* Project */}

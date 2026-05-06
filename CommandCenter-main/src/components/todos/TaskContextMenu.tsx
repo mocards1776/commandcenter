@@ -41,19 +41,23 @@ export function TaskContextMenu({
   onSetCategory,
   onToggleTag,
 }: TaskContextMenuProps) {
+  const toLocalIso = (d: Date) => {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  };
   const dueBase = new Date();
   const tomorrow = new Date(dueBase);
   tomorrow.setDate(tomorrow.getDate() + 1);
   const nextWeek = new Date(dueBase);
   nextWeek.setDate(nextWeek.getDate() + 7);
   const iso = (d: Date) => d.toISOString().slice(0, 10);
-  const nowIso = () => new Date().toISOString();
-  const plusMinutesIso = (mins: number) => new Date(Date.now() + mins * 60_000).toISOString();
+  const nowIso = () => toLocalIso(new Date());
+  const plusMinutesIso = (mins: number) => toLocalIso(new Date(Date.now() + mins * 60_000));
   const tomorrowMorningIso = () => {
     const d = new Date();
     d.setDate(d.getDate() + 1);
     d.setHours(9, 0, 0, 0);
-    return d.toISOString();
+    return toLocalIso(d);
   };
 
   return (

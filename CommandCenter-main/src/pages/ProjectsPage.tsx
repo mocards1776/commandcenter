@@ -4,6 +4,7 @@ import { projectsApi, tasksApi, tagsApi, categoriesApi } from "@/lib/api";
 import { Loader2, ArrowLeft, Plus, ChevronRight, CheckCircle2, Circle, Pencil, X, Save } from "lucide-react";
 import { TaskModal } from "@/components/todos/TaskModal";
 import { TaskContextMenu } from "@/components/todos/TaskContextMenu";
+import { CompletionDialog } from "@/components/todos/CompletionDialog";
 import type { ProjectSummary, Task, Project } from "@/types";
 import { toast } from "react-hot-toast";
 import { useParams } from "react-router-dom";
@@ -365,6 +366,7 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [completionTask, setCompletionTask] = useState<Task | null>(null);
   const [hideCompleted, setHideCompleted] = useState(false);
   const qc = useQueryClient();
 
@@ -530,12 +532,13 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
           </label>
         </div>
 
-        <div className="sb-header" style={{ gridTemplateColumns: "1fr 92px 86px 86px 120px 120px" }}>
+        <div className="sb-header" style={{ gridTemplateColumns: "1fr 92px 86px 86px 100px 100px 120px" }}>
           <div className="sb-col-head" style={{ textAlign: "left", paddingLeft: 16 }}>OBJECTIVE</div>
           <div className="sb-col-head">PRIORITY</div>
           <div className="sb-col-head">FS</div>
           <div className="sb-col-head">EST</div>
-          <div className="sb-col-head">DATE</div>
+          <div className="sb-col-head">DUE DATE</div>
+          <div className="sb-col-head">DUE TIME</div>
           <div className="sb-col-head">TAG</div>
         </div>
 
@@ -572,7 +575,7 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
               <div
                 className="sb-row"
                 style={{
-                  display: "grid", gridTemplateColumns: "1fr 92px 86px 86px 120px 120px",
+                  display: "grid", gridTemplateColumns: "1fr 92px 86px 86px 100px 100px 120px",
                   background: t.status === "done" ? "rgba(30,54,41,0.5)" : "#1e3629",
                   padding: "0",
                   marginBottom: 8,
@@ -589,7 +592,8 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      toggleTaskMut.mutate(t);
+                      if (t.status === "done") toggleTaskMut.mutate(t);
+                      else setCompletionTask(t);
                     }}
                     style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center" }}
                     title={t.status === "done" ? "Mark active" : "Mark complete"}
@@ -617,6 +621,13 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
                   {t.scheduled_start_at ? new Date(t.scheduled_start_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : t.due_date ? new Date(t.due_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}
                 </div>
                 <div style={{ textAlign: "center", fontWeight: 700, color: "rgba(245,240,224,0.75)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Oswald', Arial, sans-serif", letterSpacing: "0.06em" }}>
+                  {t.scheduled_start_at
+                    ? new Date(t.scheduled_start_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+                    : t.due_date
+                    ? new Date(t.due_date).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+                    : "—"}
+                </div>
+                <div style={{ textAlign: "center", fontWeight: 700, color: "rgba(245,240,224,0.75)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Oswald', Arial, sans-serif", letterSpacing: "0.06em" }}>
                   {t.tag_ids?.[0] ? (tagMap[t.tag_ids[0]] || t.tag_ids[0]) : "—"}
                 </div>
               </div>
@@ -632,6 +643,20 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
           onClose={() => {
             setSelectedTask(null);
             qc.invalidateQueries({ queryKey: ["project", id] });
+          }}
+        />
+      )}
+      {completionTask && (
+        <CompletionDialog
+          task={completionTask}
+          elapsedSeconds={0}
+          onClose={() => setCompletionTask(null)}
+          onDone={() => {
+            setCompletionTask(null);
+            qc.invalidateQueries({ queryKey: ["project", id] });
+            qc.invalidateQueries({ queryKey: ["projects"] });
+            qc.invalidateQueries({ queryKey: ["tasks"] });
+            qc.invalidateQueries({ queryKey: ["dashboard"] });
           }}
         />
       )}
