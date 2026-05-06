@@ -81,19 +81,23 @@ export function GameScoreboard({ stats, history }: Props) {
 
   // Compute weekly average (last 7 days) and all-time best from history.
   const last7 = historyArr.slice(-7);
+  const last30 = historyArr.slice(-30);
   const all   = historyArr;
 
   // Batting avg
   const wkBA   = last7.length ? battingAvgStr(avg(last7.map(h => h.batting_average))) : null;
-  const bestBA = all.length   ? battingAvgStr(best(all.map(h => h.batting_average)))  : null;
+  const monthBestBA = last30.length ? battingAvgStr(best(last30.map(h => h.batting_average))) : null;
+  const bestEverBA = all.length ? battingAvgStr(best(all.map(h => h.batting_average))) : null;
 
   // Home runs
   const wkHR   = last7.length ? Math.round(avg(last7.map(h => h.home_runs))) : null;
-  const bestHR = all.length   ? best(all.map(h => h.home_runs))               : null;
+  const monthBestHR = last30.length ? best(last30.map(h => h.home_runs)) : null;
+  const bestEverHR = all.length ? best(all.map(h => h.home_runs)) : null;
 
   // Focus minutes
   const wkFocusMin = last7.length ? Math.round(avg(last7.map(h => h.total_focus_minutes))) : null;
-  const bestFocusMin = all.length ? best(all.map(h => h.total_focus_minutes))               : null;
+  const monthBestFocusMin = last30.length ? best(last30.map(h => h.total_focus_minutes)) : null;
+  const bestEverFocusMin = all.length ? best(all.map(h => h.total_focus_minutes)) : null;
   const fmtFocus = (min: number | null) => {
     if (min === null) return "\u2014";
     const fh = Math.floor(min / 60), fm = min % 60;
@@ -102,7 +106,10 @@ export function GameScoreboard({ stats, history }: Props) {
 
   // Tasks
   const wkTasks   = last7.length ? Math.round(avg(last7.map(h => h.tasks_completed))) : null;
-  const bestTasks = all.length   ? best(all.map(h => h.tasks_completed))               : null;
+  const monthBestTasks = last30.length ? best(last30.map(h => h.tasks_completed)) : null;
+  const bestEverTasks = all.length ? best(all.map(h => h.tasks_completed)) : null;
+  const monthBestStreak = last30.length ? best(last30.map(h => h.hitting_streak)) : null;
+  const bestEverStreak = all.length ? best(all.map(h => h.hitting_streak)) : null;
 
   const DASH = "\u2014";
 
@@ -112,8 +119,8 @@ export function GameScoreboard({ stats, history }: Props) {
         <div className="sb-col-head left">STAT</div>
         <div className="sb-col-head">TODAY</div>
         <div className="sb-col-head">WK AVG</div>
-        <div className="sb-col-head">BEST</div>
-        <div className="sb-col-head">STREAK</div>
+        <div className="sb-col-head">MONTH BEST</div>
+        <div className="sb-col-head">BEST EVER</div>
       </div>
 
       {/* Batting Average */}
@@ -121,8 +128,8 @@ export function GameScoreboard({ stats, history }: Props) {
         <div className="sb-label">Batting Avg</div>
         <Cell value={battingAvgStr(ba)} sub={`${stats?.hits ?? 0}H \u00B7 ${tasksA}AB`} color="gold" />
         <Cell value={wkBA ?? DASH} color="empty" />
-        <Cell value={bestBA ?? DASH} color="empty" />
-        <Cell value={streak > 0 ? streak : DASH} color="empty" />
+        <Cell value={monthBestBA ?? DASH} color="empty" />
+        <Cell value={bestEverBA ?? DASH} color="empty" />
       </div>
 
       {/* Home Runs */}
@@ -130,17 +137,16 @@ export function GameScoreboard({ stats, history }: Props) {
         <div className="sb-label">Home Runs</div>
         <Cell value={hrs} sub="Critical" color="red" />
         <Cell value={wkHR !== null ? wkHR : DASH} color="empty" />
-        <Cell value={bestHR !== null ? bestHR : DASH} color="empty" />
-        <Cell value={DASH} color="empty" />
+        <Cell value={monthBestHR !== null ? monthBestHR : DASH} color="empty" />
+        <Cell value={bestEverHR !== null ? bestEverHR : DASH} color="empty" />
       </div>
 
       {/* Hit Streak */}
       <div className="sb-row" style={{ gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr" }}>
         <div className="sb-label">Hit Streak</div>
         <Cell value={streak > 0 ? `${streak}` : "0"} sub={streak > 0 ? "days \uD83D\uDD25" : "days"} color="white" />
-        <Cell value={DASH} color="empty" />
-        <Cell value={DASH} color="empty" />
-        <Cell value={DASH} color="empty" />
+        <Cell value={monthBestStreak !== null ? monthBestStreak : DASH} color="empty" />
+        <Cell value={bestEverStreak !== null ? bestEverStreak : DASH} color="empty" />
       </div>
 
       {/* Focus Time — TODAY uses split HH:MM flip panels */}
@@ -148,8 +154,8 @@ export function GameScoreboard({ stats, history }: Props) {
         <div className="sb-label">Focus Time</div>
         <FocusTimeCell minutes={focus} />
         <Cell value={fmtFocus(wkFocusMin)} color="empty" />
-        <Cell value={fmtFocus(bestFocusMin)} color="empty" />
-        <Cell value={DASH} color="empty" />
+        <Cell value={fmtFocus(monthBestFocusMin)} color="empty" />
+        <Cell value={fmtFocus(bestEverFocusMin)} color="empty" />
       </div>
 
       {/* Tasks Done */}
@@ -157,8 +163,8 @@ export function GameScoreboard({ stats, history }: Props) {
         <div className="sb-label">Tasks Done</div>
         <Cell value={tasksC} sub={`of ${tasksA}`} color="gold" />
         <Cell value={wkTasks !== null ? wkTasks : DASH} color="empty" />
-        <Cell value={bestTasks !== null ? bestTasks : DASH} color="empty" />
-        <Cell value={DASH} color="empty" />
+        <Cell value={monthBestTasks !== null ? monthBestTasks : DASH} color="empty" />
+        <Cell value={bestEverTasks !== null ? bestEverTasks : DASH} color="empty" />
       </div>
     </div>
   );
