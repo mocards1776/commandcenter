@@ -4,7 +4,7 @@ import { tasksApi, dashboardApi, gamificationApi } from "@/lib/api";
 import { TaskCard } from "@/components/todos/TaskCard";
 import { QuickAdd } from "@/components/todos/QuickAdd";
 import { TaskModal } from "@/components/todos/TaskModal";
-import { Loader2, Pin, PinOff } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import type { TaskStatus } from "@/types";
 import { useTimerStore, useUIStore, usePinnedTaskStore } from "@/store";
 import { battingAvgStr } from "@/lib/utils";
@@ -68,6 +68,9 @@ export function TodosPage() {
   const [filter, setFilter] = useState("today");
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"manual" | "due_date" | "importance" | "focus_score">("manual");
+  const [tagFilter, setTagFilter] = useState<{ id: string; name: string } | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<{ id: string; name: string } | null>(null);
+  const [projectFilter, setProjectFilter] = useState<{ id: string; name: string } | null>(null);
   const { activeTimer } = useTimerStore();
   const { addTaskOpen, setAddTaskOpen } = useUIStore();
   const { pinnedTaskId, setPinnedTask } = usePinnedTaskStore();
@@ -155,7 +158,13 @@ export function TodosPage() {
   const moBA  = last30.length ? battingAvgStr(histAvg(last30.map(h => h.batting_average))) : null;
   const bestBA = all.length   ? battingAvgStr(histBest(all.map(h => h.batting_average)))   : null;
 
-  const filtered = tasks?.filter(t => filter === "done" ? t.status === "done" : t.status !== "done") ?? [];
+  const filtered = (tasks ?? []).filter(t => {
+    const statusPass = filter === "done" ? t.status === "done" : t.status !== "done";
+    const tagPass = !tagFilter || (t.tag_ids ?? []).includes(tagFilter.id);
+    const categoryPass = !categoryFilter || t.category_id === categoryFilter.id;
+    const projectPass = !projectFilter || t.project_id === projectFilter.id;
+    return statusPass && tagPass && categoryPass && projectPass;
+  });
   const activeTaskId = activeTimer?.task_id;
 
   // Clear pin if pinned task no longer exists in filtered list
@@ -284,7 +293,22 @@ export function TodosPage() {
           <option value="focus_score">Sort: Focus Score</option>
         </select>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…" style={{ marginLeft: "auto", padding: "4px 10px", fontSize: 11, width: 130 }} />
+        {(tagFilter || categoryFilter || projectFilter) && (
+          <button
+            onClick={() => { setTagFilter(null); setCategoryFilter(null); setProjectFilter(null); }}
+            style={{ padding: "4px 10px", border: "1px solid rgba(217,64,64,0.45)", background: "transparent", color: "#d94040", fontFamily: "'Oswald',Arial,sans-serif", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer", borderRadius: 2 }}
+          >
+            Clear Context
+          </button>
+        )}
       </div>
+      {(tagFilter || categoryFilter || projectFilter) && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", padding: "6px 12px", background: "#1a2e22", borderBottom: "1px solid rgba(0,0,0,0.35)" }}>
+          {tagFilter && <span style={{ fontSize: 10, color: "#e8a820", letterSpacing: "0.08em", textTransform: "uppercase" }}>Tag: {tagFilter.name}</span>}
+          {categoryFilter && <span style={{ fontSize: 10, color: "#e8a820", letterSpacing: "0.08em", textTransform: "uppercase" }}>Category: {categoryFilter.name}</span>}
+          {projectFilter && <span style={{ fontSize: 10, color: "#e8a820", letterSpacing: "0.08em", textTransform: "uppercase" }}>Project: {projectFilter.name}</span>}
+        </div>
+      )}
 
       <QuickAdd defaultStatus={filter === "all" || filter === "done" ? "today" : filter as TaskStatus} />
       <TaskModal open={modalOpen} onClose={() => setModalOpen(false)} defaultStatus="today" />
@@ -305,6 +329,27 @@ export function TodosPage() {
           isPinned={t.id === pinnedTaskId && !activeTaskId}
           onPin={() => pinTask(t, filtered)}
           onUnpin={() => unpinTask(filtered)}
+          onTagClick={(id, name) => {
+            setFilter("all");
+            setSearch("");
+            setTagFilter({ id, name });
+            setCategoryFilter(null);
+            setProjectFilter(null);
+          }}
+          onCategoryClick={(id, name) => {
+            setFilter("all");
+            setSearch("");
+            setCategoryFilter({ id, name });
+            setTagFilter(null);
+            setProjectFilter(null);
+          }}
+          onProjectClick={(id, name) => {
+            setFilter("all");
+            setSearch("");
+            setProjectFilter({ id, name });
+            setTagFilter(null);
+            setCategoryFilter(null);
+          }}
         />
       ))}
     </div>

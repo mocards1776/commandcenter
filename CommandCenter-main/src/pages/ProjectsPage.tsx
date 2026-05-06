@@ -556,6 +556,7 @@ export function ProjectsPage() {
   const [editingProject, setEditingProject] = useState<ProjectSummary | null>(null);
   const [newTitle, setNewTitle] = useState("");
   const [showNew, setShowNew] = useState(false);
+  const [hideCompleted, setHideCompleted] = useState(true);
   const qc = useQueryClient();
 
   const { data: projects = [], isLoading } = useQuery<ProjectSummary[]>({
@@ -600,6 +601,10 @@ export function ProjectsPage() {
     onError: () => toast.error("Could not complete campaign"),
   });
 
+  const visibleProjects = hideCompleted
+    ? projects.filter(p => p.status !== "completed")
+    : projects;
+
   if (selectedId) return <ProjectDetail id={selectedId} onBack={() => setSelectedId(null)} />;
 
   return (
@@ -614,12 +619,31 @@ export function ProjectsPage() {
 
       <div className="top-bar">
         <div className="top-title">CAMPAIGNS / PROJECTS</div>
-        <button
-          onClick={() => setShowNew(true)}
-          style={{ background: "#e8a820", border: "none", padding: "6px 12px", borderRadius: 4, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
-        >
-          <Plus size={16} /> NEW
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <label style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            fontSize: 10,
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+            color: "rgba(245,240,224,0.55)",
+            fontFamily: "'Oswald', Arial, sans-serif",
+          }}>
+            <input
+              type="checkbox"
+              checked={hideCompleted}
+              onChange={e => setHideCompleted(e.target.checked)}
+            />
+            Hide Completed
+          </label>
+          <button
+            onClick={() => setShowNew(true)}
+            style={{ background: "#e8a820", border: "none", padding: "6px 12px", borderRadius: 4, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
+          >
+            <Plus size={16} /> NEW
+          </button>
+        </div>
       </div>
       <div className="stripe" />
 
@@ -651,7 +675,7 @@ export function ProjectsPage() {
           </div>
         ) : (
           <div style={{ display: "grid", gap: 10 }}>
-            {projects.map(p => (
+            {visibleProjects.map(p => (
               <ProjectRow
                 key={p.id}
                 p={p}
@@ -667,6 +691,11 @@ export function ProjectsPage() {
                 }}
               />
             ))}
+            {visibleProjects.length === 0 && (
+              <div style={{ padding: 24, textAlign: "center", color: "rgba(245,240,224,0.45)" }}>
+                No campaigns match this filter.
+              </div>
+            )}
           </div>
         )}
       </div>
