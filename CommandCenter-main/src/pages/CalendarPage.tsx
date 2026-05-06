@@ -969,7 +969,7 @@ export function CalendarPage() {
           </div>
 
           {!gcalToken ? (
-            <button onClick={connectGoogleCalendar}
+            <button onClick={() => connectGoogleCalendar()}
               title={!GOOGLE_CLIENT_ID ? "VITE_GOOGLE_CLIENT_ID not set" : "Connect Google Calendar"}
               style={{ background: GOOGLE_CLIENT_ID ? "#4285f4" : "rgba(255,255,255,0.1)",
                 border: "none", color: "#fff", padding: "4px 10px", borderRadius: 4,
