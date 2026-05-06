@@ -744,8 +744,8 @@ input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepi
 }
 
 .notes-page--notebook .notes-frame {
-  max-width: 1200px;
-  margin: 0 auto;
+  width: 100%;
+  margin: 0;
   display: grid;
   grid-template-columns: 72px 1fr;
   background: #f4f0e7;
@@ -781,11 +781,19 @@ input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepi
   border-radius: 3px;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(248, 245, 234, 0.75);
+  font-family: 'Oswald', Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1;
 }
 
 .notes-page--notebook .rail-pill--active {
   background: #cb453f;
   border-color: #cb453f;
+  color: #fff;
 }
 
 .notes-page--notebook .rail-spacer {
@@ -834,6 +842,9 @@ input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepi
 
 .notes-page--notebook .notes-header {
   margin-bottom: 18px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
 }
 
 .notes-page--notebook .notes-title {
@@ -864,19 +875,21 @@ input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepi
 
 .notes-page--notebook .new-note-form,
 .notes-page--notebook .notebook-entry {
-  background: rgba(255, 255, 255, 0.86);
-  border: 1px solid rgba(16, 29, 53, 0.18);
-  box-shadow: 0 8px 24px rgba(16, 29, 53, 0.1);
+  background: transparent;
+  border: none;
+  box-shadow: none;
 }
 
 .notes-page--notebook .notebook-margin {
   background: #cb453f;
-  width: 6px;
+  width: 3px;
 }
 
 .notes-page--notebook .notebook-content {
   background-image: none;
   color: #1a2434;
+  padding: 8px 12px 14px;
+  gap: 8px;
 }
 
 .notes-page--notebook .entry-date,
@@ -916,9 +929,13 @@ input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepi
 .notes-page--notebook .form-input,
 .notes-page--notebook .form-textarea,
 .notes-page--notebook .edit-textarea {
-  background: #fff;
-  border-color: #c8cfdb;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid #9ca9b6;
+  border-radius: 0;
   color: #182134;
+  padding-left: 0;
+  padding-right: 0;
 }
 
 .notes-page--notebook .form-input:focus,
@@ -926,6 +943,11 @@ input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepi
 .notes-page--notebook .edit-textarea:focus {
   border-color: #101d35;
   box-shadow: none;
+}
+
+.notes-page--notebook .new-note-form {
+  padding: 10px 0 14px;
+  margin-bottom: 1rem;
 }
 
 .notes-page--notebook .btn-save,
