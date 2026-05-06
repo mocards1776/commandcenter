@@ -146,6 +146,13 @@ export function NotesPage() {
   const [showNew, setShowNew] = useState(false);
   const [search, setSearch] = useState("");
   const qc = useQueryClient();
+  const headerDateTime = new Date().toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 
   const { data: notes, isLoading } = useQuery({
     queryKey: ["notes", search],
@@ -169,21 +176,26 @@ export function NotesPage() {
       <div className="notes-frame">
         <aside className="notes-rail" aria-hidden="true">
           <div className="rail-dot" />
-          <div className="rail-pill" />
-          <div className="rail-pill rail-pill--active" />
-          <div className="rail-pill" />
+          <div className="rail-pill">
+            <span>↑</span>
+          </div>
+          <div className="rail-pill rail-pill--active">
+            <span>→</span>
+          </div>
+          <div className="rail-pill">
+            <span>↓</span>
+          </div>
           <div className="rail-spacer" />
           <div className="rail-dot rail-dot--bottom" />
         </aside>
 
         <div className="notes-paper">
           <div className="notes-paper-head">
-            <span className="paper-brand">ARCHUTE</span>
-            <span className="paper-menu">NOTS ☰</span>
+            <span className="paper-brand">Notes Hub</span>
+            <span className="paper-menu">{headerDateTime}</span>
           </div>
 
           <div className="notes-header">
-            <h1 className="notes-title">Notes Hub</h1>
             <button
               onClick={() => setShowNew(!showNew)}
               className="btn-new-note"
