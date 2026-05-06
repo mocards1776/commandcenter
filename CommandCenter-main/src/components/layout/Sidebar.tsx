@@ -1,9 +1,10 @@
-import { LayoutDashboard,CheckSquare,FolderKanban,Flame,Calendar,Brain,StickyNote,Users,BarChart3,Trophy,Tags,Shapes,ChevronLeft,ChevronRight } from "lucide-react";
+import { LayoutDashboard,CheckSquare,FolderKanban,Flame,Calendar,Brain,StickyNote,Users,BarChart3,Trophy,Tags,Shapes,ChevronLeft,ChevronRight,NotebookText } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useUIStore } from "@/store";
 
 const NAV = [
   {id:"dashboard",label:"Dashboard",icon:LayoutDashboard},{id:"todos",label:"Daily Todos",icon:CheckSquare},
+  {id:"daily-summary",label:"Daily Summary",icon:NotebookText},
   {id:"projects",label:"Projects",icon:FolderKanban},{id:"habits",label:"Habits",icon:Flame},
   {id:"calendar",label:"Calendar",icon:Calendar},
   {id:"categories",label:"Categories",icon:Shapes},{id:"tags",label:"Tags",icon:Tags},

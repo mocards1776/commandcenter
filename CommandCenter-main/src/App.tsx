@@ -20,6 +20,7 @@ import { StatsPage }      from "@/pages/StatsPage";
 import { SportsPage }     from "@/pages/SportsPage";
 import { CategoriesPage } from "@/pages/CategoriesPage";
 import { TagsPage }       from "@/pages/TagsPage";
+import { DailySummaryPage } from "@/pages/DailySummaryPage";
 import { LoginPage }      from "@/pages/LoginPage";
 import { tokenStore }     from "@/lib/api";
 
@@ -51,6 +52,7 @@ function AppShell() {
             <Route path="/crm"       element={<CRMPage />} />
             <Route path="/categories" element={<CategoriesPage />} />
             <Route path="/tags" element={<TagsPage />} />
+            <Route path="/daily-summary" element={<DailySummaryPage />} />
             <Route path="/stats"     element={<StatsPage />} />
             <Route path="/sports"    element={<SportsPage />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
