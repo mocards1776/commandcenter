@@ -38,11 +38,13 @@ const LBL: React.CSSProperties = {
 // ─── Single flip-panel cell ───────────────────────────────────
 function PanelCell({
   value, sub, color = "muted", small = true,
+  onClick,
 }: {
   value: string | number;
   sub?: string;
   color?: "gold" | "red" | "green" | "white" | "muted" | "dim";
   small?: boolean;
+  onClick?: () => void;
 }) {
   const c =
     color === "gold"  ? GOLD  :
@@ -55,7 +57,10 @@ function PanelCell({
   const fs = v.length > 8 ? 8 : v.length > 5 ? 10 : v.length > 3 ? 12 : small ? 16 : 20;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+    <div
+      onClick={onClick}
+      style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, cursor: onClick ? "pointer" : "default" }}
+    >
       <div style={{
         background: PANEL,
         border: "1px solid rgba(0,0,0,0.5)",
@@ -149,7 +154,23 @@ function TimerPanel({ seconds }: { seconds: number }) {
 }
 
 // ─── Completed task row ───────────────────────────────────────
-export function TaskCard({ task, isPinned = false, onPin, onUnpin }: { task: Task; isPinned?: boolean; onPin?: () => void; onUnpin?: () => void }) {
+export function TaskCard({
+  task,
+  isPinned = false,
+  onPin,
+  onUnpin,
+  onTagClick,
+  onCategoryClick,
+  onProjectClick,
+}: {
+  task: Task;
+  isPinned?: boolean;
+  onPin?: () => void;
+  onUnpin?: () => void;
+  onTagClick?: (tagId: string, tagName: string) => void;
+  onCategoryClick?: (categoryId: string, categoryName: string) => void;
+  onProjectClick?: (projectId: string, projectName: string) => void;
+}) {
   const [modalOpen, setModalOpen] = useState(false);
   const [subsOpen, setSubsOpen]   = useState(false);
   const [completionOpen, setCompletionOpen] = useState(false);
@@ -158,6 +179,8 @@ export function TaskCard({ task, isPinned = false, onPin, onUnpin }: { task: Tas
   const { data: allTags = [] } = useQuery({ queryKey: ["tags"], queryFn: tagsApi.list, staleTime: 5 * 60_000 });
   const { data: allProjects = [] } = useQuery({ queryKey: ["projects"], queryFn: () => projectsApi.list(), staleTime: 60_000 });
   const { data: allCategories = [] } = useQuery({ queryKey: ["categories"], queryFn: categoriesApi.list, staleTime: 60_000 });
+  const projectMap = Object.fromEntries((allProjects as any[]).map((p: any) => [p.id, p]));
+  const categoryMap = Object.fromEntries((allCategories as any[]).map((c: any) => [c.id, c]));
   const tagMap = Object.fromEntries(allTags.map((t: any) => [t.id, t]));
   const resolvedTags = (task.tag_ids ?? []).map((id: any) => tagMap[id]?.name ?? id).filter(Boolean);
   const { setActiveTimer }     = useTimerStore();
@@ -226,12 +249,6 @@ export function TaskCard({ task, isPinned = false, onPin, onUnpin }: { task: Tas
     return (
       <>
         <TaskContextMenu task={task}
-          dueDate={task.due_date}
-          importance={task.importance}
-          difficulty={task.difficulty}
-          projectId={task.project_id}
-          categoryId={task.category_id}
-          tagIds={task.tag_ids ?? []}
           projects={allProjects as any[]}
           categories={allCategories as any[]}
           tags={allTags as any[]}
@@ -280,12 +297,6 @@ export function TaskCard({ task, isPinned = false, onPin, onUnpin }: { task: Tas
     <>
       <TaskContextMenu task={task}
         isPinned={isPinned} onPin={onPin} onUnpin={onUnpin}
-        dueDate={task.due_date}
-        importance={task.importance}
-        difficulty={task.difficulty}
-        projectId={task.project_id}
-        categoryId={task.category_id}
-        tagIds={task.tag_ids ?? []}
         projects={allProjects as any[]}
         categories={allCategories as any[]}
         tags={allTags as any[]}
@@ -311,10 +322,10 @@ export function TaskCard({ task, isPinned = false, onPin, onUnpin }: { task: Tas
           }}>
 
             {/* ── Main layout: left (checkbox+title+play) | right (scoreboard panels) ── */}
-            <div style={{ display: "flex", alignItems: "stretch" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 1.1fr) minmax(380px, 1fr)", alignItems: "stretch" }}>
 
               {/* LEFT: checkbox + title + subtasks toggle + play */}
-              <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8, padding: "7px 8px 7px 10px" }}>
+              <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 8, padding: "7px 12px 7px 10px" }}>
                 {/* Checkbox */}
                 <button type="button"
                   className={`sb-check ${false ? "done" : ""}`}
@@ -360,10 +371,15 @@ export function TaskCard({ task, isPinned = false, onPin, onUnpin }: { task: Tas
 
               {/* RIGHT: scoreboard stat panels — vertical divider then cells */}
               <div style={{
-                display: "flex", alignItems: "center", gap: 10,
-                padding: "6px 14px 6px 12px",
+                display: "grid",
+                gridAutoFlow: "column",
+                gridAutoColumns: "max-content",
+                alignItems: "center",
+                justifyContent: "space-evenly",
+                gap: 12,
+                padding: "6px 10px",
                 borderLeft: "1px solid rgba(0,0,0,0.35)",
-                flexShrink: 0,
+                minWidth: 0,
               }}>
                 {/* Priority */}
                 <PriorityPanel priority={task.priority} />
@@ -385,11 +401,20 @@ export function TaskCard({ task, isPinned = false, onPin, onUnpin }: { task: Tas
                   />
                 )}
 
+                {/* Project */}
+                <PanelCell
+                  value={(projectMap[(task as any).project_id]?.title || "—").toString().slice(0, 12)}
+                  sub="PROJ"
+                  color={(task as any).project_id ? "muted" : "dim"}
+                  onClick={(task as any).project_id ? () => onProjectClick?.((task as any).project_id, projectMap[(task as any).project_id]?.title || "Project") : undefined}
+                />
+
                 {/* Category — always show, dash if none */}
                 <PanelCell
-                  value={(task as any).category_name || "—"}
+                  value={(categoryMap[(task as any).category_id]?.name || (task as any).category_name || "—").toString().slice(0, 12)}
                   sub="CAT"
-                  color={(task as any).category_name ? "muted" : "dim"}
+                  color={(task as any).category_id ? "muted" : "dim"}
+                  onClick={(task as any).category_id ? () => onCategoryClick?.((task as any).category_id, categoryMap[(task as any).category_id]?.name || "Category") : undefined}
                 />
 
                 {/* Tags — resolved names, always show, dash if none */}
@@ -400,6 +425,7 @@ export function TaskCard({ task, isPinned = false, onPin, onUnpin }: { task: Tas
                       value={name.length > 9 ? name.slice(0, 9) + "…" : name}
                       sub={i === 0 ? "TAG" : ""}
                       color="dim"
+                      onClick={task.tag_ids?.[i] ? () => onTagClick?.(task.tag_ids[i], name) : undefined}
                     />
                   ))
                 ) : (

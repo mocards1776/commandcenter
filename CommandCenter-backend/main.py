@@ -864,7 +864,19 @@ async def list_projects(
     if status:
         q = q.where(Project.status == status)
     rows = session.execute(q.order_by(Project.created_at.desc())).scalars().all()
-    return [_project_to_dict(p) for p in rows]
+    out = []
+    for p in rows:
+        tasks = session.execute(
+            select(Task).where(Task.project_id == p.id, Task.user_id == user.id)
+        ).scalars().all()
+        done_count = sum(1 for t in tasks if t.status == "done")
+        pct = int((done_count / len(tasks) * 100) if tasks else 0)
+        d = _project_to_dict(p)
+        d["tasks"] = [_task_to_dict(t) for t in tasks]
+        d["task_count"] = len(tasks)
+        d["completion_percentage"] = pct
+        out.append(d)
+    return out
 
 @app.post("/projects", response_model=ProjectResponse)
 @app.post("/projects/", response_model=ProjectResponse, include_in_schema=False)
@@ -895,7 +907,16 @@ async def get_project(
     ).scalar()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    return _project_to_dict(project)
+    tasks = session.execute(
+        select(Task).where(Task.project_id == project.id, Task.user_id == user.id)
+    ).scalars().all()
+    done_count = sum(1 for t in tasks if t.status == "done")
+    pct = int((done_count / len(tasks) * 100) if tasks else 0)
+    d = _project_to_dict(project)
+    d["tasks"] = [_task_to_dict(t) for t in tasks]
+    d["task_count"] = len(tasks)
+    d["completion_percentage"] = pct
+    return d
 
 @app.patch("/projects/{project_id}", response_model=ProjectResponse)
 @app.put("/projects/{project_id}", response_model=ProjectResponse, include_in_schema=False)
