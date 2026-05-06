@@ -6,7 +6,7 @@ import { TaskCard } from "@/components/todos/TaskCard";
 import { QuickAdd } from "@/components/todos/QuickAdd";
 import { TaskModal } from "@/components/todos/TaskModal";
 import { Loader2 } from "lucide-react";
-import type { TaskStatus } from "@/types";
+import type { Priority, TaskStatus } from "@/types";
 import { useTimerStore, useUIStore, usePinnedTaskStore } from "@/store";
 import { battingAvgStr, toDateStr, todayStr } from "@/lib/utils";
 
@@ -70,6 +70,7 @@ export function TodosPage() {
   const [mode, setMode] = useState<TodoMode>("today");
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"manual" | "due_date" | "importance" | "focus_score">("manual");
+  const [priorityFilter, setPriorityFilter] = useState<"all" | Priority>("all");
   const [hideNotStarted, setHideNotStarted] = useState(true);
   const [categoryTab, setCategoryTab] = useState<string | null>(null);
   const [tagFilter, setTagFilter] = useState<{ id: string; name: string } | null>(null);
@@ -178,32 +179,33 @@ export function TodosPage() {
 
   const todayISO = todayStr();
   const startDateOnly = (v?: string) => (v ? toDateStr(v) : undefined);
+  const parseStartMs = (v?: string) => {
+    if (!v) return null;
+    const ms = Date.parse(v);
+    return Number.isNaN(ms) ? null : ms;
+  };
   const filtered = (tasks ?? []).filter(t => {
     const statusPass = mode === "done" ? t.status === "done" : t.status !== "done" && t.status !== "cancelled";
-    const dueDateOnly = t.due_date ? toDateStr(t.due_date) : undefined;
-    const scheduledDay = startDateOnly((t as any).scheduled_start_at);
+    const scheduledRaw = (t as any).scheduled_start_at as string | undefined;
+    const scheduledDay = startDateOnly(scheduledRaw);
+    const scheduledToday = !!scheduledRaw && scheduledDay === todayISO;
     const modePass = mode === "today"
       ? (
-          scheduledDay === todayISO ||
-          (!scheduledDay && (t.status === "today" || dueDateOnly === todayISO))
+          scheduledToday
         )
       : mode === "upcoming"
       ? (
-          t.status !== "in_progress" &&
-          (
-            !scheduledDay ||
-            scheduledDay > todayISO ||
-            (scheduledDay === todayISO && new Date((t as any).scheduled_start_at).getTime() > Date.now())
-          )
+          !scheduledToday
         )
       : true;
+    const priorityPass = priorityFilter === "all" || t.priority === priorityFilter;
     const categoryTabPass = !categoryTab || t.category_id === categoryTab;
     const tagPass = !tagFilter || (t.tag_ids ?? []).includes(tagFilter.id);
     const categoryPass = !categoryFilter || t.category_id === categoryFilter.id;
     const projectPass = !projectFilter || t.project_id === projectFilter.id;
-    const startMs = (t as any).scheduled_start_at ? new Date((t as any).scheduled_start_at).getTime() : null;
-    const startPass = !hideNotStarted || startMs === null || Number.isNaN(startMs) || startMs <= Date.now();
-    return statusPass && modePass && categoryTabPass && tagPass && categoryPass && projectPass && startPass;
+    const startMs = parseStartMs(scheduledRaw);
+    const startPass = !hideNotStarted || !scheduledRaw || (startMs !== null && startMs <= Date.now());
+    return statusPass && modePass && priorityPass && categoryTabPass && tagPass && categoryPass && projectPass && startPass;
   });
   const activeTaskId = activeTimer?.task_id;
 
@@ -309,6 +311,18 @@ export function TodosPage() {
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", padding: "8px 12px", background: "#1e3629", borderBottom: "2px solid #162a1c" }}>
         <button onClick={() => setMode("today")} style={{ padding: "4px 10px", border: `1px solid ${mode === "today" ? "rgba(232,168,32,0.5)" : "rgba(232,168,32,0.15)"}`, background: mode === "today" ? "rgba(232,168,32,0.1)" : "transparent", color: mode === "today" ? "#e8a820" : "rgba(245,240,224,0.3)", fontFamily: "'Oswald',Arial,sans-serif", fontSize: 10, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer", borderRadius: 2 }}>{new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}</button>
         <button onClick={() => setMode("upcoming")} style={{ padding: "4px 10px", border: `1px solid ${mode === "upcoming" ? "rgba(232,168,32,0.5)" : "rgba(232,168,32,0.15)"}`, background: mode === "upcoming" ? "rgba(232,168,32,0.1)" : "transparent", color: mode === "upcoming" ? "#e8a820" : "rgba(245,240,224,0.3)", fontFamily: "'Oswald',Arial,sans-serif", fontSize: 10, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer", borderRadius: 2 }}>Upcoming & Undated</button>
+        <select
+          value={priorityFilter}
+          onChange={e => setPriorityFilter(e.target.value as "all" | Priority)}
+          style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'Oswald',Arial,sans-serif", letterSpacing: "0.08em", textTransform: "uppercase", background: "transparent", color: "#e8a820", border: "1px solid rgba(232,168,32,0.35)", borderRadius: 2 }}
+          title="Filter by priority"
+        >
+          <option value="all">Priority: All</option>
+          <option value="critical">Priority: Critical</option>
+          <option value="high">Priority: High</option>
+          <option value="medium">Priority: Medium</option>
+          <option value="low">Priority: Low</option>
+        </select>
         <button onClick={() => setMode("done")} style={{ padding: "4px 10px", border: `1px solid ${mode === "done" ? "rgba(232,168,32,0.5)" : "rgba(232,168,32,0.15)"}`, background: mode === "done" ? "rgba(232,168,32,0.1)" : "transparent", color: mode === "done" ? "#e8a820" : "rgba(245,240,224,0.3)", fontFamily: "'Oswald',Arial,sans-serif", fontSize: 10, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer", borderRadius: 2 }}>Done</button>
         {categories.map((c: any) => (
           <button key={c.id} onClick={() => setCategoryTab(categoryTab === c.id ? null : c.id)} style={{ padding: "4px 10px", border: `1px solid ${categoryTab === c.id ? "rgba(232,168,32,0.5)" : "rgba(232,168,32,0.12)"}`, background: categoryTab === c.id ? "rgba(232,168,32,0.1)" : "transparent", color: categoryTab === c.id ? "#e8a820" : "rgba(245,240,224,0.25)", fontFamily: "'Oswald',Arial,sans-serif", fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", cursor: "pointer", borderRadius: 2 }}>{c.name}</button>
