@@ -240,10 +240,12 @@ function ProjectRow({
   p,
   onClick,
   onEdit,
+  onComplete,
 }: {
   p: ProjectSummary;
   onClick: () => void;
   onEdit: (e: React.MouseEvent) => void;
+  onComplete: () => void;
 }) {
   const due = p.due_date ? new Date(p.due_date) : null;
   const mon  = due ? MONTHS[due.getMonth()] : "---";
@@ -271,6 +273,11 @@ function ProjectRow({
       }}
       onMouseEnter={e => (e.currentTarget.style.background = "#244232")}
       onMouseLeave={e => (e.currentTarget.style.background = "#1e3629")}
+      onContextMenu={e => {
+        e.preventDefault();
+        onComplete();
+      }}
+      title="Right-click to complete campaign (+30 Focus Score)"
     >
       {/* ── Name + countdown + edit btn ── */}
       <div style={{ paddingRight: 16, minWidth: 0 }}>
@@ -575,6 +582,24 @@ export function ProjectsPage() {
     },
   });
 
+  const completeProjectMut = useMutation({
+    mutationFn: async (project: ProjectSummary) => {
+      const fullProject = await projectsApi.get(project.id);
+      await projectsApi.update(project.id, { status: "completed" });
+      const openTasks = (fullProject.tasks ?? []).filter(t => t.status !== "done" && t.status !== "cancelled");
+      if (openTasks.length > 0) {
+        await Promise.all(openTasks.map(t => tasksApi.complete(t.id)));
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      toast.success("Campaign completed! +30 Focus Score bonus");
+    },
+    onError: () => toast.error("Could not complete campaign"),
+  });
+
   if (selectedId) return <ProjectDetail id={selectedId} onBack={() => setSelectedId(null)} />;
 
   return (
@@ -632,6 +657,14 @@ export function ProjectsPage() {
                 p={p}
                 onClick={() => setSelectedId(p.id)}
                 onEdit={e => { e.stopPropagation(); setEditingProject(p); }}
+                onComplete={() => {
+                  if (p.status === "completed") {
+                    toast("Campaign is already completed");
+                    return;
+                  }
+                  const ok = window.confirm(`Complete "${p.title}" and mark remaining tasks done? (+30 Focus Score bonus)`);
+                  if (ok) completeProjectMut.mutate(p);
+                }}
               />
             ))}
           </div>
