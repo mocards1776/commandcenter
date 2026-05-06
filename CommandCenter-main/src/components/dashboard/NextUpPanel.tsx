@@ -5,7 +5,8 @@ import { useNavigate } from "react-router-dom";
 import { useTimerStore, usePinnedTaskStore } from "@/store";
 import { useActiveTimer } from "@/hooks/useTimer";
 import { formatDuration, todayStr } from "@/lib/utils";
-import api, { tasksApi, timeBlocksApi } from "@/lib/api";
+import axios from "axios";
+import { api } from "@/lib/api";
 
 const PRIORITY_WEIGHT: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
 const ACCENT: Record<string, string> = {
@@ -300,10 +301,10 @@ export function NextUpPanel() {
   const [nextId, setNextId]  = useState<string | undefined>(undefined);
   const [deckId, setDeckId]  = useState<string | undefined>(undefined);
 
-  // tasks (must use api client: Vercel has no /api proxy; auth header required)
+  // tasks
   const { data: tasksRaw } = useQuery<Task[]>({
     queryKey: ["tasks"],
-    queryFn: () => tasksApi.list(),
+    queryFn: () => api.get("/api/tasks").then(r => r.data),
     refetchInterval: 30_000,
   });
   const tasks = Array.isArray(tasksRaw) ? tasksRaw : [];
@@ -311,7 +312,7 @@ export function NextUpPanel() {
   // timeblocks
   const { data: blocks } = useQuery<TimeBlock[]>({
     queryKey: ["timeblocks", "today"],
-    queryFn: () => timeBlocksApi.list(todayStr()),
+    queryFn: () => api.get("/api/time-blocks/", { params: { date: todayStr() } }).then(r => r.data),
     refetchInterval: 60_000,
   });
 
