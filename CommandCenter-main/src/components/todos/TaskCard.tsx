@@ -128,31 +128,6 @@ function FocusScorePanel({ score }: { score: number }) {
   );
 }
 
-// ─── Timer display ────────────────────────────────────────────
-function TimerPanel({ seconds }: { seconds: number }) {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  const fmt = h > 0
-    ? `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`
-    : `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
-  return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-      <div style={{
-        background: PANEL, border: `1px solid ${LOSS}55`, borderRadius: 3,
-        boxShadow: `inset 0 3px 5px rgba(0,0,0,0.55), 0 0 8px ${LOSS}33`,
-        minWidth: 60, height: 30, display: "flex", alignItems: "center", justifyContent: "center",
-        padding: "2px 6px",
-      }}>
-        <span style={{ fontFamily: FONT, fontSize: 14, fontWeight: 700, color: LOSS,
-          fontVariantNumeric: "tabular-nums", letterSpacing: "0.04em" }}
-          className="timer-pulse">{fmt}</span>
-      </div>
-      <div style={{ ...LBL, color: `${LOSS}99` }}>ACTIVE</div>
-    </div>
-  );
-}
-
 // ─── Completed task row ───────────────────────────────────────
 export function TaskCard({
   task,
@@ -369,15 +344,14 @@ export function TaskCard({
                 </div>
               </div>
 
-              {/* RIGHT: scoreboard stat panels — vertical divider then cells */}
+              {/* RIGHT: scoreboard stat panels — fixed columns for alignment */}
               <div style={{
                 display: "grid",
-                gridAutoFlow: "column",
-                gridAutoColumns: "max-content",
+                gridTemplateColumns: "repeat(8, minmax(52px, 1fr))",
                 alignItems: "center",
-                justifyContent: "space-evenly",
-                gap: 12,
-                padding: "6px 10px",
+                justifyItems: "center",
+                gap: 8,
+                padding: "6px 8px",
                 borderLeft: "1px solid rgba(0,0,0,0.35)",
                 minWidth: 0,
               }}>
@@ -388,18 +362,18 @@ export function TaskCard({
                 <FocusScorePanel score={task.focus_score} />
 
                 {/* Est. Time */}
-                {task.time_estimate_minutes != null && task.time_estimate_minutes > 0 && (
-                  <PanelCell value={formatMinutes(task.time_estimate_minutes)} sub="EST" color="muted" />
-                )}
+                <PanelCell
+                  value={task.time_estimate_minutes != null && task.time_estimate_minutes > 0 ? formatMinutes(task.time_estimate_minutes) : "—"}
+                  sub="EST"
+                  color={task.time_estimate_minutes != null && task.time_estimate_minutes > 0 ? "muted" : "dim"}
+                />
 
                 {/* Due date */}
-                {task.due_date && (
-                  <PanelCell
-                    value={task.due_date}
-                    sub={overdue ? "⚠ OVR" : "DUE"}
-                    color={overdue ? "red" : "muted"}
-                  />
-                )}
+                <PanelCell
+                  value={task.due_date ?? "—"}
+                  sub={task.due_date ? (overdue ? "⚠ OVR" : "DUE") : "DUE"}
+                  color={task.due_date ? (overdue ? "red" : "muted") : "dim"}
+                />
 
                 {/* Project */}
                 <PanelCell
@@ -418,22 +392,19 @@ export function TaskCard({
                 />
 
                 {/* Tags — resolved names, always show, dash if none */}
-                {resolvedTags.length > 0 ? (
-                  resolvedTags.slice(0, 2).map((name: string, i: number) => (
-                    <PanelCell
-                      key={i}
-                      value={name.length > 9 ? name.slice(0, 9) + "…" : name}
-                      sub={i === 0 ? "TAG" : ""}
-                      color="dim"
-                      onClick={task.tag_ids?.[i] ? () => onTagClick?.(task.tag_ids[i], name) : undefined}
-                    />
-                  ))
-                ) : (
-                  <PanelCell value="—" sub="TAG" color="dim" />
-                )}
+                <PanelCell
+                  value={resolvedTags[0] ? (resolvedTags[0].length > 9 ? resolvedTags[0].slice(0, 9) + "…" : resolvedTags[0]) : "—"}
+                  sub="TAG"
+                  color="dim"
+                  onClick={task.tag_ids?.[0] ? () => onTagClick?.(task.tag_ids[0], resolvedTags[0]) : undefined}
+                />
+                <PanelCell
+                  value={resolvedTags[1] ? (resolvedTags[1].length > 9 ? resolvedTags[1].slice(0, 9) + "…" : resolvedTags[1]) : "—"}
+                  sub=""
+                  color="dim"
+                  onClick={task.tag_ids?.[1] ? () => onTagClick?.(task.tag_ids[1], resolvedTags[1]) : undefined}
+                />
 
-                {/* Active timer */}
-                {isThisRunning && <TimerPanel seconds={elapsedSeconds} />}
               </div>
             </div>
           </div>
