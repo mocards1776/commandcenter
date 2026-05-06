@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { tagsApi } from "@/lib/api";
 import { Loader2, Plus, Trash2 } from "lucide-react";
@@ -6,6 +7,7 @@ import type { Tag } from "@/types";
 import toast from "react-hot-toast";
 
 export function TagsPage() {
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const [newName, setNewName] = useState("");
   const [newColor, setNewColor] = useState("#e8a820");
@@ -72,7 +74,14 @@ export function TagsPage() {
             {tags.map(t => (
               <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", background: "#1e3629", border: "1px solid rgba(255,255,255,0.09)" }}>
                 <div style={{ width: 10, height: 10, borderRadius: "50%", background: t.color, flexShrink: 0 }} />
-                <span style={{ flex: 1, fontFamily: "'Oswald',Arial,sans-serif", fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", color: "#f5f0e0" }}>{t.name}</span>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/todos?tag=${encodeURIComponent(t.id)}&tagName=${encodeURIComponent(t.name)}`)}
+                  style={{ flex: 1, textAlign: "left", fontFamily: "'Oswald',Arial,sans-serif", fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", color: "#f5f0e0", background: "none", border: "none", padding: 0, cursor: "pointer" }}
+                  title={`Show tasks tagged ${t.name}`}
+                >
+                  {t.name}
+                </button>
                 <button
                   onClick={() => {
                     if (window.confirm(`Delete tag "${t.name}"?`)) deleteMut.mutate(t.id);
