@@ -97,22 +97,20 @@ export const gamificationApi = {
 };
 
 // ─── Tasks ────────────────────────────────────────────────────
-// Rule: collection routes (/tasks/) have trailing slash (backend does too).
-// Individual resource routes (/tasks/{id}) have NO trailing slash (backend has none).
-// Sub-action routes (/tasks/{id}/complete/) keep their slash (backend has it).
+// Deployed API uses /api/tasks (see FastAPI app; redirect_slashes=False).
 export const tasksApi = {
   list: (params?: Record<string, any>) =>
-    api.get<Task[]>("/tasks/", { params }).then(r => r.data),
-  today: () => api.get<Task[]>("/tasks/today").then(r => r.data),
-  get: (id: string) => api.get<Task>(`/tasks/${id}`).then(r => r.data),
+    api.get<Task[]>("/api/tasks/", { params }).then(r => r.data),
+  today: () => api.get<Task[]>("/api/tasks/", { params: { status: "today" } }).then(r => r.data),
+  get: (id: string) => api.get<Task>(`/api/tasks/${id}`).then(r => r.data),
   create: (data: Partial<TaskCreate>) =>
-    api.post<Task>("/tasks/", data).then(r => r.data),
+    api.post<Task>("/api/tasks/", data).then(r => r.data),
   update: (id: string, data: TaskUpdate) =>
-    api.put<Task>(`/tasks/${id}`, data).then(r => r.data),
-  delete: (id: string) => api.delete(`/tasks/${id}`),
+    api.put<Task>(`/api/tasks/${id}`, data).then(r => r.data),
+  delete: (id: string) => api.delete(`/api/tasks/${id}`),
   complete: (id: string) =>
-    api.post<Task>(`/tasks/${id}/complete/`).then(r => r.data),
-  reorder: (ids: string[]) => api.post("/tasks/reorder/", { order: ids }),
+    api.post<Task>(`/api/tasks/${id}/complete`).then(r => r.data),
+  reorder: (ids: string[]) => api.post("/api/tasks/reorder/", { order: ids }),
 };
 
 // ─── Projects ─────────────────────────────────────────────────
@@ -174,12 +172,12 @@ export const timersApi = {
 // ─── Time Blocks ──────────────────────────────────────────────
 export const timeBlocksApi = {
   list: (date?: string) =>
-    api.get<TimeBlock[]>("/time-blocks/", { params: date ? { date } : undefined }).then(r => r.data),
+    api.get<TimeBlock[]>("/api/time-blocks/", { params: date ? { date } : undefined }).then(r => r.data),
   create: (data: any) =>
-    api.post<TimeBlock>("/time-blocks/", data).then(r => r.data),
+    api.post<TimeBlock>("/api/time-blocks/", data).then(r => r.data),
   update: (id: string, data: any) =>
-    api.put<TimeBlock>(`/time-blocks/${id}`, data).then(r => r.data),
-  delete: (id: string) => api.delete(`/time-blocks/${id}`),
+    api.put<TimeBlock>(`/api/time-blocks/${id}`, data).then(r => r.data),
+  delete: (id: string) => api.delete(`/api/time-blocks/${id}`),
 };
 
 // ─── Braindump ────────────────────────────────────────────────
@@ -233,10 +231,10 @@ export const categoriesApi = {
 // ─── Sports ───────────────────────────────────────────────────
 export const sportsApi = {
   favorites: () =>
-    api.get<FavoriteSportsTeam[]>("/sports/favorites/").then(r => r.data),
+    api.get<FavoriteSportsTeam[]>("/favorite-sports-teams/").then(r => r.data),
   addFavorite: (data: any) =>
-    api.post<FavoriteSportsTeam>("/sports/favorites/", data).then(r => r.data),
-  removeFavorite: (id: string) => api.delete(`/sports/favorites/${id}`),
+    api.post<FavoriteSportsTeam>("/favorite-sports-teams/", data).then(r => r.data),
+  removeFavorite: (id: string) => api.delete(`/favorite-sports-teams/${id}`),
   mlbTeam: (teamSlug: string) =>
     api.get(`/sports/mlb/${teamSlug}/`).then(r => r.data),
   mlbProjections: (teamSlug: string) =>

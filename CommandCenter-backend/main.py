@@ -10,6 +10,7 @@ import httpx
 from typing import Optional, List
 import asyncio
 from collections import defaultdict
+from pydantic import BaseModel
 
 import db
 from models import (
@@ -19,7 +20,7 @@ from models import (
 from schemas import (
     TaskCreate, TaskUpdate, TaskResponse,
     ProjectCreate, ProjectUpdate, ProjectResponse,
-    HabitCreate, HabitUpdate, HabitResponse,
+    HabitCreate, HabitUpdate, HabitResponse, HabitCompletionResponse,
     TimeEntryCreate, TimeEntryResponse,
     NoteCreate, NoteUpdate, NoteResponse,
     CRMPersonCreate, CRMPersonUpdate, CRMPersonResponse,
@@ -68,6 +69,85 @@ _UTC = ZoneInfo("UTC")
 
 def _today_ct() -> date:
     return datetime.now(_CT).date()
+
+def _ct_calendar_day_bounds(day: date) -> tuple[datetime, datetime]:
+    """Start/end naive datetimes for a Central calendar day (matches dashboard date logic)."""
+    start = datetime(day.year, day.month, day.day)
+    return start, start + timedelta(days=1)
+
+def _gamification_row_for_date(session: Session, user_id: str, day: date) -> dict:
+    """Build scoreboard-shaped stats for one calendar day (for /gamification history)."""
+    day_start, day_end = _ct_calendar_day_bounds(day)
+    completed_rows = session.execute(
+        select(Task).where(
+            Task.user_id == user_id,
+            Task.status == "done",
+            Task.completed_at >= day_start,
+            Task.completed_at < day_end,
+        )
+    ).scalars().all()
+    completed_tasks_today = len(completed_rows)
+    if day == _today_ct():
+        today_active = session.execute(
+            select(Task).where(
+                Task.user_id == user_id,
+                Task.status.in_(["today", "in_progress"]),
+            )
+        ).scalars().all()
+        total_tasks_today = len(today_active) + completed_tasks_today
+    else:
+        total_tasks_today = completed_tasks_today
+    attempted = total_tasks_today
+    batting_avg = (completed_tasks_today / attempted) if attempted > 0 else 0.0
+
+    habits_completed = session.execute(
+        select(func.count(HabitCompletion.id))
+        .join(Habit, HabitCompletion.habit_id == Habit.id)
+        .where(Habit.user_id == user_id, HabitCompletion.completed_date == day)
+    ).scalar() or 0
+
+    time_entries_day = session.execute(
+        select(TimeEntry).where(
+            TimeEntry.user_id == user_id,
+            TimeEntry.started_at >= day_start,
+            TimeEntry.started_at < day_end,
+            TimeEntry.ended_at != None,  # noqa: E711
+        )
+    ).scalars().all()
+    time_tracked_seconds = sum(e.duration_seconds or 0 for e in time_entries_day)
+
+    # Strikeouts omitted for history rows (would need point-in-time task state)
+    strikeouts = 0
+
+    hitting_streak = 0
+    check = day
+    for _ in range(365):
+        count = session.execute(
+            select(func.count(Task.id)).where(
+                Task.user_id == user_id,
+                Task.status == "done",
+                Task.completed_at >= datetime(check.year, check.month, check.day),
+                Task.completed_at < datetime(check.year, check.month, check.day) + timedelta(days=1),
+            )
+        ).scalar() or 0
+        if count > 0:
+            hitting_streak += 1
+            check = check - timedelta(days=1)
+        else:
+            break
+
+    return {
+        "stat_date": day.isoformat(),
+        "tasks_completed": completed_tasks_today,
+        "tasks_attempted": attempted,
+        "habits_completed": int(habits_completed),
+        "total_focus_minutes": round(time_tracked_seconds / 60),
+        "home_runs": 0,
+        "hits": completed_tasks_today,
+        "strikeouts": strikeouts,
+        "batting_average": round(batting_avg, 3),
+        "hitting_streak": hitting_streak,
+    }
 
 def _ct_midnight_as_utc() -> datetime:
     midnight_ct = datetime.now(_CT).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -483,6 +563,23 @@ async def get_dashboard(
         "date": today.isoformat(),
     }
 
+
+@app.get("/gamification")
+@app.get("/gamification/", include_in_schema=False)
+async def get_gamification_history(
+    limit: int = Query(30, ge=1, le=366),
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    """Daily scoreboard stats for charts (newest last, same shape as dashboard gamification)."""
+    today = _today_ct()
+    out = []
+    for i in range(limit - 1, -1, -1):
+        day = today - timedelta(days=i)
+        out.append(_gamification_row_for_date(session, user.id, day))
+    return out
+
+
 # ── Tags ──────────────────────────────────────────────────────────────────────
 
 @app.get("/tags", response_model=List[TagResponse])
@@ -537,17 +634,35 @@ async def create_category(
 @app.get("/api/tasks/", response_model=List[TaskResponse], include_in_schema=False)
 async def list_tasks(
     status: Optional[str] = Query(None),
-    project_id: Optional[int] = Query(None),
+    project_id: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
     q = select(Task).where(Task.user_id == user.id)
     if status:
-        q = q.where(Task.status == status)
+        parts = [s.strip() for s in status.split(",") if s.strip()]
+        if len(parts) > 1:
+            q = q.where(Task.status.in_(parts))
+        else:
+            q = q.where(Task.status == parts[0])
     if project_id:
         q = q.where(Task.project_id == project_id)
+    if search:
+        term = f"%{search.strip()}%"
+        q = q.where(Task.title.ilike(term))
     rows = session.execute(q.order_by(Task.sort_order, Task.created_at.desc())).scalars().all()
     return [_task_to_dict(t) for t in rows]
+
+
+class TaskReorderBody(BaseModel):
+    order: List[str]
+
+
+class HabitCompleteBody(BaseModel):
+    completed_date: str
+    note: Optional[str] = None
+
 
 @app.post("/api/tasks", response_model=TaskResponse)
 @app.post("/api/tasks/", response_model=TaskResponse, include_in_schema=False)
@@ -583,7 +698,7 @@ async def create_task(
 
 @app.get("/api/tasks/{task_id}", response_model=TaskResponse)
 async def get_task(
-    task_id: int,
+    task_id: str,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
@@ -597,7 +712,7 @@ async def get_task(
 @app.patch("/api/tasks/{task_id}", response_model=TaskResponse)
 @app.put("/api/tasks/{task_id}", response_model=TaskResponse, include_in_schema=False)
 async def update_task(
-    task_id: int,
+    task_id: str,
     data: TaskUpdate,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
@@ -633,7 +748,7 @@ async def update_task(
 
 @app.delete("/api/tasks/{task_id}")
 async def delete_task(
-    task_id: int,
+    task_id: str,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
@@ -648,7 +763,7 @@ async def delete_task(
 
 @app.post("/api/tasks/{task_id}/complete")
 async def complete_task(
-    task_id: int,
+    task_id: str,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
@@ -662,6 +777,25 @@ async def complete_task(
     session.add(task)
     session.commit()
     return _task_to_dict(task)
+
+
+@app.post("/api/tasks/reorder")
+@app.post("/api/tasks/reorder/", include_in_schema=False)
+async def reorder_tasks(
+    body: TaskReorderBody,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    for i, tid in enumerate(body.order):
+        task = session.execute(
+            select(Task).where(Task.id == tid, Task.user_id == user.id)
+        ).scalar()
+        if task:
+            task.sort_order = i
+            session.add(task)
+    session.commit()
+    return {"detail": "ok"}
+
 
 # ── Braindump ─────────────────────────────────────────────────────────────────
 
@@ -692,7 +826,7 @@ async def create_braindump(
 
 @app.delete("/braindump/{entry_id}")
 async def delete_braindump(
-    entry_id: int,
+    entry_id: str,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
@@ -740,7 +874,7 @@ async def create_project(
 
 @app.get("/projects/{project_id}", response_model=ProjectResponse)
 async def get_project(
-    project_id: int,
+    project_id: str,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
@@ -754,7 +888,7 @@ async def get_project(
 @app.patch("/projects/{project_id}", response_model=ProjectResponse)
 @app.put("/projects/{project_id}", response_model=ProjectResponse, include_in_schema=False)
 async def update_project(
-    project_id: int,
+    project_id: str,
     data: ProjectUpdate,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
@@ -773,7 +907,7 @@ async def update_project(
 
 @app.delete("/projects/{project_id}")
 async def delete_project(
-    project_id: int,
+    project_id: str,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
@@ -813,7 +947,7 @@ async def create_habit(
 @app.patch("/habits/{habit_id}", response_model=HabitResponse)
 @app.put("/habits/{habit_id}", response_model=HabitResponse, include_in_schema=False)
 async def update_habit(
-    habit_id: int,
+    habit_id: str,
     data: HabitUpdate,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
@@ -832,7 +966,7 @@ async def update_habit(
 
 @app.delete("/habits/{habit_id}")
 async def delete_habit(
-    habit_id: int,
+    habit_id: str,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
@@ -845,7 +979,7 @@ async def delete_habit(
     session.commit()
     return {"detail": "deleted"}
 
-def _habit_streak(habit_id: int, session: Session, today: date) -> int:
+def _habit_streak(habit_id: str, session: Session, today: date) -> int:
     streak = 0
     check = today
     for _ in range(365):
@@ -862,9 +996,86 @@ def _habit_streak(habit_id: int, session: Session, today: date) -> int:
             break
     return streak
 
+@app.post("/habits/{habit_id}/complete", response_model=HabitCompletionResponse)
+@app.post("/habits/{habit_id}/complete/", response_model=HabitCompletionResponse, include_in_schema=False)
+async def complete_habit(
+    habit_id: str,
+    body: HabitCompleteBody,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    habit = session.execute(
+        select(Habit).where(Habit.id == habit_id, Habit.user_id == user.id)
+    ).scalar()
+    if not habit:
+        raise HTTPException(status_code=404, detail="Habit not found")
+    try:
+        comp_date = date.fromisoformat(body.completed_date[:10])
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid completed_date")
+    existing = session.execute(
+        select(HabitCompletion).where(
+            HabitCompletion.habit_id == habit_id,
+            HabitCompletion.completed_date == comp_date,
+        )
+    ).scalar()
+    if existing:
+        return existing
+    comp = HabitCompletion(habit_id=habit_id, completed_date=comp_date, note=body.note)
+    session.add(comp)
+    session.commit()
+    session.refresh(comp)
+    return comp
+
+
+@app.delete("/habits/{habit_id}/complete/{completed_date}")
+async def uncomplete_habit(
+    habit_id: str,
+    completed_date: str,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    habit = session.execute(
+        select(Habit).where(Habit.id == habit_id, Habit.user_id == user.id)
+    ).scalar()
+    if not habit:
+        raise HTTPException(status_code=404, detail="Habit not found")
+    try:
+        comp_date = date.fromisoformat(completed_date[:10])
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid completed_date")
+    existing = session.execute(
+        select(HabitCompletion).where(
+            HabitCompletion.habit_id == habit_id,
+            HabitCompletion.completed_date == comp_date,
+        )
+    ).scalar()
+    if not existing:
+        raise HTTPException(status_code=404, detail="Completion not found")
+    session.delete(existing)
+    session.commit()
+    return {"detail": "deleted"}
+
+
+@app.get("/habits/{habit_id}/streak")
+@app.get("/habits/{habit_id}/streak/", include_in_schema=False)
+async def habit_streak_endpoint(
+    habit_id: str,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(db.get_session),
+):
+    habit = session.execute(
+        select(Habit).where(Habit.id == habit_id, Habit.user_id == user.id)
+    ).scalar()
+    if not habit:
+        raise HTTPException(status_code=404, detail="Habit not found")
+    today = _today_ct()
+    return {"habit_id": habit_id, "streak": _habit_streak(habit_id, session, today)}
+
+
 @app.post("/habits/{habit_id}/toggle")
 async def toggle_habit(
-    habit_id: int,
+    habit_id: str,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
@@ -951,7 +1162,7 @@ async def create_time_entry(
 
 @app.patch("/time-entries/{entry_id}", response_model=TimeEntryResponse)
 async def update_time_entry(
-    entry_id: int,
+    entry_id: str,
     data: dict,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
@@ -996,7 +1207,7 @@ async def create_note(
 
 @app.get("/notes/{note_id}", response_model=NoteResponse)
 async def get_note(
-    note_id: int,
+    note_id: str,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
@@ -1010,7 +1221,7 @@ async def get_note(
 @app.patch("/notes/{note_id}", response_model=NoteResponse)
 @app.put("/notes/{note_id}", response_model=NoteResponse, include_in_schema=False)
 async def update_note(
-    note_id: int,
+    note_id: str,
     data: NoteUpdate,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
@@ -1029,7 +1240,7 @@ async def update_note(
 
 @app.delete("/notes/{note_id}")
 async def delete_note(
-    note_id: int,
+    note_id: str,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
@@ -1071,7 +1282,7 @@ async def create_crm_person(
 @app.patch("/crm/{person_id}", response_model=CRMPersonResponse)
 @app.put("/crm/{person_id}", response_model=CRMPersonResponse, include_in_schema=False)
 async def update_crm_person(
-    person_id: int,
+    person_id: str,
     data: CRMPersonUpdate,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
@@ -1090,7 +1301,7 @@ async def update_crm_person(
 
 @app.delete("/crm/{person_id}")
 async def delete_crm_person(
-    person_id: int,
+    person_id: str,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
@@ -1114,7 +1325,13 @@ async def list_time_blocks(
 ):
     q = select(TimeBlock).where(TimeBlock.user_id == user.id)
     if date:
-        q = q.where(TimeBlock.date == date)
+        try:
+            d = datetime.strptime(date, "%Y-%m-%d").date()
+        except ValueError:
+            d = None
+        if d is not None:
+            day_start, day_end = _ct_calendar_day_bounds(d)
+            q = q.where(TimeBlock.start_time >= day_start, TimeBlock.start_time < day_end)
     rows = session.execute(q.order_by(TimeBlock.start_time)).scalars().all()
     return rows
 
@@ -1134,7 +1351,7 @@ async def create_time_block(
 @app.patch("/api/time-blocks/{block_id}", response_model=TimeBlockResponse)
 @app.put("/api/time-blocks/{block_id}", response_model=TimeBlockResponse, include_in_schema=False)
 async def update_time_block(
-    block_id: int,
+    block_id: str,
     data: TimeBlockUpdate,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
@@ -1153,7 +1370,7 @@ async def update_time_block(
 
 @app.delete("/api/time-blocks/{block_id}")
 async def delete_time_block(
-    block_id: int,
+    block_id: str,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
@@ -1324,7 +1541,7 @@ async def create_favorite_sports_team(
 
 @app.delete("/favorite-sports-teams/{team_id}")
 async def delete_favorite_sports_team(
-    team_id: int,
+    team_id: str,
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):

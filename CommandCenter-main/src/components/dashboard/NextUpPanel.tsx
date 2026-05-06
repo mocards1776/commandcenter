@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { useTimerStore, usePinnedTaskStore } from "@/store";
 import { useActiveTimer } from "@/hooks/useTimer";
 import { formatDuration, todayStr } from "@/lib/utils";
-import axios from "axios";
+import api, { tasksApi, timeBlocksApi } from "@/lib/api";
 
 const PRIORITY_WEIGHT: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
 const ACCENT: Record<string, string> = {
@@ -300,10 +300,10 @@ export function NextUpPanel() {
   const [nextId, setNextId]  = useState<string | undefined>(undefined);
   const [deckId, setDeckId]  = useState<string | undefined>(undefined);
 
-  // tasks
+  // tasks (must use api client: Vercel has no /api proxy; auth header required)
   const { data: tasksRaw } = useQuery<Task[]>({
     queryKey: ["tasks"],
-    queryFn: () => axios.get("/api/tasks").then(r => r.data),
+    queryFn: () => tasksApi.list(),
     refetchInterval: 30_000,
   });
   const tasks = Array.isArray(tasksRaw) ? tasksRaw : [];
@@ -311,14 +311,14 @@ export function NextUpPanel() {
   // timeblocks
   const { data: blocks } = useQuery<TimeBlock[]>({
     queryKey: ["timeblocks", "today"],
-    queryFn: () => axios.get("/api/time-blocks/", { params: { date: todayStr() } }).then(r => r.data),
+    queryFn: () => timeBlocksApi.list(todayStr()),
     refetchInterval: 60_000,
   });
 
   // gcal
   const { data: gcalData } = useQuery({
     queryKey: ["gcal"],
-    queryFn: () => axios.get("/api/gcal/next-event").then(r => r.data),
+    queryFn: () => api.get("/api/gcal/next-event").then(r => r.data),
     refetchInterval: 300_000,
   });
   const gcalConfigured = gcalData?.configured ?? false;
