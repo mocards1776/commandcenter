@@ -178,7 +178,12 @@ export function TodosPage() {
   const bestBA = all.length   ? battingAvgStr(histBest(all.map(h => h.batting_average)))   : null;
 
   const todayISO = todayStr();
-  const startDateOnly = (v?: string) => (v ? toDateStr(v) : undefined);
+  const dateKey = (v?: string) => {
+    if (!v) return undefined;
+    const m = v.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (m) return m[1];
+    return toDateStr(v);
+  };
   const parseStartMs = (v?: string) => {
     if (!v) return null;
     const ms = Date.parse(v);
@@ -187,15 +192,17 @@ export function TodosPage() {
   const filtered = (tasks ?? []).filter(t => {
     const statusPass = mode === "done" ? t.status === "done" : t.status !== "done" && t.status !== "cancelled";
     const scheduledRaw = (t as any).scheduled_start_at as string | undefined;
-    const scheduledDay = startDateOnly(scheduledRaw);
+    const scheduledDay = dateKey(scheduledRaw);
     const scheduledToday = !!scheduledRaw && scheduledDay === todayISO;
+    const dueDay = dateKey(t.due_date);
+    const overdue = !!dueDay && dueDay < todayISO;
     const modePass = mode === "today"
       ? (
-          scheduledToday
+          scheduledToday || overdue
         )
       : mode === "upcoming"
       ? (
-          !scheduledToday
+          !scheduledToday && !overdue
         )
       : true;
     const priorityPass = priorityFilter === "all" || t.priority === priorityFilter;
