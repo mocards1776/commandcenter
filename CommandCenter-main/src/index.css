@@ -737,6 +737,8 @@ input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepi
    Notes page isolation + modern notebook skin (no green bleed)
    ───────────────────────────────────────────────────────────── */
 .notes-page--notebook {
+  --notebook-rule-gap: 40px;
+  --notebook-rule-line: #b7c3cd;
   min-height: calc(100vh - 40px);
   padding: 12px;
   background: #eae6dc;
@@ -807,9 +809,9 @@ input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepi
   background-image: repeating-linear-gradient(
     to bottom,
     transparent 0px,
-    transparent 38px,
-    #b7c3cd 38px,
-    #b7c3cd 40px
+    transparent calc(var(--notebook-rule-gap) - 2px),
+    var(--notebook-rule-line) calc(var(--notebook-rule-gap) - 2px),
+    var(--notebook-rule-line) var(--notebook-rule-gap)
   );
 }
 
@@ -888,7 +890,7 @@ input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepi
 .notes-page--notebook .notebook-content {
   background-image: none;
   color: #1a2434;
-  padding: 8px 12px 14px;
+  padding: 4px 12px 0;
   gap: 8px;
 }
 
@@ -904,6 +906,9 @@ input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepi
 
 .notes-page--notebook .entry-text {
   color: #111a28;
+  line-height: var(--notebook-rule-gap);
+  margin: 0;
+  padding-top: 2px;
 }
 
 .notes-page--notebook .icon-btn {
@@ -931,11 +936,17 @@ input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepi
 .notes-page--notebook .edit-textarea {
   background: transparent;
   border: 0;
-  border-bottom: 1px solid #9ca9b6;
+  border-bottom: 1px solid var(--notebook-rule-line);
   border-radius: 0;
   color: #182134;
   padding-left: 0;
   padding-right: 0;
+}
+
+.notes-page--notebook .form-textarea,
+.notes-page--notebook .edit-textarea {
+  line-height: var(--notebook-rule-gap);
+  padding-top: 2px;
 }
 
 .notes-page--notebook .form-input:focus,
