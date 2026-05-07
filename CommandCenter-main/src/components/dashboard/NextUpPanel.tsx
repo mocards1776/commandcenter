@@ -1,11 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { Task, TimeBlock } from "@/types";
+import type { Task } from "@/types";
 import { useNavigate } from "react-router-dom";
 import { useTimerStore, usePinnedTaskStore } from "@/store";
 import { useActiveTimer } from "@/hooks/useTimer";
 import { isOverdue, formatDuration, todayStr } from "@/lib/utils";
-import { api } from "@/lib/api";
 
 const PRIORITY_WEIGHT: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
 const ACCENT: Record<string, string> = {
@@ -411,14 +410,6 @@ export function NextUpPanel({ tasks: tasksProp }: { tasks: Task[] }) {
   const { pinnedTaskId, setPinnedTask } = usePinnedTaskStore();
   const [deckOverride, setDeckOverride] = useState<Task | null>(null);
 
-  const { data: localBlocks = [] } = useQuery<TimeBlock[]>({
-    queryKey: ["time-blocks-dashboard", today],
-    queryFn: () =>
-      api.get("/api/time-blocks/", { params: { date: today } }).then(r => r.data),
-    retry: false,
-    staleTime: 60_000,
-  });
-
   const gcalToken = getStoredToken();
   const calIds    = getSelectedCalIds();
   const { data: gcalEvents = [] } = useQuery<NextEvent[]>({
@@ -451,10 +442,8 @@ export function NextUpPanel({ tasks: tasksProp }: { tasks: Task[] }) {
   });
 
   const nowMs      = Date.now();
-  const safeLocalBlocks = Array.isArray(localBlocks) ? localBlocks : [];
   const safeGcalEvents  = Array.isArray(gcalEvents)  ? gcalEvents  : [];
-  const localEvts: NextEvent[] = safeLocalBlocks.map(b => ({ title: b.title, startMs: new Date(b.start_time).getTime() }));
-  const allEvents  = [...localEvts, ...safeGcalEvents]
+  const allEvents  = [...safeGcalEvents]
     .filter(e => e.startMs > nowMs - 5 * 60_000)
     .sort((a, b) => a.startMs - b.startMs);
   const nextEvent  = allEvents[0] ?? null;
