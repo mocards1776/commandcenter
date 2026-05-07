@@ -258,6 +258,7 @@ export function TaskModal({ open, onClose, task, projectId, parentId, defaultSta
   const [selProject,setSelProject]   = useState(task?.project_id??projectId??"");
   const [selCategory,setSelCategory] = useState(task?.category_id??"");
   const [selTagIds,setSelTagIds]     = useState<string[]>(task?.tag_ids??[]);
+  const titleInputRef = useRef<HTMLInputElement>(null);
 
   const priority   = impToPriority(importance);
   const urgLabel   = impToLabel(importance);
@@ -299,6 +300,35 @@ export function TaskModal({ open, onClose, task, projectId, parentId, defaultSta
   const { data:projects=[]   } = useQuery({ queryKey:["projects"],   queryFn:()=>projectsApi.list() });
   const { data:categories=[] } = useQuery({ queryKey:["categories"], queryFn:categoriesApi.list });
   const { data:allTags=[]    } = useQuery({ queryKey:["tags"],        queryFn:tagsApi.list });
+  const titleToken = title.match(/(?:^|\s)([#@!])([^\s]*)$/);
+  const titlePrefix = titleToken?.[1] ?? null;
+  const titleQuery = titleToken?.[2] ?? "";
+  const titleSuggestions =
+    titlePrefix === "#"
+      ? (allTags as any[])
+          .filter((t: any) => t.name.toLowerCase().includes(titleQuery.toLowerCase()))
+          .slice(0, 6)
+          .map((t: any) => ({ label: `#${t.name}`, value: `#${t.name}` }))
+      : titlePrefix === "!"
+      ? [5, 4, 3, 2, 1]
+          .filter((n) => String(n).startsWith(titleQuery))
+          .map((n) => ({ label: `!${n} importance`, value: `!${n}` }))
+      : titlePrefix === "@"
+      ? [
+          { label: "@easy difficulty", value: "@easy" },
+          { label: "@medium difficulty", value: "@medium" },
+          { label: "@hard difficulty", value: "@hard" },
+          { label: "@veryhard difficulty", value: "@veryhard" },
+        ].filter((o) => o.value.includes(titleQuery.toLowerCase()))
+      : [];
+
+  const applyTitleSuggestion = (tokenValue: string) => {
+    setTitle((prev) => prev.replace(/(?:^|\s)([#@!])([^\s]*)$/, (m) => {
+      const lead = m.startsWith(" ") ? " " : "";
+      return `${lead}${tokenValue} `;
+    }));
+    titleInputRef.current?.focus();
+  };
 
   const inv = () => {
     qc.invalidateQueries({queryKey:["tasks"]});
@@ -421,13 +451,44 @@ export function TaskModal({ open, onClose, task, projectId, parentId, defaultSta
           {/* Header */}
           <div style={{display:"flex",alignItems:"center",gap:10,padding:"12px 16px",borderBottom:`2px solid #1e3629`,background:"#1e3629",flexShrink:0}}>
             <div style={{padding:"3px 10px",border:`1px solid ${pColor}`,color:pColor,fontSize:10,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",fontFamily:"'Oswald',Arial,sans-serif",flexShrink:0,minWidth:64,textAlign:"center"}}>{urgLabel}</div>
-            <input value={title} onChange={e=>setTitle(e.target.value)}
+            <input ref={titleInputRef} value={title} onChange={e=>setTitle(e.target.value)}
               placeholder={isSubtaskItself ? "Subtask title…" : "Order title…"}
               autoFocus={!isEdit}
               style={{flex:1,background:"transparent",border:"none",fontSize:18,fontWeight:700,letterSpacing:"0.04em",textTransform:"uppercase",color:"#f5f0e0",caretColor:"#e8a820",padding:0,fontFamily:"'Oswald',Arial,sans-serif"}}
               onKeyDown={e=>e.key==="Enter"&&!isEdit&&title.trim()&&createMut.mutate()}/>
             <button type="button" onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:"rgba(245,240,224,0.3)",padding:4}} onMouseEnter={e=>(e.currentTarget.style.color="rgba(245,240,224,0.8)")} onMouseLeave={e=>(e.currentTarget.style.color="rgba(245,240,224,0.3)")}><X size={16}/></button>
           </div>
+          {titlePrefix && titleSuggestions.length > 0 && (
+            <div style={{ padding: "0 16px 8px", background: "#1e3629" }}>
+              <div style={{ border: "1px solid rgba(232,168,32,0.22)", background: "#162a1c", borderRadius: 3, overflow: "hidden" }}>
+                {titleSuggestions.map((s) => (
+                  <button
+                    key={s.label}
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      applyTitleSuggestion(s.value);
+                    }}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      background: "transparent",
+                      border: "none",
+                      color: "rgba(245,240,224,0.75)",
+                      padding: "6px 10px",
+                      fontSize: 11,
+                      letterSpacing: "0.08em",
+                      textTransform: "uppercase",
+                      cursor: "pointer",
+                      fontFamily: "'Oswald', Arial, sans-serif",
+                    }}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Body */}
           <div style={{flex:1,overflowY:"auto",padding:"16px",display:"flex",flexDirection:"column",gap:14}}>

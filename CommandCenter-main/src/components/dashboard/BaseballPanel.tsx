@@ -350,7 +350,7 @@ function FlipCell({ value, sub, color = "empty", small = false }: {
   );
 }
 
-function SBHead({ label }: { label: string }) {
+function SBHead({ label, center = false }: { label: string; center?: boolean }) {
   return (
     <div style={{
       background: HEADER_BG, padding: "4px 8px",
@@ -358,6 +358,7 @@ function SBHead({ label }: { label: string }) {
       borderTop: "1px solid rgba(0,0,0,0.4)",
       fontFamily: FONT, fontSize: 9, fontWeight: 700,
       letterSpacing: "0.18em", textTransform: "uppercase" as const, color: GOLD,
+      textAlign: center ? "center" : "left",
     }}>{label}</div>
   );
 }
@@ -441,11 +442,14 @@ function GameBlock({ game, label }: { game: GameData; label: string }) {
 
   return (
     <div>
-      <SBHead label={label} />
+      <SBHead label={label} center />
       <div style={{ padding: "4px 8px", background: BG }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
             <CardinalsLogo size={20} />
+            <span style={{ fontFamily: FONT, fontSize: 13, fontWeight: 700, color: FG, textAlign: "center" }}>
+              {matchupLine}
+            </span>
             <img
               src={`https://www.mlbstatic.com/team-logos/${ID_MAP_REVERSE[game.opp_abbr ?? ""] ?? 0}.svg`}
               onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
@@ -453,9 +457,6 @@ function GameBlock({ game, label }: { game: GameData; label: string }) {
               style={{ objectFit: "contain" }}
               alt=""
             />
-            <span style={{ fontFamily: FONT, fontSize: 13, fontWeight: 700, color: FG, textAlign: "center" }}>
-              {matchupLine}
-            </span>
           </div>
         </div>
 
@@ -484,16 +485,18 @@ function GameBlock({ game, label }: { game: GameData; label: string }) {
           )}
         </div>
 
-        <div style={{ textAlign: "center", marginTop: 1 }}>
-          <span style={{
-            fontFamily: FONT, fontSize: 9, fontWeight: 700,
-            color: isLive ? "#4ade80" : isFinal ? (stlWin ? WIN_GRN : stlLoss ? LOSS_RD : MUTED) : MUTED,
-            textShadow: isLive ? "0 0 8px rgba(74,222,128,0.6)" : "none",
-            letterSpacing: "0.1em",
-          }}>
-            {isLive ? `▶ ${game.inning_half?.toUpperCase() ?? ""} ${game.inning ?? ""}` : game.status}
-          </span>
-        </div>
+        {(isLive || isFinal) && (
+          <div style={{ textAlign: "center", marginTop: 1 }}>
+            <span style={{
+              fontFamily: FONT, fontSize: 9, fontWeight: 700,
+              color: isLive ? "#4ade80" : isFinal ? (stlWin ? WIN_GRN : stlLoss ? LOSS_RD : MUTED) : MUTED,
+              textShadow: isLive ? "0 0 8px rgba(74,222,128,0.6)" : "none",
+              letterSpacing: "0.1em",
+            }}>
+              {isLive ? `▶ ${game.inning_half?.toUpperCase() ?? ""} ${game.inning ?? ""}` : game.status}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

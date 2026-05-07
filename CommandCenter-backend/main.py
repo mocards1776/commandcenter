@@ -334,6 +334,7 @@ def _parse_natural_task_text(
 ) -> dict:
     title = (raw_title or "").strip()
     importance = int(default_importance or 3)
+    difficulty = 3
     scheduled_start_at = default_scheduled_start_at
     tag_names: list[str] = []
 
@@ -349,6 +350,24 @@ def _parse_natural_task_text(
     tag_names = re.findall(r"#([A-Za-z0-9_-]+)", title)
     if tag_names:
         title = re.sub(r"\s*#[A-Za-z0-9_-]+\b", " ", title)
+
+    # @easy/@medium/@hard/@veryhard OR @1..5 => difficulty
+    m_diff_word = re.search(r"@([a-zA-Z]+)\b", title)
+    if m_diff_word:
+        w = m_diff_word.group(1).lower()
+        if w in ("easy",):
+            difficulty = 2
+        elif w in ("medium", "med"):
+            difficulty = 3
+        elif w in ("hard",):
+            difficulty = 4
+        elif w in ("veryhard", "very_hard", "vhard", "extreme"):
+            difficulty = 5
+        title = re.sub(r"\s*@[a-zA-Z]+\b", " ", title)
+    m_diff_num = re.search(r"@([1-5])\b", title)
+    if m_diff_num:
+        difficulty = int(m_diff_num.group(1))
+        title = re.sub(r"\s*@[1-5]\b", " ", title)
 
     # in 10 minutes / in 2 hours => scheduled_start_at
     m_time = re.search(r"\bin\s+(\d+)\s*(minutes?|mins?|hours?|hrs?)\b", title, flags=re.IGNORECASE)
@@ -369,6 +388,7 @@ def _parse_natural_task_text(
     return {
         "title": title,
         "importance": importance,
+        "difficulty": difficulty,
         "scheduled_start_at": scheduled_start_at,
         "tag_names": tag_names,
     }
@@ -799,7 +819,7 @@ async def create_task(
         default_scheduled_start_at=data.scheduled_start_at,
     )
     importance = parsed["importance"]
-    difficulty = data.difficulty or 3
+    difficulty = parsed["difficulty"] if parsed.get("difficulty") else (data.difficulty or 3)
     focus = calc_focus_score(importance, difficulty)
 
     tag_ids = list(data.tag_ids or [])
