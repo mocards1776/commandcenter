@@ -318,6 +318,61 @@ def parse_telegram_task(text: str) -> dict:
         "notes": "Created via Telegram bot",
     }
 
+def _priority_from_importance(importance: int) -> str:
+    if importance >= 5:
+        return "critical"
+    if importance >= 4:
+        return "high"
+    if importance >= 2:
+        return "medium"
+    return "low"
+
+def _parse_natural_task_text(
+    raw_title: str,
+    default_importance: int,
+    default_scheduled_start_at: Optional[datetime],
+) -> dict:
+    title = (raw_title or "").strip()
+    importance = int(default_importance or 3)
+    scheduled_start_at = default_scheduled_start_at
+    tag_names: list[str] = []
+
+    # !5 => importance 5
+    m_star = re.search(r"!(\d)\b", title)
+    if m_star:
+        stars = int(m_star.group(1))
+        if 1 <= stars <= 5:
+            importance = stars
+        title = re.sub(r"\s*!(\d)\b", " ", title)
+
+    # #Bots => tag "Bots"
+    tag_names = re.findall(r"#([A-Za-z0-9_-]+)", title)
+    if tag_names:
+        title = re.sub(r"\s*#[A-Za-z0-9_-]+\b", " ", title)
+
+    # in 10 minutes / in 2 hours => scheduled_start_at
+    m_time = re.search(r"\bin\s+(\d+)\s*(minutes?|mins?|hours?|hrs?)\b", title, flags=re.IGNORECASE)
+    if m_time:
+        qty = int(m_time.group(1))
+        unit = m_time.group(2).lower()
+        if "hour" in unit or "hr" in unit:
+            delta = timedelta(hours=qty)
+        else:
+            delta = timedelta(minutes=qty)
+        scheduled_start_at = (datetime.now(_CT) + delta).replace(tzinfo=None)
+        title = re.sub(r"\bin\s+\d+\s*(minutes?|mins?|hours?|hrs?)\b", " ", title, flags=re.IGNORECASE)
+
+    title = re.sub(r"\s+", " ", title).strip(" -,:;")
+    if not title:
+        title = (raw_title or "").strip() or "Untitled Task"
+
+    return {
+        "title": title,
+        "importance": importance,
+        "scheduled_start_at": scheduled_start_at,
+        "tag_names": tag_names,
+    }
+
 def _telegram_channel_tag_name(message: dict) -> str:
     chat = message.get("chat", {}) or {}
     source = (
@@ -738,19 +793,44 @@ async def create_task(
     user: User = Depends(get_current_user),
     session: Session = Depends(db.get_session),
 ):
-    focus = calc_focus_score(data.importance or 3, data.difficulty or 3)
-    tag_str = tags_to_str(data.tag_ids)
+    parsed = _parse_natural_task_text(
+        raw_title=data.title,
+        default_importance=data.importance or 3,
+        default_scheduled_start_at=data.scheduled_start_at,
+    )
+    importance = parsed["importance"]
+    difficulty = data.difficulty or 3
+    focus = calc_focus_score(importance, difficulty)
+
+    tag_ids = list(data.tag_ids or [])
+    for raw_name in parsed["tag_names"]:
+        existing = session.execute(
+            select(Tag).where(
+                Tag.user_id == user.id,
+                func.lower(Tag.name) == raw_name.lower(),
+            )
+        ).scalar()
+        if existing:
+            if existing.id not in tag_ids:
+                tag_ids.append(existing.id)
+            continue
+        tag = Tag(name=raw_name, color="#4a7fa8", user_id=user.id)
+        session.add(tag)
+        session.flush()
+        tag_ids.append(tag.id)
+
+    tag_str = tags_to_str(tag_ids)
     task = Task(
-        title=data.title,
+        title=parsed["title"],
         description=data.description,
         notes=data.notes,
         status=data.status or "inbox",
-        priority=data.priority or "medium",
-        importance=data.importance or 3,
-        difficulty=data.difficulty or 3,
+        priority=data.priority or _priority_from_importance(importance),
+        importance=importance,
+        difficulty=difficulty,
         focus_score=focus,
         due_date=data.due_date,
-        scheduled_start_at=data.scheduled_start_at,
+        scheduled_start_at=parsed["scheduled_start_at"],
         time_estimate_minutes=data.time_estimate_minutes,
         project_id=data.project_id,
         parent_id=data.parent_id,
