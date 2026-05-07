@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "react-hot-toast";
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TimerBanner } from "@/components/layout/TimerBanner";
 import { FocusMode } from "@/components/focus/FocusMode";
@@ -29,10 +29,33 @@ function makeQC() {
 }
 
 function AppShell() {
-  const { sidebarCollapsed } = useUIStore();
+  const { sidebarCollapsed, setAddTaskOpen } = useUIStore();
   const { activeTimer } = useTimerStore();
   const location = useLocation();
+  const navigate = useNavigate();
   const sw = sidebarCollapsed ? 48 : 200;
+
+  useEffect(() => {
+    const isTypingTarget = (el: EventTarget | null) => {
+      if (!(el instanceof HTMLElement)) return false;
+      const tag = el.tagName.toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select") return true;
+      return el.isContentEditable;
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key.toLowerCase() !== "a") return;
+      if (isTypingTarget(e.target)) return;
+      e.preventDefault();
+      if (location.pathname !== "/todos") navigate("/todos");
+      setAddTaskOpen(true);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [location.pathname, navigate, setAddTaskOpen]);
+
   return (
     <div style={{ minHeight:"100vh", background:"#162a1c" }}>
       <FocusMode/><CelebrationOverlay/><TimerBanner/><Sidebar/>

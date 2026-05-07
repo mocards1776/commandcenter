@@ -441,9 +441,9 @@ function GameBlock({ game, label }: { game: GameData; label: string }) {
   }`;
 
   return (
-    <div>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <SBHead label={label} center />
-      <div style={{ padding: "4px 8px", background: BG }}>
+      <div style={{ padding: "4px 8px", background: BG, flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
             <CardinalsLogo size={20} />
@@ -485,8 +485,8 @@ function GameBlock({ game, label }: { game: GameData; label: string }) {
           )}
         </div>
 
-        {(isLive || isFinal) && (
-          <div style={{ textAlign: "center", marginTop: 1 }}>
+        <div style={{ textAlign: "center", marginTop: 1, minHeight: 13 }}>
+          {(isLive || isFinal) && (
             <span style={{
               fontFamily: FONT, fontSize: 9, fontWeight: 700,
               color: isLive ? "#4ade80" : isFinal ? (stlWin ? WIN_GRN : stlLoss ? LOSS_RD : MUTED) : MUTED,
@@ -495,8 +495,8 @@ function GameBlock({ game, label }: { game: GameData; label: string }) {
             }}>
               {isLive ? `▶ ${game.inning_half?.toUpperCase() ?? ""} ${game.inning ?? ""}` : game.status}
             </span>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
@@ -578,15 +578,29 @@ export function BaseballPanel() {
         </div>
 
         {/* RIGHT — Cardinals game(s) */}
-        <div style={{ display: "flex", flexDirection: "column", height: "100%", background: BG }}>
-          {currentGame && <GameBlock game={currentGame} label="Today's Game" />}
-          {nextGame    && <GameBlock game={nextGame}    label="Next Game" />}
-          {!currentGame && !nextGame && (
-            <div style={{ padding: "12px 8px", fontFamily: FONT, fontSize: 9, color: DIM, textAlign: "center" }}>
-              Loading schedule…
+        <div style={{ display: "grid", gridTemplateRows: "1fr 1fr", height: "100%", background: BG }}>
+          {currentGame ? (
+            <div style={{ borderBottom: "1px solid rgba(232,168,32,0.12)" }}>
+              <GameBlock game={currentGame} label="Today's Game" />
+            </div>
+          ) : (
+            <div style={{ borderBottom: "1px solid rgba(232,168,32,0.12)" }}>
+              <SBHead label="Today's Game" center />
+              <div style={{ padding: "12px 8px", fontFamily: FONT, fontSize: 9, color: DIM, textAlign: "center" }}>
+                No game data
+              </div>
             </div>
           )}
-          <div style={{ flex: 1 }} />
+          {nextGame ? (
+            <GameBlock game={nextGame} label="Next Game" />
+          ) : (
+            <div>
+              <SBHead label="Next Game" center />
+              <div style={{ padding: "12px 8px", fontFamily: FONT, fontSize: 9, color: DIM, textAlign: "center" }}>
+                No game data
+              </div>
+            </div>
+          )}
         </div>
 
       </div>
