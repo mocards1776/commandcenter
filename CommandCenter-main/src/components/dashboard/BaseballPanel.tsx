@@ -392,7 +392,7 @@ function StandingsRow({ row, rank }: { row: Row; rank: number }) {
       borderBottom: "1px solid rgba(0,0,0,0.3)",
       borderLeft: row.cards ? "2px solid rgba(196,30,58,0.6)" : "2px solid transparent",
     }}>
-      <span style={{ fontFamily: FONT, fontSize: 11, color: DIM, textAlign: "center" }}>{rank}</span>
+      <span style={{ fontFamily: FONT, fontSize: 12, color: DIM, textAlign: "center" }}>{rank}</span>
       {statPanel(
         <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%" }}>
           <img
@@ -410,12 +410,12 @@ function StandingsRow({ row, rank }: { row: Row; rank: number }) {
         </div>,
         row.cards
       )}
-      {statPanel(<span style={{ fontFamily: FONT, fontSize: 11, color: row.cards ? GOLD : FG,
+      {statPanel(<span style={{ fontFamily: FONT, fontSize: 12, color: row.cards ? GOLD : FG,
         fontWeight: row.cards ? 700 : 400 }}>{row.wl}</span>)}
-      {statPanel(<span style={{ fontFamily: FONT, fontSize: 10, color: MUTED }}>{row.pct}</span>)}
-      {statPanel(<span style={{ fontFamily: FONT, fontSize: 10, color: DIM }}>{row.gb === "0" || row.gb === "0.0" ? "—" : row.gb}</span>)}
+      {statPanel(<span style={{ fontFamily: FONT, fontSize: 11, color: MUTED }}>{row.pct}</span>)}
+      {statPanel(<span style={{ fontFamily: FONT, fontSize: 11, color: DIM }}>{row.gb === "0" || row.gb === "0.0" ? "—" : row.gb}</span>)}
       {statPanel(
-        <span style={{ fontFamily: FONT, fontSize: 10,
+        <span style={{ fontFamily: FONT, fontSize: 11,
           color: win ? WIN_GRN : LOSS_RD,
           textShadow: win ? "0 0 6px rgba(58,145,64,0.5)" : "0 0 6px rgba(200,48,48,0.4)" }}>
           {row.strk || "—"}

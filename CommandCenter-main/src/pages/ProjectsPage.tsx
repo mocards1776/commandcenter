@@ -553,12 +553,21 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
       <div style={{ padding: "20px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 15 }}>
           <div className="sb-header-label">CAMPAIGN OBJECTIVES</div>
-          <button
-            onClick={() => setShowAddTask(v => !v)}
-            style={{ background: "transparent", border: "1px solid #e8a820", color: "#e8a820", padding: "4px 10px", borderRadius: 4, fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}
-          >
-            <Plus size={14} /> ADD TASK
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              onClick={() => addTaskMut.mutate({ title: "────────────", parentId: undefined })}
+              style={{ background: "transparent", border: "1px solid rgba(245,240,224,0.35)", color: "rgba(245,240,224,0.75)", padding: "4px 10px", borderRadius: 4, fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'Oswald', Arial, sans-serif" }}
+              title="Insert divider row"
+            >
+              Add Divider
+            </button>
+            <button
+              onClick={() => setShowAddTask(v => !v)}
+              style={{ background: "transparent", border: "1px solid #e8a820", color: "#e8a820", padding: "4px 10px", borderRadius: 4, fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}
+            >
+              <Plus size={14} /> ADD TASK
+            </button>
+          </div>
         </div>
 
         {showAddTask && (

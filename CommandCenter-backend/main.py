@@ -96,6 +96,10 @@ def _gamification_row_for_date(session: Session, user_id: str, day: date) -> dic
         )
     ).scalars().all()
     completed_tasks_today = len(completed_rows)
+    home_runs = sum(
+        1 for t in completed_rows
+        if (t.importance or 0) >= 5 or (t.priority or "").lower() == "critical"
+    )
     if day == _today_ct():
         today_active = session.execute(
             select(Task).where(
@@ -151,7 +155,7 @@ def _gamification_row_for_date(session: Session, user_id: str, day: date) -> dic
         "tasks_attempted": attempted,
         "habits_completed": int(habits_completed),
         "total_focus_minutes": round(time_tracked_seconds / 60),
-        "home_runs": 0,
+        "home_runs": home_runs,
         "hits": completed_tasks_today,
         "strikeouts": strikeouts,
         "batting_average": round(batting_avg, 3),
@@ -693,13 +697,17 @@ async def get_dashboard(
         else:
             break
 
+    home_runs_today = sum(
+        1 for t in completed_today_tasks
+        if (t.importance or 0) >= 5 or (t.priority or "").lower() == "critical"
+    )
     gamification = {
         "stat_date": today.isoformat(),
         "tasks_completed": completed_tasks_today,
         "tasks_attempted": attempted,
         "habits_completed": habits_completed_today,
         "total_focus_minutes": round(time_tracked_seconds / 60),
-        "home_runs": 0,
+        "home_runs": home_runs_today,
         "hits": completed_tasks_today,
         "strikeouts": len(overdue_tasks),
         "batting_average": round(batting_avg, 3),

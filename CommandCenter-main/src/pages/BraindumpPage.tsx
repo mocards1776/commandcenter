@@ -97,7 +97,7 @@ export function BraindumpPage() {
   });
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5" style={{ width: "min(1800px, calc(100vw - 120px))", maxWidth: "100%", margin: "0 auto" }}>
       <div>
         <h1 className="text-2xl font-black text-white flex items-center gap-2">
           <Brain className="w-6 h-6 text-fuchsia-400" /> AI Braindump
@@ -113,7 +113,7 @@ export function BraindumpPage() {
           placeholder={"Just type freely — ramble, brainstorm, vent.\n\n\"I need to finish the website, call dentist, research ETFs, fix the auth bug before Friday, and plan the team offsite…\"\n\nGrok will turn this into structured tasks automatically."}
           rows={12}
           className="w-full bg-[#0a0a14] border border-[#2a2a45] rounded-xl px-4 py-3 text-sm text-slate-200 placeholder:text-slate-700 outline-none focus:border-fuchsia-500/40 resize-y leading-relaxed"
-          style={{ minHeight: 260 }} />
+          style={{ minHeight: 320, fontSize: 15 }} />
         <div className="flex items-center justify-between">
           <span className="text-xs text-slate-600">{text.length} chars</span>
           <button onClick={() => text.trim() && createMutation.mutate()} disabled={!text.trim() || createMutation.isPending}
