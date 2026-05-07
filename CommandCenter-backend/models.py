@@ -44,7 +44,7 @@ class Task(Base):
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
-    status = Column(String(50), default="inbox", index=True)
+    status = Column(String(50), default="today", index=True)
     priority = Column(String(50), default="medium")
 
     importance = Column(Integer, default=3)

@@ -58,14 +58,17 @@ export const useCelebrationStore = create<CelebrationState>((set) => ({
 interface UIState {
   sidebarCollapsed: boolean;
   addTaskOpen: boolean;
+  addTaskProjectId: string | null;
   toggleSidebar: () => void;
-  setAddTaskOpen: (v: boolean) => void;
+  setAddTaskOpen: (v: boolean, projectId?: string | null) => void;
+  clearAddTaskContext: () => void;
 }
 export const useUIStore = create<UIState>()(
   (set) => ({
-    sidebarCollapsed: false, addTaskOpen: false,
+    sidebarCollapsed: false, addTaskOpen: false, addTaskProjectId: null,
     toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
-    setAddTaskOpen: (v) => set({ addTaskOpen: v }),
+    setAddTaskOpen: (v, projectId = null) => set({ addTaskOpen: v, addTaskProjectId: projectId }),
+    clearAddTaskContext: () => set({ addTaskOpen: false, addTaskProjectId: null }),
   })
 );
 

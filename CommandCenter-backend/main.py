@@ -381,6 +381,24 @@ def _parse_natural_task_text(
         scheduled_start_at = (datetime.now(_CT) + delta).replace(tzinfo=None)
         title = re.sub(r"\bin\s+\d+\s*(minutes?|mins?|hours?|hrs?)\b", " ", title, flags=re.IGNORECASE)
 
+    # 3:15pm / 3:15 pm / 315pm / 1210am => scheduled_start_at today (or tomorrow if already passed)
+    m_clock = re.search(r"\b(\d{1,2})(?::?([0-5]\d))\s*([ap]m)\b", title, flags=re.IGNORECASE)
+    if m_clock:
+        hour = int(m_clock.group(1))
+        minute = int(m_clock.group(2) or 0)
+        meridiem = m_clock.group(3).lower()
+        if 1 <= hour <= 12:
+            if meridiem == "pm" and hour != 12:
+                hour += 12
+            if meridiem == "am" and hour == 12:
+                hour = 0
+            now_ct = datetime.now(_CT)
+            target = now_ct.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if target < now_ct:
+                target = target + timedelta(days=1)
+            scheduled_start_at = target.replace(tzinfo=None)
+            title = re.sub(r"\b\d{1,2}(?::?[0-5]\d)?\s*[ap]m\b", " ", title, flags=re.IGNORECASE)
+
     title = re.sub(r"\s+", " ", title).strip(" -,:;")
     if not title:
         title = (raw_title or "").strip() or "Untitled Task"
@@ -904,6 +922,9 @@ async def update_task(
             )
         else:
             setattr(task, field, value)
+
+    if "importance" in update_data and "priority" not in update_data:
+        task.priority = _priority_from_importance(task.importance or 3)
 
     if "status" in update_data and update_data["status"] == "done":
         if not task.completed_at:

@@ -91,7 +91,7 @@ export function BraindumpPage() {
         qc.invalidateQueries({ queryKey: ["braindump"] });
         qc.invalidateQueries({ queryKey: ["tasks"] });
         qc.invalidateQueries({ queryKey: ["projects"] });
-        toast.success("Tasks extracted! Check your inbox ✓", { duration: 5000 });
+        toast.success("Tasks extracted! Check your task list ✓", { duration: 5000 });
       }).catch(() => toast.error("AI processing failed — check XAI_API_KEY"));
     },
   });

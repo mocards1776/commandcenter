@@ -277,6 +277,30 @@ export function TaskModal({ open, onClose, task, projectId, parentId, defaultSta
 
   const focusScore = difficulty * importance;
 
+  useEffect(() => {
+    const starMatch = title.match(/!(\d)\b/);
+    if (starMatch) {
+      const n = Number(starMatch[1]);
+      if (n >= 1 && n <= 5 && n !== importance) setImportanceRaw(n);
+    }
+    const diffWord = title.match(/@([a-zA-Z]+)\b/);
+    if (diffWord) {
+      const w = diffWord[1].toLowerCase();
+      const mapped =
+        w === "easy" ? 2 :
+        (w === "medium" || w === "med") ? 3 :
+        w === "hard" ? 4 :
+        (w === "veryhard" || w === "very_hard" || w === "vhard" || w === "extreme") ? 5 :
+        null;
+      if (mapped && mapped !== difficulty) setDifficulty(mapped);
+    }
+    const diffNum = title.match(/@([1-5])\b/);
+    if (diffNum) {
+      const n = Number(diffNum[1]);
+      if (n !== difficulty) setDifficulty(n);
+    }
+  }, [title, importance, difficulty]);
+
   useEffect(()=>{
     if(!open) return;
     setTitle(task?.title ?? initialTitle ?? "");
@@ -497,7 +521,6 @@ export function TaskModal({ open, onClose, task, projectId, parentId, defaultSta
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
               <div style={FIELD}>{SHEAD("Status")}
                 <select value={status} onChange={e=>setStatus(e.target.value as TaskStatus)} style={INP}>
-                  <option value="inbox">Inbox</option>
                   <option value="today">Today</option>
                   <option value="upcoming">Upcoming</option>
                   <option value="someday">Someday</option>

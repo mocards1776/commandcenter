@@ -367,6 +367,7 @@ function ProjectRow({
 function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [newTaskParentId, setNewTaskParentId] = useState<string>("");
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [completionTask, setCompletionTask] = useState<Task | null>(null);
   const [hideCompleted, setHideCompleted] = useState(false);
@@ -395,9 +396,10 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
   });
 
   const addTaskMut = useMutation({
-    mutationFn: (title: string) => tasksApi.create({
+    mutationFn: ({ title, parentId }: { title: string; parentId?: string }) => tasksApi.create({
       title,
       project_id: id,
+      parent_id: parentId,
       status: "today",
       priority: "medium",
       importance: 3,
@@ -409,6 +411,7 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
       qc.invalidateQueries({ queryKey: ["project", id] });
       qc.invalidateQueries({ queryKey: ["projects"] });
       setNewTaskTitle("");
+      setNewTaskParentId("");
       setShowAddTask(false);
       toast.success("Task added to campaign");
     },
@@ -480,6 +483,7 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
     return (a.sort_order ?? 0) - (b.sort_order ?? 0);
   });
   const visibleTasks = hideCompleted ? sortedTasks.filter(t => t.status !== "done" && t.status !== "cancelled") : sortedTasks;
+  const parentCandidates = allTasks.filter(t => !t.parent_id);
   const tagMap: Record<string, string> = Object.fromEntries((allTags as any[]).map((t: any) => [t.id, t.name]));
   const completedCount = allTasks.reduce((acc, t) =>
     acc + (t.status === "done" ? 1 : 0) + (t.subtasks || []).filter(s => s.status === "done").length
@@ -504,6 +508,8 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
     if (stars >= 2) return "medium";
     return "low";
   };
+  const priorityFromImportance = (n: number): "critical" | "high" | "medium" | "low" =>
+    n >= 5 ? "critical" : n >= 4 ? "high" : n >= 2 ? "medium" : "low";
 
   return (
     <div className="sb-shell" style={{ minHeight: "100vh" }}>
@@ -560,14 +566,29 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
             <input
               autoFocus
               style={{ background: "transparent", border: "none", width: "100%", color: "#fff", outline: "none", fontSize: 14 }}
-              placeholder="ENTER NEW TASK TITLE..."
+              placeholder="ENTER NEW TASK / SUBPROJECT TITLE..."
               value={newTaskTitle}
               onChange={e => setNewTaskTitle(e.target.value)}
               onKeyDown={e => {
-                if (e.key === "Enter" && newTaskTitle.trim()) addTaskMut.mutate(newTaskTitle.trim());
+                if (e.key === "Enter" && newTaskTitle.trim()) addTaskMut.mutate({ title: newTaskTitle.trim(), parentId: newTaskParentId || undefined });
                 if (e.key === "Escape") setShowAddTask(false);
               }}
             />
+            <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
+              <label style={{ fontSize: 10, color: "rgba(245,240,224,0.55)", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'Oswald', Arial, sans-serif" }}>
+                Parent
+              </label>
+              <select
+                value={newTaskParentId}
+                onChange={e => setNewTaskParentId(e.target.value)}
+                style={{ background: "rgba(0,0,0,0.2)", color: "#f5f0e0", border: "1px solid rgba(245,240,224,0.2)", padding: "4px 8px", fontSize: 11 }}
+              >
+                <option value="">Top-level (parent/divider)</option>
+                {parentCandidates.map((pt) => (
+                  <option key={pt.id} value={pt.id}>{pt.title}</option>
+                ))}
+              </select>
+            </div>
             {addPrefix && addSuggestions.length > 0 && (
               <div style={{ marginTop: 8, border: "1px solid rgba(232,168,32,0.22)", background: "#162a1c", borderRadius: 3, overflow: "hidden" }}>
                 {addSuggestions.map((s) => (
@@ -629,7 +650,7 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
               tags={allTags as any[]}
               onSetDueDate={(dateIso?: string) => quickUpdateMut.mutate({ taskId: t.id, patch: { due_date: dateIso ? `${dateIso}T00:00:00Z` : null } })}
               onSetStartTime={(iso?: string) => quickUpdateMut.mutate({ taskId: t.id, patch: { scheduled_start_at: iso ?? null } })}
-              onSetImportance={(n: number) => quickUpdateMut.mutate({ taskId: t.id, patch: { importance: n } })}
+              onSetImportance={(n: number) => quickUpdateMut.mutate({ taskId: t.id, patch: { importance: n, priority: priorityFromImportance(n) } })}
               onSetDifficulty={(n: number) => quickUpdateMut.mutate({ taskId: t.id, patch: { difficulty: n } })}
               onSetProject={(projectId?: string) => quickUpdateMut.mutate({ taskId: t.id, patch: { project_id: projectId ?? null } })}
               onSetCategory={(categoryId?: string) => quickUpdateMut.mutate({ taskId: t.id, patch: { category_id: categoryId ?? null } })}

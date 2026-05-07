@@ -213,10 +213,10 @@ export function TimeBlockPage() {
     select: (data) => data ?? [],
   });
 
-  // Backlog: fetch today's + inbox tasks
+  // Backlog: fetch today's + active tasks
   const { data: backlogRaw } = useQuery({
     queryKey: ["tasks", "backlog-timeblock"],
-    queryFn: () => tasksApi.list({ status: "today,inbox,in_progress", limit: 100 }),
+    queryFn: () => tasksApi.list({ status: "today,upcoming,in_progress", limit: 100 }),
     refetchInterval: 60_000,
     retry: (failureCount, error) => {
       if (isNonRetryableError(error)) return false;
