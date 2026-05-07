@@ -445,6 +445,34 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
   }
 
   const allTasks = p.tasks || [];
+  const addToken = newTaskTitle.match(/(?:^|\s)([#@!])([^\s]*)$/);
+  const addPrefix = addToken?.[1] ?? null;
+  const addQuery = addToken?.[2] ?? "";
+  const addSuggestions =
+    addPrefix === "#"
+      ? (allTags as any[])
+          .filter((t: any) => t.name.toLowerCase().includes(addQuery.toLowerCase()))
+          .slice(0, 6)
+          .map((t: any) => ({ label: `#${t.name}`, value: `#${t.name}` }))
+      : addPrefix === "!"
+      ? [5, 4, 3, 2, 1]
+          .filter((n) => String(n).startsWith(addQuery))
+          .map((n) => ({ label: `!${n} importance`, value: `!${n}` }))
+      : addPrefix === "@"
+      ? [
+          { label: "@easy difficulty", value: "@easy" },
+          { label: "@medium difficulty", value: "@medium" },
+          { label: "@hard difficulty", value: "@hard" },
+          { label: "@veryhard difficulty", value: "@veryhard" },
+        ].filter((o) => o.value.includes(addQuery.toLowerCase()))
+      : [];
+
+  const applyAddSuggestion = (tokenValue: string) => {
+    setNewTaskTitle((prev) => prev.replace(/(?:^|\s)([#@!])([^\s]*)$/, (m) => {
+      const lead = m.startsWith(" ") ? " " : "";
+      return `${lead}${tokenValue} `;
+    }));
+  };
   const sortedTasks = [...allTasks].sort((a, b) => {
     const aDone = a.status === "done" || a.status === "cancelled";
     const bDone = b.status === "done" || b.status === "cancelled";
@@ -540,6 +568,35 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
                 if (e.key === "Escape") setShowAddTask(false);
               }}
             />
+            {addPrefix && addSuggestions.length > 0 && (
+              <div style={{ marginTop: 8, border: "1px solid rgba(232,168,32,0.22)", background: "#162a1c", borderRadius: 3, overflow: "hidden" }}>
+                {addSuggestions.map((s) => (
+                  <button
+                    key={s.label}
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      applyAddSuggestion(s.value);
+                    }}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      background: "transparent",
+                      border: "none",
+                      color: "rgba(245,240,224,0.75)",
+                      padding: "6px 10px",
+                      fontSize: 11,
+                      letterSpacing: "0.08em",
+                      textTransform: "uppercase",
+                      cursor: "pointer",
+                      fontFamily: "'Oswald', Arial, sans-serif",
+                    }}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

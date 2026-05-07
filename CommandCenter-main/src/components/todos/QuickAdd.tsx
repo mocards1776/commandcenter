@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { tasksApi } from "@/lib/api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { tasksApi, tagsApi } from "@/lib/api";
 import { TaskModal } from "./TaskModal";
 import { parseTask } from "@/lib/nlp";
 import type { TaskStatus } from "@/types";
@@ -38,7 +38,7 @@ export function QuickAdd({
 
   const createMut = useMutation({
     mutationFn: () => {
-      const title = parsed.cleanTitle || value.trim();
+      const title = value.trim();
       if (!title) throw new Error("Title required");
 
       // Build due_date ISO string
@@ -94,6 +94,42 @@ export function QuickAdd({
   const openModal = (e: React.MouseEvent) => {
     e.stopPropagation();
     setModalOpen(true);
+  };
+
+  const { data: allTags = [] } = useQuery({
+    queryKey: ["tags"],
+    queryFn: tagsApi.list,
+    staleTime: 60_000,
+  });
+
+  const activeToken = value.match(/(?:^|\s)([#@!])([^\s]*)$/);
+  const activePrefix = activeToken?.[1] ?? null;
+  const activeQuery = activeToken?.[2] ?? "";
+  const suggestions =
+    activePrefix === "#"
+      ? (allTags as any[])
+          .filter((t: any) => t.name.toLowerCase().includes(activeQuery.toLowerCase()))
+          .slice(0, 6)
+          .map((t: any) => ({ label: `#${t.name}`, value: `#${t.name}` }))
+      : activePrefix === "!"
+      ? [5, 4, 3, 2, 1]
+          .filter((n) => String(n).startsWith(activeQuery))
+          .map((n) => ({ label: `!${n} importance`, value: `!${n}` }))
+      : activePrefix === "@"
+      ? [
+          { label: "@easy difficulty", value: "@easy" },
+          { label: "@medium difficulty", value: "@medium" },
+          { label: "@hard difficulty", value: "@hard" },
+          { label: "@veryhard difficulty", value: "@veryhard" },
+        ].filter((o) => o.value.includes(activeQuery.toLowerCase()))
+      : [];
+
+  const applySuggestion = (tokenValue: string) => {
+    setValue((prev) => prev.replace(/(?:^|\s)([#@!])([^\s]*)$/, (m) => {
+      const lead = m.startsWith(" ") ? " " : "";
+      return `${lead}${tokenValue} `;
+    }));
+    inputRef.current?.focus();
   };
 
   return (
@@ -205,6 +241,44 @@ export function QuickAdd({
           }}
         >
           ENTER to save fast · SHIFT+ENTER for full form · ESC to clear
+        </div>
+      )}
+
+      {focused && activePrefix && suggestions.length > 0 && (
+        <div
+          style={{
+            marginTop: 4,
+            border: "1px solid rgba(232,168,32,0.22)",
+            background: "#1e3629",
+            borderRadius: 3,
+            overflow: "hidden",
+          }}
+        >
+          {suggestions.map((s) => (
+            <button
+              key={s.label}
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                applySuggestion(s.value);
+              }}
+              style={{
+                width: "100%",
+                textAlign: "left",
+                background: "transparent",
+                border: "none",
+                color: "rgba(245,240,224,0.75)",
+                padding: "6px 10px",
+                fontSize: 11,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                cursor: "pointer",
+                fontFamily: "'Oswald', Arial, sans-serif",
+              }}
+            >
+              {s.label}
+            </button>
+          ))}
         </div>
       )}
 
