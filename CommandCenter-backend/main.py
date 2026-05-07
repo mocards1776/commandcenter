@@ -100,6 +100,16 @@ def _gamification_row_for_date(session: Session, user_id: str, day: date) -> dic
         1 for t in completed_rows
         if (t.importance or 0) >= 5 or (t.priority or "").lower() == "critical"
     )
+    focus_from_tasks = sum((t.focus_score or 0) for t in completed_rows)
+    completed_projects_day = session.execute(
+        select(func.count(Project.id)).where(
+            Project.user_id == user_id,
+            Project.status == "completed",
+            Project.updated_at >= day_start,
+            Project.updated_at < day_end,
+        )
+    ).scalar() or 0
+    focus_score_completed = focus_from_tasks + completed_projects_day * 30
     if day == _today_ct():
         today_active = session.execute(
             select(Task).where(
@@ -156,6 +166,7 @@ def _gamification_row_for_date(session: Session, user_id: str, day: date) -> dic
         "habits_completed": int(habits_completed),
         "total_focus_minutes": round(time_tracked_seconds / 60),
         "home_runs": home_runs,
+        "focus_score_completed": focus_score_completed,
         "hits": completed_tasks_today,
         "strikeouts": strikeouts,
         "batting_average": round(batting_avg, 3),
@@ -708,6 +719,7 @@ async def get_dashboard(
         "habits_completed": habits_completed_today,
         "total_focus_minutes": round(time_tracked_seconds / 60),
         "home_runs": home_runs_today,
+        "focus_score_completed": focus_score_today,
         "hits": completed_tasks_today,
         "strikeouts": len(overdue_tasks),
         "batting_average": round(batting_avg, 3),
@@ -866,6 +878,11 @@ async def create_task(
         tag_ids.append(tag.id)
 
     tag_str = tags_to_str(tag_ids)
+    due_val = data.due_date
+    if due_val is None:
+        ct_today = datetime.now(_CT).date()
+        start_ct = datetime(ct_today.year, ct_today.month, ct_today.day, tzinfo=_CT)
+        due_val = start_ct.astimezone(_UTC).replace(tzinfo=None)
     task = Task(
         title=parsed["title"],
         description=data.description,
@@ -875,7 +892,7 @@ async def create_task(
         importance=importance,
         difficulty=difficulty,
         focus_score=focus,
-        due_date=data.due_date,
+        due_date=due_val,
         scheduled_start_at=parsed["scheduled_start_at"],
         time_estimate_minutes=data.time_estimate_minutes,
         project_id=data.project_id,

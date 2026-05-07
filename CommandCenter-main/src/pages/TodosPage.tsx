@@ -179,7 +179,7 @@ export function TodosPage() {
 
   const { data: gamHistory } = useQuery({
     queryKey: ["gamification-history"],
-    queryFn: () => gamificationApi.history(90),
+    queryFn: () => gamificationApi.history(120),
     retry: false,
     staleTime: 5 * 60_000,
   });
@@ -212,6 +212,14 @@ export function TodosPage() {
   const wkBA  = last7.length  ? battingAvgStr(histAvg(last7.map(h => h.batting_average)))  : null;
   const moBA  = last30.length ? battingAvgStr(histAvg(last30.map(h => h.batting_average))) : null;
   const bestBA = all.length   ? battingAvgStr(histBest(all.map(h => h.batting_average)))   : null;
+
+  const wkAvgFocusScore = last7.length ? Math.round(histAvg(last7.map(h => h.focus_score_completed ?? 0))) : null;
+  const moAvgFocusScore = last30.length ? Math.round(histAvg(last30.map(h => h.focus_score_completed ?? 0))) : null;
+  const bestFocusScoreDay = all.length ? Math.round(histBest(all.map(h => h.focus_score_completed ?? 0))) : null;
+
+  const wkAvgCritical = last7.length ? Math.round(histAvg(last7.map(h => h.home_runs ?? 0))) : null;
+  const moAvgCritical = last30.length ? Math.round(histAvg(last30.map(h => h.home_runs ?? 0))) : null;
+  const bestCriticalDay = all.length ? histBest(all.map(h => h.home_runs ?? 0)) : null;
 
   const todayISO = todayStr();
   const dateKey = (v?: string) => {
@@ -326,10 +334,10 @@ export function TodosPage() {
         {/* Critical Tasks */}
         <div className="sb-row" style={{ gridTemplateColumns: COLS }}>
           <div className="sb-label">Critical Tasks</div>
-          <SbCell value={critical > 0 ? critical : DASH} sub="home runs" color="red" />
-          <SbCell value={DASH} color="empty" />
-          <SbCell value={DASH} color="empty" />
-          <SbCell value={DASH} color="empty" />
+          <SbCell value={critical} sub="home runs" color="red" />
+          <SbCell value={wkAvgCritical !== null ? wkAvgCritical : DASH} color="empty" />
+          <SbCell value={moAvgCritical !== null ? moAvgCritical : DASH} color="empty" />
+          <SbCell value={bestCriticalDay !== null ? bestCriticalDay : DASH} sub="best day" color="empty" />
         </div>
 
         {/* Batting Average */}
@@ -345,9 +353,9 @@ export function TodosPage() {
         <div className="sb-row" style={{ gridTemplateColumns: COLS }}>
           <div className="sb-label">Focus Score</div>
           <SbCell value={Math.round(focusScoreToday)} sub="today" color="white" />
-          <SbCell value={DASH} color="empty" />
-          <SbCell value={DASH} color="empty" />
-          <SbCell value={DASH} sub="best day" color="empty" />
+          <SbCell value={wkAvgFocusScore !== null ? wkAvgFocusScore : DASH} color="empty" />
+          <SbCell value={moAvgFocusScore !== null ? moAvgFocusScore : DASH} color="empty" />
+          <SbCell value={bestFocusScoreDay !== null ? bestFocusScoreDay : DASH} sub="best day" color="empty" />
         </div>
       </div>
       {/* ── END SCOREBOARD ──────────────────────────────────────── */}

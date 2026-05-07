@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { tasksApi, tagsApi } from "@/lib/api";
 import { TaskModal } from "./TaskModal";
 import { parseTask } from "@/lib/nlp";
+import { todayStr } from "@/lib/utils";
 import type { TaskStatus } from "@/types";
 import toast from "react-hot-toast";
 import { CalendarClock, ChevronRight } from "lucide-react";
@@ -41,12 +42,14 @@ export function QuickAdd({
       const title = value.trim();
       if (!title) throw new Error("Title required");
 
-      // Build due_date ISO string
+      // Build due_date ISO string (default today in Central so tasks show under Today filter)
       let due_date: string | undefined;
       if (parsed.dueDate && parsed.dueTime) {
         due_date = `${parsed.dueDate}T${parsed.dueTime}:00`;
       } else if (parsed.dueDate) {
         due_date = parsed.dueDate;
+      } else {
+        due_date = `${todayStr()}T00:00:00Z`;
       }
 
       return tasksApi.create({
