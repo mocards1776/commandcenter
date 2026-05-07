@@ -55,8 +55,17 @@ function getSelectedCalIds(): string[] {
 
 interface NextEvent { title: string; startMs: number; }
 
+function derivedPriority(task: Task): "critical" | "high" | "medium" | "low" {
+  const stars = Number(task.importance ?? 0);
+  if (stars >= 5) return "critical";
+  if (stars >= 4) return "high";
+  if (stars >= 2) return "medium";
+  return "low";
+}
+
 function taskScore(task: Task): number {
-  const priorityBonus = (PRIORITY_WEIGHT[task.priority] ?? 0) * 100;
+  const p = derivedPriority(task);
+  const priorityBonus = (PRIORITY_WEIGHT[p] ?? 0) * 100;
   const fs = task.focus_score ?? 0;
   let dueBonus = 0;
   if (task.due_date) {
@@ -280,11 +289,12 @@ interface TaskSlotProps {
 
 function TaskSlot({ task, size, allTasks, onTaskClick, onOverride }: TaskSlotProps) {
   const overdue  = isOverdue(task.due_date);
-  const accent   = ACCENT[task.priority];
+  const derivedP = derivedPriority(task);
+  const accent   = ACCENT[derivedP];
   const fsColor  = task.focus_score >= 20 ? "#d94040" : task.focus_score >= 12 ? "#e8a820" : "rgba(245,240,224,0.3)";
-  const priLabel = task.priority === "critical" ? "CRIT"
-    : task.priority === "high" ? "HIGH"
-    : task.priority === "medium" ? "MED" : "LOW";
+  const priLabel = derivedP === "critical" ? "CRIT"
+    : derivedP === "high" ? "HIGH"
+    : derivedP === "medium" ? "MED" : "LOW";
 
   const { isRunning, activeTimer, elapsedSeconds, start, stop } = useActiveTimer();
   const { setActiveTimer } = useTimerStore();

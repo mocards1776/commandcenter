@@ -76,9 +76,17 @@ def _ct_calendar_day_bounds(day: date) -> tuple[datetime, datetime]:
     start = datetime(day.year, day.month, day.day)
     return start, start + timedelta(days=1)
 
+def _ct_day_bounds_as_utc_naive(day: date) -> tuple[datetime, datetime]:
+    """UTC-naive bounds for a Central day, for DB fields stored as UTC-naive datetimes."""
+    start_ct = datetime(day.year, day.month, day.day, tzinfo=_CT)
+    end_ct = start_ct + timedelta(days=1)
+    start_utc_naive = start_ct.astimezone(_UTC).replace(tzinfo=None)
+    end_utc_naive = end_ct.astimezone(_UTC).replace(tzinfo=None)
+    return start_utc_naive, end_utc_naive
+
 def _gamification_row_for_date(session: Session, user_id: str, day: date) -> dict:
     """Build scoreboard-shaped stats for one calendar day (for /gamification history)."""
-    day_start, day_end = _ct_calendar_day_bounds(day)
+    day_start, day_end = _ct_day_bounds_as_utc_naive(day)
     completed_rows = session.execute(
         select(Task).where(
             Task.user_id == user_id,
@@ -127,8 +135,8 @@ def _gamification_row_for_date(session: Session, user_id: str, day: date) -> dic
             select(func.count(Task.id)).where(
                 Task.user_id == user_id,
                 Task.status == "done",
-                Task.completed_at >= datetime(check.year, check.month, check.day),
-                Task.completed_at < datetime(check.year, check.month, check.day) + timedelta(days=1),
+                Task.completed_at >= _ct_day_bounds_as_utc_naive(check)[0],
+                Task.completed_at < _ct_day_bounds_as_utc_naive(check)[1],
             )
         ).scalar() or 0
         if count > 0:
@@ -463,7 +471,7 @@ async def get_dashboard(
     session: Session = Depends(db.get_session),
 ):
     today = _today_ct()
-    today_dt = datetime(today.year, today.month, today.day)
+    today_start, today_end = _ct_day_bounds_as_utc_naive(today)
 
     # Tasks
     today_tasks = session.execute(
@@ -476,7 +484,7 @@ async def get_dashboard(
     overdue_tasks = session.execute(
         select(Task).where(
             Task.user_id == user.id,
-            Task.due_date < today_dt,
+            Task.due_date < today_start,
             Task.status.notin_(["done"]),
         )
     ).scalars().all()
@@ -486,7 +494,8 @@ async def get_dashboard(
         select(Task).where(
             Task.user_id == user.id,
             Task.status == "done",
-            Task.completed_at >= today_dt,
+            Task.completed_at >= today_start,
+            Task.completed_at < today_end,
         )
     ).scalars().all()
 
@@ -498,7 +507,8 @@ async def get_dashboard(
     time_entries_today = session.execute(
         select(TimeEntry).where(
             TimeEntry.user_id == user.id,
-            TimeEntry.started_at >= today_dt,
+            TimeEntry.started_at >= today_start,
+            TimeEntry.started_at < today_end,
             TimeEntry.ended_at != None,  # noqa: E711
         )
     ).scalars().all()
@@ -562,7 +572,8 @@ async def get_dashboard(
         select(func.count(Project.id)).where(
             Project.user_id == user.id,
             Project.status == "completed",
-            Project.updated_at >= today_dt,
+            Project.updated_at >= today_start,
+            Project.updated_at < today_end,
         )
     ).scalar() or 0
     focus_score_today += completed_projects_today * 30
@@ -579,8 +590,8 @@ async def get_dashboard(
             select(func.count(Task.id)).where(
                 Task.user_id == user.id,
                 Task.status == "done",
-                Task.completed_at >= datetime(check.year, check.month, check.day),
-                Task.completed_at < datetime(check.year, check.month, check.day) + timedelta(days=1),
+                Task.completed_at >= _ct_day_bounds_as_utc_naive(check)[0],
+                Task.completed_at < _ct_day_bounds_as_utc_naive(check)[1],
             )
         ).scalar() or 0
         if count > 0:
