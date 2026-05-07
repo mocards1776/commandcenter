@@ -919,6 +919,7 @@ input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepi
   line-height: var(--notebook-rule-gap);
   margin: 0;
   padding-top: var(--notebook-baseline-offset);
+  background: transparent;
 }
 
 .notes-page--notebook .icon-btn {
@@ -957,6 +958,17 @@ input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepi
 .notes-page--notebook .edit-textarea {
   line-height: var(--notebook-rule-gap);
   padding-top: var(--notebook-baseline-offset);
+  margin-top: 0;
+  min-height: calc(var(--notebook-rule-gap) * 6);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent calc(var(--notebook-rule-gap) - 2px),
+    var(--notebook-rule-line) calc(var(--notebook-rule-gap) - 2px),
+    var(--notebook-rule-line) var(--notebook-rule-gap)
+  );
+  background-size: 100% var(--notebook-rule-gap);
+  background-color: transparent;
 }
 
 .notes-page--notebook .form-input:focus,

@@ -104,15 +104,16 @@ export function BraindumpPage() {
         </h1>
         <p className="text-sm text-slate-500 mt-1">Dump everything rattling in your head. Grok AI structures it into tasks and projects.</p>
       </div>
-      <div className="rounded-2xl border border-fuchsia-500/20 bg-[#12121f] p-4 space-y-3">
+      <div className="rounded-2xl border border-fuchsia-500/20 bg-[#12121f] p-5 space-y-3" style={{ width: "100%", minHeight: 360 }}>
         <div className="flex items-center gap-2 text-fuchsia-300">
           <Brain className="w-4 h-4" />
           <span className="text-sm font-semibold">What's on your mind?</span>
         </div>
         <textarea value={text} onChange={e => setText(e.target.value)}
           placeholder={"Just type freely — ramble, brainstorm, vent.\n\n\"I need to finish the website, call dentist, research ETFs, fix the auth bug before Friday, and plan the team offsite…\"\n\nGrok will turn this into structured tasks automatically."}
-          rows={8}
-          className="w-full bg-[#0a0a14] border border-[#2a2a45] rounded-xl px-4 py-3 text-sm text-slate-200 placeholder:text-slate-700 outline-none focus:border-fuchsia-500/40 resize-none leading-relaxed" />
+          rows={12}
+          className="w-full bg-[#0a0a14] border border-[#2a2a45] rounded-xl px-4 py-3 text-sm text-slate-200 placeholder:text-slate-700 outline-none focus:border-fuchsia-500/40 resize-y leading-relaxed"
+          style={{ minHeight: 260 }} />
         <div className="flex items-center justify-between">
           <span className="text-xs text-slate-600">{text.length} chars</span>
           <button onClick={() => text.trim() && createMutation.mutate()} disabled={!text.trim() || createMutation.isPending}

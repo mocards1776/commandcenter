@@ -367,7 +367,6 @@ const STANDINGS_COLS = "28px minmax(220px, 2fr) minmax(80px, 1fr) minmax(72px, 1
 function StandingsRow({ row, rank }: { row: Row; rank: number }) {
   const win      = row.strk?.startsWith("W");
   const tid      = row.team_id as number;
-  const abbr     = ID_MAP[tid]?.[0] ?? row.abbr ?? "???";
   const shortName = ID_MAP[tid]?.[1] ?? row.full ?? "";
   const fullTeamName = tid === 138 ? "St. Louis Cardinals" : `${shortName}`;
 
@@ -395,8 +394,14 @@ function StandingsRow({ row, rank }: { row: Row; rank: number }) {
       <span style={{ fontFamily: FONT, fontSize: 11, color: DIM, textAlign: "center" }}>{rank}</span>
       {statPanel(
         <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%" }}>
-          <span style={{ fontFamily: FONT, fontSize: 14, fontWeight: 800,
-            color: row.cards ? "#c41e3a" : GOLD, letterSpacing: "0.05em", flexShrink: 0 }}>{abbr}</span>
+          <img
+            src={`https://www.mlbstatic.com/team-logos/${tid}.svg`}
+            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+            width={18}
+            height={18}
+            style={{ objectFit: "contain", flexShrink: 0 }}
+            alt={fullTeamName}
+          />
           <span style={{ fontFamily: FONT, fontSize: 12, color: row.cards ? FG : MUTED,
             fontWeight: row.cards ? 700 : 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {fullTeamName}
@@ -431,8 +436,9 @@ function GameBlock({ game, label }: { game: GameData; label: string }) {
     <div>
       <SBHead label={label} />
       <div style={{ padding: "6px 8px", background: BG }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <CardinalsLogo size={20} />
             <span style={{ fontFamily: FONT, fontSize: 9, color: MUTED }}>
               {game.is_home ? "VS" : "@"}
             </span>
@@ -443,8 +449,9 @@ function GameBlock({ game, label }: { game: GameData; label: string }) {
               style={{ objectFit: "contain" }}
               alt=""
             />
-            <span style={{ fontFamily: FONT, fontSize: 13, fontWeight: 700, color: FG }}>
-              {game.opp_abbr} {game.opp_name}
+            <span style={{ fontFamily: FONT, fontSize: 12, fontWeight: 700, color: FG }}>
+              Cardinals {game.is_home ? "vs" : "@"} {game.opp_name}
+              {game.game_time ? ` · ${game.game_time}` : ""}
             </span>
           </div>
           <span style={{
@@ -471,7 +478,7 @@ function GameBlock({ game, label }: { game: GameData; label: string }) {
               {game.date_label && (
                 <div style={{ fontFamily: FONT, fontSize: 9, color: DIM, marginBottom: 2 }}>{game.date_label}</div>
               )}
-              <div style={{ fontFamily: FONT, fontSize: 18, fontWeight: 700, color: GOLD, letterSpacing: "0.04em" }}>
+              <div style={{ fontFamily: FONT, fontSize: 16, fontWeight: 700, color: GOLD, letterSpacing: "0.04em" }}>
                 {game.game_time ?? "TBD"}
               </div>
               {game.venue && (
@@ -491,10 +498,10 @@ function GameBlock({ game, label }: { game: GameData; label: string }) {
         {(game.stl_pitcher || game.opp_pitcher) && (
           <div style={{ marginTop: 4, display: "flex", gap: 12 }}>
             {game.stl_pitcher && (
-              <span style={{ fontFamily: FONT, fontSize: 8, color: DIM }}>STL: {game.stl_pitcher}</span>
+              <span style={{ fontFamily: FONT, fontSize: 10, color: FG, fontWeight: 600 }}>STL: {game.stl_pitcher}</span>
             )}
             {game.opp_pitcher && (
-              <span style={{ fontFamily: FONT, fontSize: 8, color: DIM }}>{game.opp_abbr}: {game.opp_pitcher}</span>
+              <span style={{ fontFamily: FONT, fontSize: 10, color: FG, fontWeight: 600 }}>{game.opp_abbr}: {game.opp_pitcher}</span>
             )}
           </div>
         )}
