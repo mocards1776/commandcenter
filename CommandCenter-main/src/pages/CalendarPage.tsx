@@ -1067,7 +1067,7 @@ export function CalendarPage() {
               <div style={{ fontSize: 9, opacity: 0.45, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                 {task.status === "today" ? "📌 Today"
                   : task.status === "in_progress" ? "⚡ Active"
-                  : task.status === "inbox" ? "📥 Inbox"
+                  : task.status === "upcoming" ? "🗓 Upcoming"
                   : task.status}
               </div>
             </div>

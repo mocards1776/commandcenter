@@ -1,5 +1,5 @@
 // ─── Enums ───────────────────────────────────────────────────
-export type TaskStatus = "inbox" | "today" | "in_progress" | "done" | "cancelled" | "waiting";
+export type TaskStatus = "today" | "in_progress" | "done" | "cancelled" | "waiting" | "upcoming" | "someday";
 export type Priority = "low" | "medium" | "high" | "critical";
 export type ProjectStatus = "active" | "on_hold" | "completed" | "archived";
 export type HabitFrequency = "daily" | "weekdays" | "weekends" | "weekly" | "custom";

@@ -48,8 +48,15 @@ function AppShell() {
       if (e.key.toLowerCase() !== "a") return;
       if (isTypingTarget(e.target)) return;
       e.preventDefault();
+      const projectMatch = location.pathname.match(/^\/projects\/([^/]+)$/);
+      const projectId = projectMatch?.[1] ?? null;
+      if (projectId) {
+        navigate(`/todos?projectId=${encodeURIComponent(projectId)}`);
+        setAddTaskOpen(true, projectId);
+        return;
+      }
       if (location.pathname !== "/todos") navigate("/todos");
-      setAddTaskOpen(true);
+      setAddTaskOpen(true, null);
     };
 
     window.addEventListener("keydown", onKeyDown);

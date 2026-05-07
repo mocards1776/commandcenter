@@ -321,7 +321,24 @@ export function DashboardPage() {
                 <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.2)", marginBottom: 4 }}>Overdue</div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <div className="panel panel-sm"><span className="panel-num red" style={{ fontSize: 20 }}>{overdueT.length}</span></div>
-                  <span style={{ fontFamily: "'Oswald',Arial,sans-serif", fontSize: 10, color: "rgba(255,255,255,0.3)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Need attention</span>
+                  <button
+                    type="button"
+                    onClick={() => navigate("/todos?needsAttention=1")}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      cursor: "pointer",
+                      fontFamily: "'Oswald',Arial,sans-serif",
+                      fontSize: 10,
+                      color: "rgba(255,255,255,0.3)",
+                      letterSpacing: "0.1em",
+                      textTransform: "uppercase",
+                    }}
+                    title="View tasks needing attention"
+                  >
+                    Need attention
+                  </button>
                 </div>
               </div>
             )}

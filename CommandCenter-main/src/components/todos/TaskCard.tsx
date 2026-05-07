@@ -210,7 +210,9 @@ export function TaskCard({
   const setStartTime = (iso?: string) => {
     quickUpdateMut.mutate({ scheduled_start_at: iso ?? null });
   };
-  const setImportance = (n: number) => quickUpdateMut.mutate({ importance: n });
+  const derivedPriority = (n: number): "critical" | "high" | "medium" | "low" =>
+    n >= 5 ? "critical" : n >= 4 ? "high" : n >= 2 ? "medium" : "low";
+  const setImportance = (n: number) => quickUpdateMut.mutate({ importance: n, priority: derivedPriority(n) });
   const setDifficulty = (n: number) => quickUpdateMut.mutate({ difficulty: n });
   const setProject = (id?: string) => quickUpdateMut.mutate({ project_id: id });
   const setCategory = (id?: string) => quickUpdateMut.mutate({ category_id: id });

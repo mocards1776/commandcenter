@@ -85,43 +85,46 @@ export function TodosPage() {
     return v == null ? true : v === "1";
   });
   const [categoryTab, setCategoryTab] = useState<string | null>(() => localStorage.getItem("todos_category_tab") || null);
-  const [tagFilter, setTagFilter] = useState<{ id: string; name: string } | null>(() => {
-    const id = localStorage.getItem("todos_tag_id");
-    const name = localStorage.getItem("todos_tag_name");
-    return id ? { id, name: name || "Selected Tag" } : null;
-  });
-  const [categoryFilter, setCategoryFilter] = useState<{ id: string; name: string } | null>(() => {
-    const id = localStorage.getItem("todos_category_filter_id");
-    const name = localStorage.getItem("todos_category_filter_name");
-    return id ? { id, name: name || "Selected Category" } : null;
-  });
-  const [projectFilter, setProjectFilter] = useState<{ id: string; name: string } | null>(() => {
-    const id = localStorage.getItem("todos_project_filter_id");
-    const name = localStorage.getItem("todos_project_filter_name");
-    return id ? { id, name: name || "Selected Project" } : null;
-  });
+  const [tagFilter, setTagFilter] = useState<{ id: string; name: string } | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<{ id: string; name: string } | null>(null);
+  const [projectFilter, setProjectFilter] = useState<{ id: string; name: string } | null>(null);
+  const [needsAttentionOnly, setNeedsAttentionOnly] = useState(false);
+  const [shortcutProjectId, setShortcutProjectId] = useState<string | undefined>(undefined);
   const { activeTimer } = useTimerStore();
-  const { addTaskOpen, setAddTaskOpen } = useUIStore();
+  const { addTaskOpen, addTaskProjectId, clearAddTaskContext } = useUIStore();
   const { pinnedTaskId, setPinnedTask } = usePinnedTaskStore();
   const qc = useQueryClient();
 
   const [modalOpen, setModalOpen] = useState(false);
   useEffect(() => {
     if (addTaskOpen) {
+      setShortcutProjectId(addTaskProjectId || undefined);
       setModalOpen(true);
-      setAddTaskOpen(false);
+      clearAddTaskContext();
     }
-  }, [addTaskOpen, setAddTaskOpen]);
+  }, [addTaskOpen, addTaskProjectId, clearAddTaskContext]);
   useEffect(() => {
     const tagId = searchParams.get("tag");
     const tagName = searchParams.get("tagName");
-    if (!tagId) return;
-    setMode("upcoming");
-    setSearch("");
-    setTagFilter({ id: tagId, name: tagName || "Selected Tag" });
-    setCategoryFilter(null);
-    setProjectFilter(null);
-    setCategoryTab(null);
+    const projectId = searchParams.get("projectId");
+    const needsAttention = searchParams.get("needsAttention") === "1";
+    setNeedsAttentionOnly(needsAttention);
+    if (tagId) {
+      setMode("upcoming");
+      setSearch("");
+      setTagFilter({ id: tagId, name: tagName || "Selected Tag" });
+      setCategoryFilter(null);
+      setProjectFilter(null);
+      setCategoryTab(null);
+    }
+    if (projectId) {
+      setMode("today");
+      setProjectFilter({ id: projectId, name: "Selected Project" });
+      setTagFilter(null);
+      setCategoryFilter(null);
+      setCategoryTab(null);
+      setShortcutProjectId(projectId);
+    }
   }, [searchParams]);
   useEffect(() => { localStorage.setItem("todos_mode", mode); }, [mode]);
   useEffect(() => { localStorage.setItem("todos_search", search); }, [search]);
@@ -132,33 +135,6 @@ export function TodosPage() {
     if (categoryTab) localStorage.setItem("todos_category_tab", categoryTab);
     else localStorage.removeItem("todos_category_tab");
   }, [categoryTab]);
-  useEffect(() => {
-    if (tagFilter) {
-      localStorage.setItem("todos_tag_id", tagFilter.id);
-      localStorage.setItem("todos_tag_name", tagFilter.name);
-    } else {
-      localStorage.removeItem("todos_tag_id");
-      localStorage.removeItem("todos_tag_name");
-    }
-  }, [tagFilter]);
-  useEffect(() => {
-    if (categoryFilter) {
-      localStorage.setItem("todos_category_filter_id", categoryFilter.id);
-      localStorage.setItem("todos_category_filter_name", categoryFilter.name);
-    } else {
-      localStorage.removeItem("todos_category_filter_id");
-      localStorage.removeItem("todos_category_filter_name");
-    }
-  }, [categoryFilter]);
-  useEffect(() => {
-    if (projectFilter) {
-      localStorage.setItem("todos_project_filter_id", projectFilter.id);
-      localStorage.setItem("todos_project_filter_name", projectFilter.name);
-    } else {
-      localStorage.removeItem("todos_project_filter_id");
-      localStorage.removeItem("todos_project_filter_name");
-    }
-  }, [projectFilter]);
 
   const reorderMut = useMutation({
     mutationFn: (ids: string[]) => tasksApi.reorder(ids),
@@ -256,6 +232,7 @@ export function TodosPage() {
     const scheduledToday = !!scheduledRaw && scheduledDay === todayISO;
     const dueDay = dateKey(t.due_date);
     const dueTodayOrOverdue = !!dueDay && dueDay <= todayISO;
+    const isOverdue = !!dueDay && dueDay < todayISO;
     const modePass = mode === "today"
       ? (
           scheduledToday || dueTodayOrOverdue
@@ -272,7 +249,8 @@ export function TodosPage() {
     const projectPass = !projectFilter || t.project_id === projectFilter.id;
     const startMs = parseStartMs(scheduledRaw);
     const startPass = !hideNotStarted || !scheduledRaw || (startMs !== null && startMs <= Date.now());
-    return statusPass && modePass && priorityPass && categoryTabPass && tagPass && categoryPass && projectPass && startPass;
+    const needsAttentionPass = !needsAttentionOnly || isOverdue;
+    return statusPass && modePass && priorityPass && categoryTabPass && tagPass && categoryPass && projectPass && startPass && needsAttentionPass;
   });
   const activeTaskId = activeTimer?.task_id;
 
@@ -421,17 +399,18 @@ export function TodosPage() {
           <option value="focus_score">Sort: Focus Score</option>
         </select>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…" style={{ marginLeft: "auto", padding: "4px 10px", fontSize: 11, width: 130 }} />
-        {(tagFilter || categoryFilter || projectFilter || categoryTab) && (
+        {(tagFilter || categoryFilter || projectFilter || categoryTab || needsAttentionOnly) && (
           <button
-            onClick={() => { setTagFilter(null); setCategoryFilter(null); setProjectFilter(null); setCategoryTab(null); }}
+            onClick={() => { setTagFilter(null); setCategoryFilter(null); setProjectFilter(null); setCategoryTab(null); setNeedsAttentionOnly(false); }}
             style={{ padding: "4px 10px", border: "1px solid rgba(217,64,64,0.45)", background: "transparent", color: "#d94040", fontFamily: "'Oswald',Arial,sans-serif", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer", borderRadius: 2 }}
           >
             Clear Context
           </button>
         )}
       </div>
-      {(tagFilter || categoryFilter || projectFilter) && (
+      {(tagFilter || categoryFilter || projectFilter || needsAttentionOnly) && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", padding: "6px 12px", background: "#1a2e22", borderBottom: "1px solid rgba(0,0,0,0.35)" }}>
+          {needsAttentionOnly && <span style={{ fontSize: 10, color: "#d94040", letterSpacing: "0.08em", textTransform: "uppercase" }}>Needs Attention</span>}
           {tagFilter && <span style={{ fontSize: 10, color: "#e8a820", letterSpacing: "0.08em", textTransform: "uppercase" }}>Tag: {tagFilter.name}</span>}
           {categoryFilter && <span style={{ fontSize: 10, color: "#e8a820", letterSpacing: "0.08em", textTransform: "uppercase" }}>Category: {categoryFilter.name}</span>}
           {projectFilter && <span style={{ fontSize: 10, color: "#e8a820", letterSpacing: "0.08em", textTransform: "uppercase" }}>Project: {projectFilter.name}</span>}
@@ -439,7 +418,15 @@ export function TodosPage() {
       )}
 
       <QuickAdd defaultStatus={mode === "done" ? "today" : "today" as TaskStatus} />
-      <TaskModal open={modalOpen} onClose={() => setModalOpen(false)} defaultStatus="today" />
+      <TaskModal
+        open={modalOpen}
+        onClose={() => {
+          setModalOpen(false);
+          setShortcutProjectId(undefined);
+        }}
+        defaultStatus="today"
+        projectId={shortcutProjectId}
+      />
 
       {isLoading ? (
         <div style={{ display: "flex", justifyContent: "center", padding: 48 }}>
