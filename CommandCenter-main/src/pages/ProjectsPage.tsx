@@ -469,6 +469,13 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
     if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
     return `${m}:${String(s).padStart(2, "0")}`;
   };
+  const derivedPriority = (t: Task): "critical" | "high" | "medium" | "low" => {
+    const stars = Number(t.importance ?? 0);
+    if (stars >= 5) return "critical";
+    if (stars >= 4) return "high";
+    if (stars >= 2) return "medium";
+    return "low";
+  };
 
   return (
     <div className="sb-shell" style={{ minHeight: "100vh" }}>
@@ -590,7 +597,7 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
                   background: t.status === "done" ? "rgba(30,54,41,0.5)" : "#1e3629",
                   padding: "0",
                   marginBottom: 8,
-                  borderLeft: t.priority === "critical" ? "4px solid #d94040" : t.priority === "high" ? "4px solid #e8a820" : "none",
+                  borderLeft: derivedPriority(t) === "critical" ? "4px solid #d94040" : derivedPriority(t) === "high" ? "4px solid #e8a820" : "none",
                   cursor: "pointer",
                   transition: "background 0.12s",
                 }}
@@ -658,8 +665,8 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
                     </span>
                   )}
                 </div>
-                <div style={{ textAlign: "center", fontSize: 10, textTransform: "uppercase", opacity: 0.75, display: "flex", alignItems: "center", justifyContent: "center", color: t.priority === "critical" ? "#d94040" : t.priority === "high" ? "#e8a820" : "rgba(245,240,224,0.75)", letterSpacing: "0.08em", fontFamily: "'Oswald', Arial, sans-serif" }}>
-                  {t.priority}
+                <div style={{ textAlign: "center", fontSize: 10, textTransform: "uppercase", opacity: 0.75, display: "flex", alignItems: "center", justifyContent: "center", color: derivedPriority(t) === "critical" ? "#d94040" : derivedPriority(t) === "high" ? "#e8a820" : "rgba(245,240,224,0.75)", letterSpacing: "0.08em", fontFamily: "'Oswald', Arial, sans-serif" }}>
+                  {derivedPriority(t)}
                 </div>
                 <div style={{ textAlign: "center", fontWeight: 700, color: "#e8a820", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Oswald', Arial, sans-serif", letterSpacing: "0.06em" }}>
                   {t.focus_score ?? 0}

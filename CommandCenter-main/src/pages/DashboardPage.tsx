@@ -160,7 +160,9 @@ export function DashboardPage() {
   }).length;
 
   const projects = (data?.active_projects ?? []).slice(0, 3);
-  const allPending = [...(data?.today_tasks ?? []), ...overdueT].slice(0, 4);
+  const allPending = [...(data?.today_tasks ?? []), ...overdueT].filter(
+    (task: any, index: number, arr: any[]) => arr.findIndex(t => t.id === task.id) === index
+  );
   const nowChicago = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
   const pendingHabits = habitEntries.filter((e: any) => {
     const hh = e?.habit?.time_hour ?? e?.time_hour;
