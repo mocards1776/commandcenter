@@ -737,9 +737,9 @@ input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepi
    Notes page isolation + modern notebook skin (no green bleed)
    ───────────────────────────────────────────────────────────── */
 .notes-page--notebook {
-  --notebook-rule-gap: 40px;
+  --notebook-rule-gap: 36px;
   --notebook-rule-line: #b7c3cd;
-  --notebook-baseline-offset: 9px;
+  --notebook-baseline-offset: 1px;
   min-height: calc(100vh - 40px);
   padding: 12px;
   background: #eae6dc;
@@ -916,10 +916,12 @@ input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepi
 
 .notes-page--notebook .entry-text {
   color: #111a28;
+  font-size: 20px;
   line-height: var(--notebook-rule-gap);
   margin: 0;
-  padding-top: var(--notebook-baseline-offset);
+  padding-top: 0;
   background: transparent;
+  transform: translateY(2px);
 }
 
 .notes-page--notebook .icon-btn {
@@ -956,8 +958,9 @@ input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepi
 
 .notes-page--notebook .form-textarea,
 .notes-page--notebook .edit-textarea {
+  font-size: 20px;
   line-height: var(--notebook-rule-gap);
-  padding-top: var(--notebook-baseline-offset);
+  padding-top: 0;
   margin-top: 0;
   min-height: calc(var(--notebook-rule-gap) * 6);
   background-image: repeating-linear-gradient(
@@ -969,6 +972,7 @@ input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7) sepi
   );
   background-size: 100% var(--notebook-rule-gap);
   background-color: transparent;
+  background-position-y: 2px;
 }
 
 .notes-page--notebook .form-input:focus,

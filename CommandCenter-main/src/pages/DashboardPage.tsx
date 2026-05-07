@@ -280,11 +280,13 @@ export function DashboardPage() {
                     <span className="proj-pct">{pct}%</span>
                   </div>
                   <div className="proj-track"><div className="proj-fill" style={{ width: `${pct}%` }} /></div>
-                  <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(245,240,224,0.25)", marginTop: 3 }}>
-                    {openTasks} Open Tasks
-                  </div>
-                  <div style={{ fontSize: 8, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(245,240,224,0.14)", marginTop: 1 }}>
-                    {completedTasks} Completed Tasks
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 3 }}>
+                    <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(245,240,224,0.25)" }}>
+                      {openTasks} Open Tasks
+                    </span>
+                    <span style={{ fontSize: 8, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(245,240,224,0.14)" }}>
+                      {completedTasks} Completed Tasks
+                    </span>
                   </div>
                 </div>
               );
