@@ -432,10 +432,17 @@ function GameBlock({ game, label }: { game: GameData; label: string }) {
   const stlWin   = hasScore && isFinal && (game.stl_score! > game.opp_score!);
   const stlLoss  = hasScore && isFinal && (game.stl_score! < game.opp_score!);
 
+  const matchupLine = `Cardinals ${game.is_home ? "vs" : "@"} ${game.opp_name ?? game.opp_abbr ?? "Opponent"}`;
+  const detailLine = `${game.game_time ?? "TBD"}${game.venue ? ` · ${game.venue}` : ""}${
+    game.stl_pitcher || game.opp_pitcher
+      ? ` · STL: ${game.stl_pitcher ?? "TBD"} | ${game.opp_abbr ?? "OPP"}: ${game.opp_pitcher ?? "TBD"}`
+      : ""
+  }`;
+
   return (
     <div>
       <SBHead label={label} />
-      <div style={{ padding: "6px 8px", background: BG }}>
+      <div style={{ padding: "4px 8px", background: BG }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "center" }}>
             <CardinalsLogo size={20} />
@@ -446,8 +453,8 @@ function GameBlock({ game, label }: { game: GameData; label: string }) {
               style={{ objectFit: "contain" }}
               alt=""
             />
-            <span style={{ fontFamily: FONT, fontSize: 12, fontWeight: 700, color: FG, textAlign: "center" }}>
-              Cardinals {game.is_home ? "vs" : "@"} {game.opp_name}
+            <span style={{ fontFamily: FONT, fontSize: 13, fontWeight: 700, color: FG, textAlign: "center" }}>
+              {matchupLine}
             </span>
           </div>
         </div>
@@ -463,11 +470,8 @@ function GameBlock({ game, label }: { game: GameData; label: string }) {
             </>
           ) : (
             <div style={{ flex: 1, textAlign: "center" }}>
-              <div style={{ fontFamily: FONT, fontSize: 11, color: GOLD, marginBottom: 2 }}>
-                {(game.game_time ?? "TBD")} · {game.venue ?? "TBD"}
-              </div>
-              <div style={{ fontFamily: FONT, fontSize: 10, color: FG, fontWeight: 600 }}>
-                {`STL: ${game.stl_pitcher ?? "TBD"}  |  ${game.opp_abbr ?? "OPP"}: ${game.opp_pitcher ?? "TBD"}`}
+              <div style={{ fontFamily: FONT, fontSize: 12, color: GOLD, fontWeight: 700, lineHeight: 1.2 }}>
+                {detailLine}
               </div>
             </div>
           )}
@@ -480,17 +484,7 @@ function GameBlock({ game, label }: { game: GameData; label: string }) {
           )}
         </div>
 
-        {(game.stl_pitcher || game.opp_pitcher) && hasScore && (
-          <div style={{ marginTop: 4, display: "flex", gap: 12 }}>
-            {game.stl_pitcher && (
-              <span style={{ fontFamily: FONT, fontSize: 10, color: FG, fontWeight: 600 }}>STL: {game.stl_pitcher}</span>
-            )}
-            {game.opp_pitcher && (
-              <span style={{ fontFamily: FONT, fontSize: 10, color: FG, fontWeight: 600 }}>{game.opp_abbr}: {game.opp_pitcher}</span>
-            )}
-          </div>
-        )}
-        <div style={{ textAlign: "center", marginTop: 2 }}>
+        <div style={{ textAlign: "center", marginTop: 1 }}>
           <span style={{
             fontFamily: FONT, fontSize: 9, fontWeight: 700,
             color: isLive ? "#4ade80" : isFinal ? (stlWin ? WIN_GRN : stlLoss ? LOSS_RD : MUTED) : MUTED,
@@ -581,7 +575,7 @@ export function BaseballPanel() {
         </div>
 
         {/* RIGHT — Cardinals game(s) */}
-        <div>
+        <div style={{ display: "flex", flexDirection: "column", height: "100%", background: BG }}>
           {currentGame && <GameBlock game={currentGame} label="Today's Game" />}
           {nextGame    && <GameBlock game={nextGame}    label="Next Game" />}
           {!currentGame && !nextGame && (
@@ -589,6 +583,7 @@ export function BaseballPanel() {
               Loading schedule…
             </div>
           )}
+          <div style={{ flex: 1 }} />
         </div>
 
       </div>
