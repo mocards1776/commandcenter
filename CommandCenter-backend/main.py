@@ -844,7 +844,7 @@ async def create_task(
         title=parsed["title"],
         description=data.description,
         notes=data.notes,
-        status=data.status or "inbox",
+        status=data.status or "today",
         priority=data.priority or _priority_from_importance(importance),
         importance=importance,
         difficulty=difficulty,

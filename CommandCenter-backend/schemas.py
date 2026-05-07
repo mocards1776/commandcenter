@@ -25,7 +25,7 @@ class TaskCreate(BaseModel):
     title: str
     description: Optional[str] = None
     notes: Optional[str] = None
-    status: str = "inbox"
+    status: str = "today"
     priority: str = "medium"
     importance: int = 3
     difficulty: int = 3
