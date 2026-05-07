@@ -221,6 +221,8 @@ export interface GamificationStats {
   tasks_attempted: number;
   habits_completed: number;
   total_focus_minutes: number;
+  /** Sum of focus scores for tasks completed that day (+ project completion bonuses). */
+  focus_score_completed?: number;
   home_runs: number;
   hits: number;
   strikeouts: number;

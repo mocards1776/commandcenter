@@ -10,6 +10,58 @@ import { useTimerStore } from "@/store";
 import type { ProjectSummary, Task, Project } from "@/types";
 import { toast } from "react-hot-toast";
 import { useParams } from "react-router-dom";
+import { todayStr } from "@/lib/utils";
+
+/** Flatten tasks in parent → children tree order for display. */
+function orderProjectTasksForDisplay(tasks: Task[]): Task[] {
+  const idSet = new Set(tasks.map(t => t.id));
+  const isTop = (t: Task) => !t.parent_id || !idSet.has(t.parent_id!);
+  const tops = tasks.filter(isTop).sort((a, b) => {
+    const aDone = a.status === "done" || a.status === "cancelled";
+    const bDone = b.status === "done" || b.status === "cancelled";
+    if (aDone !== bDone) return aDone ? 1 : -1;
+    return (a.sort_order ?? 0) - (b.sort_order ?? 0);
+  });
+  const childrenOf = (pid: string) =>
+    tasks
+      .filter(k => k.parent_id === pid)
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  const out: Task[] = [];
+  const walk = (node: Task) => {
+    out.push(node);
+    for (const c of childrenOf(node.id)) walk(c);
+  };
+  for (const p of tops) walk(p);
+  const seen = new Set(out.map(t => t.id));
+  for (const t of tasks) {
+    if (!seen.has(t.id)) {
+      out.push(t);
+      seen.add(t.id);
+    }
+  }
+  return out;
+}
+
+function taskIndentDepth(t: Task, tasks: Task[]): number {
+  const byId: Record<string, Task> = Object.fromEntries(tasks.map(x => [x.id, x]));
+  let d = 0;
+  let cur: Task | undefined = t;
+  while (cur?.parent_id && byId[cur.parent_id]) {
+    d++;
+    cur = byId[cur.parent_id];
+  }
+  return d;
+}
+
+/** True if newParentId is dragId or an ancestor of dragId (would create a cycle). */
+function wouldCreateParentCycle(tasks: Task[], dragId: string, newParentId: string): boolean {
+  let cur: Task | undefined = tasks.find(x => x.id === newParentId);
+  while (cur) {
+    if (cur.id === dragId) return true;
+    cur = cur.parent_id ? tasks.find(x => x.id === cur!.parent_id) : undefined;
+  }
+  return false;
+}
 
 // ─── Flip-panel primitives ──────────────────────────────────────────────────────
 
@@ -368,6 +420,7 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskParentId, setNewTaskParentId] = useState<string>("");
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [completionTask, setCompletionTask] = useState<Task | null>(null);
   const [hideCompleted, setHideCompleted] = useState(false);
@@ -404,6 +457,7 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
       priority: "medium",
       importance: 3,
       difficulty: 3,
+      due_date: `${todayStr()}T00:00:00Z`,
       tag_ids: [],
       show_in_daily: true,
     }),
@@ -483,6 +537,7 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
     return (a.sort_order ?? 0) - (b.sort_order ?? 0);
   });
   const visibleTasks = hideCompleted ? sortedTasks.filter(t => t.status !== "done" && t.status !== "cancelled") : sortedTasks;
+  const orderedVisibleTasks = orderProjectTasksForDisplay(visibleTasks);
   const parentCandidates = allTasks.filter(t => !t.parent_id);
   const tagMap: Record<string, string> = Object.fromEntries((allTags as any[]).map((t: any) => [t.id, t.name]));
   const completedCount = allTasks.reduce((acc, t) =>
@@ -555,13 +610,15 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
           <div className="sb-header-label">CAMPAIGN OBJECTIVES</div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <button
-              onClick={() => addTaskMut.mutate({ title: "────────────", parentId: undefined })}
-              style={{ background: "transparent", border: "1px solid rgba(245,240,224,0.35)", color: "rgba(245,240,224,0.75)", padding: "4px 10px", borderRadius: 4, fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'Oswald', Arial, sans-serif" }}
-              title="Insert divider row"
+              type="button"
+              onClick={() => { setNewTaskParentId(""); setShowAddTask(true); }}
+              style={{ background: "transparent", border: "1px solid rgba(245,240,224,0.35)", color: "rgba(245,240,224,0.85)", padding: "4px 10px", borderRadius: 4, fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'Oswald', Arial, sans-serif" }}
+              title="Add a top-level parent task, then drag other tasks onto it to nest"
             >
-              Add Divider
+              Add Parent Task
             </button>
             <button
+              type="button"
               onClick={() => setShowAddTask(v => !v)}
               style={{ background: "transparent", border: "1px solid #e8a820", color: "#e8a820", padding: "4px 10px", borderRadius: 4, fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}
             >
@@ -575,7 +632,7 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
             <input
               autoFocus
               style={{ background: "transparent", border: "none", width: "100%", color: "#fff", outline: "none", fontSize: 14 }}
-              placeholder="ENTER NEW TASK / SUBPROJECT TITLE..."
+              placeholder="NEW TASK TITLE…"
               value={newTaskTitle}
               onChange={e => setNewTaskTitle(e.target.value)}
               onKeyDown={e => {
@@ -647,10 +704,10 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
           <div className="sb-col-head">TAG</div>
         </div>
 
-        {visibleTasks.length === 0 ? (
+        {orderedVisibleTasks.length === 0 ? (
           <div style={{ padding: 40, textAlign: "center", color: "rgba(255,255,255,0.3)" }}>No tasks assigned to this campaign.</div>
         ) : (
-          visibleTasks.map((t: Task) => (
+          orderedVisibleTasks.map((t: Task) => (
             <TaskContextMenu
               key={t.id}
               task={t}
@@ -679,22 +736,50 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
             >
               <div
                 className="sb-row"
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData("application/task-id", t.id);
+                  e.dataTransfer.effectAllowed = "move";
+                }}
+                onDragEnd={() => setDragOverId(null)}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  setDragOverId(t.id);
+                }}
+                onDragLeave={() => setDragOverId(null)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDragOverId(null);
+                  const from = e.dataTransfer.getData("application/task-id");
+                  if (!from || from === t.id) return;
+                  if (wouldCreateParentCycle(allTasks, from, t.id)) {
+                    toast.error("Cannot nest a task under its own subtask");
+                    return;
+                  }
+                  quickUpdateMut.mutate({ taskId: from, patch: { parent_id: t.id } });
+                }}
                 style={{
                   display: "grid", gridTemplateColumns: "1fr 92px 86px 86px 100px 100px 120px",
                   background: t.status === "done" ? "rgba(30,54,41,0.5)" : "#1e3629",
                   padding: "0",
                   marginBottom: 8,
                   borderLeft: derivedPriority(t) === "critical" ? "4px solid #d94040" : derivedPriority(t) === "high" ? "4px solid #e8a820" : "none",
+                  outline: dragOverId === t.id ? "2px dashed rgba(232,168,32,0.65)" : "none",
+                  outlineOffset: 0,
                   cursor: "pointer",
                   transition: "background 0.12s",
                 }}
                 onMouseEnter={e => (e.currentTarget.style.background = "#244232")}
                 onMouseLeave={e => (e.currentTarget.style.background = t.status === "done" ? "rgba(30,54,41,0.5)" : "#1e3629")}
                 onClick={() => setSelectedTask({ ...t, tag_ids: t.tag_ids ?? [], subtasks: t.subtasks ?? [] })}
+                title="Drag onto another row to make it a subtask of that row"
               >
-                <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ padding: "12px 16px", paddingLeft: 12 + taskIndentDepth(t, allTasks) * 22, display: "flex", alignItems: "center", gap: 10 }}>
                   <button
                     type="button"
+                    draggable={false}
                     onClick={(e) => {
                       e.stopPropagation();
                       if (t.status === "done") toggleTaskMut.mutate(t);
@@ -714,6 +799,7 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
                   </span>
                   <button
                     type="button"
+                    draggable={false}
                     onClick={(e) => {
                       e.stopPropagation();
                       const isThisRunning = isRunning && activeTimer?.task_id === t.id;
