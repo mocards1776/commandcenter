@@ -6,7 +6,7 @@ import { TaskModal } from "@/components/todos/TaskModal";
 import { TaskContextMenu } from "@/components/todos/TaskContextMenu";
 import { CompletionDialog } from "@/components/todos/CompletionDialog";
 import { useActiveTimer } from "@/hooks/useTimer";
-import { useTimerStore } from "@/store";
+import { useTimerStore, useUIStore } from "@/store";
 import type { ProjectSummary, Task, Project } from "@/types";
 import { toast } from "react-hot-toast";
 import { useParams } from "react-router-dom";
@@ -419,6 +419,7 @@ function ProjectRow({
 function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [newTaskType, setNewTaskType] = useState<"parent" | "child">("parent");
   const [newTaskParentId, setNewTaskParentId] = useState<string>("");
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -427,6 +428,7 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const qc = useQueryClient();
   const { isRunning, activeTimer, elapsedSeconds, start, stop } = useActiveTimer();
   const { setActiveTimer } = useTimerStore();
+  const { addTaskOpen, addTaskProjectId, clearAddTaskContext } = useUIStore();
 
   const { data: p, isLoading } = useQuery<Project>({
     queryKey: ["project", id],
@@ -470,6 +472,15 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
       toast.success("Task added to campaign");
     },
   });
+
+  useEffect(() => {
+    if (!addTaskOpen) return;
+    if (addTaskProjectId !== id) return;
+    setShowAddTask(true);
+    setNewTaskType("parent");
+    setNewTaskParentId("");
+    clearAddTaskContext();
+  }, [addTaskOpen, addTaskProjectId, clearAddTaskContext, id]);
 
   // Toggle task done / undone
   const toggleTaskMut = useMutation({
@@ -657,10 +668,40 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
               value={newTaskTitle}
               onChange={e => setNewTaskTitle(e.target.value)}
               onKeyDown={e => {
-                if (e.key === "Enter" && newTaskTitle.trim()) addTaskMut.mutate({ title: newTaskTitle.trim(), parentId: newTaskParentId || undefined });
+                if (
+                  e.key === "Enter" &&
+                  newTaskTitle.trim() &&
+                  (newTaskType === "parent" || !!newTaskParentId)
+                ) {
+                  addTaskMut.mutate({
+                    title: newTaskTitle.trim(),
+                    parentId: newTaskType === "child" ? (newTaskParentId || undefined) : undefined,
+                  });
+                }
                 if (e.key === "Escape") setShowAddTask(false);
               }}
             />
+            <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 12 }}>
+              <label style={{ fontSize: 10, color: "rgba(245,240,224,0.7)", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'Oswald', Arial, sans-serif", display: "flex", alignItems: "center", gap: 5 }}>
+                <input
+                  type="radio"
+                  checked={newTaskType === "parent"}
+                  onChange={() => {
+                    setNewTaskType("parent");
+                    setNewTaskParentId("");
+                  }}
+                />
+                Parent Task
+              </label>
+              <label style={{ fontSize: 10, color: "rgba(245,240,224,0.7)", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'Oswald', Arial, sans-serif", display: "flex", alignItems: "center", gap: 5 }}>
+                <input
+                  type="radio"
+                  checked={newTaskType === "child"}
+                  onChange={() => setNewTaskType("child")}
+                />
+                Child Task
+              </label>
+            </div>
             <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
               <label style={{ fontSize: 10, color: "rgba(245,240,224,0.55)", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'Oswald', Arial, sans-serif" }}>
                 Parent
@@ -668,6 +709,7 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
               <select
                 value={newTaskParentId}
                 onChange={e => setNewTaskParentId(e.target.value)}
+                disabled={newTaskType !== "child"}
                 style={{ background: "rgba(0,0,0,0.2)", color: "#f5f0e0", border: "1px solid rgba(245,240,224,0.2)", padding: "4px 8px", fontSize: 11 }}
               >
                 <option value="">Top-level (parent/divider)</option>
@@ -676,6 +718,11 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
                 ))}
               </select>
             </div>
+            {newTaskType === "child" && !newTaskParentId && (
+              <div style={{ marginTop: 6, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(217,64,64,0.8)", fontFamily: "'Oswald', Arial, sans-serif" }}>
+                Select a parent task for child task creation
+              </div>
+            )}
             {addPrefix && addSuggestions.length > 0 && (
               <div style={{ marginTop: 8, border: "1px solid rgba(232,168,32,0.22)", background: "#162a1c", borderRadius: 3, overflow: "hidden" }}>
                 {addSuggestions.map((s) => (
@@ -754,6 +801,11 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
                 quickUpdateMut.mutate({ taskId: t.id, patch: { tag_ids: next } });
               }}
               onEdit={() => setSelectedTask({ ...t, tag_ids: t.tag_ids ?? [], subtasks: t.subtasks ?? [] })}
+              onAddChildTask={() => {
+                setShowAddTask(true);
+                setNewTaskType("child");
+                setNewTaskParentId(t.id);
+              }}
               onDelete={() => {
                 if (!window.confirm(`Delete "${t.title}"?`)) return;
                 tasksApi.delete(t.id).then(() => {

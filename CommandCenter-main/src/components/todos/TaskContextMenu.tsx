@@ -20,6 +20,7 @@ interface TaskContextMenuProps {
   onSetProject?: (projectId?: string) => void;
   onSetCategory?: (categoryId?: string) => void;
   onToggleTag?: (tagId: string) => void;
+  onAddChildTask?: () => void;
 }
 
 export function TaskContextMenu({
@@ -40,6 +41,7 @@ export function TaskContextMenu({
   onSetProject,
   onSetCategory,
   onToggleTag,
+  onAddChildTask,
 }: TaskContextMenuProps) {
   const toLocalIso = (d: Date) => {
     const pad = (n: number) => String(n).padStart(2, "0");
@@ -199,6 +201,13 @@ export function TaskContextMenu({
               </ContextMenu.SubContent>
             </ContextMenu.Portal>
           </ContextMenu.Sub>
+
+          {onAddChildTask && (
+            <ContextMenu.Item className="task-ctx-item" onSelect={onAddChildTask}>
+              <FolderOpen size={11} className="task-ctx-icon" />
+              Add Child Task
+            </ContextMenu.Item>
+          )}
 
           {/* Pin / Unpin — only for active tasks */}
           {task.status !== "done" && (
