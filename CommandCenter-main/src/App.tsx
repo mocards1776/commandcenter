@@ -23,6 +23,7 @@ import { TagsPage }       from "@/pages/TagsPage";
 import { DailySummaryPage } from "@/pages/DailySummaryPage";
 import { LoginPage }      from "@/pages/LoginPage";
 import { tokenStore }     from "@/lib/api";
+import { DueReminderNotifications } from "@/components/notifications/DueReminderNotifications";
 
 function makeQC() {
   return new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, retry: 1 } } });
@@ -51,7 +52,6 @@ function AppShell() {
       const projectMatch = location.pathname.match(/^\/projects\/([^/]+)$/);
       const projectId = projectMatch?.[1] ?? null;
       if (projectId) {
-        navigate(`/todos?projectId=${encodeURIComponent(projectId)}`);
         setAddTaskOpen(true, projectId);
         return;
       }
@@ -66,6 +66,7 @@ function AppShell() {
   return (
     <div style={{ minHeight:"100vh", background:"#162a1c" }}>
       <FocusMode/><CelebrationOverlay/><TimerBanner/><Sidebar/>
+      <DueReminderNotifications />
       <main style={{ marginLeft:sw, paddingTop:activeTimer?44:0, minHeight:"100vh", transition:"margin-left 0.25s ease" }}>
         <div className="sb-shell" style={{ minHeight:"calc(100vh - 0px)" }} key={location.pathname}>
           <Routes>

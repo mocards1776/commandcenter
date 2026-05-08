@@ -84,6 +84,10 @@ export function TodosPage() {
     const v = localStorage.getItem("todos_hide_not_started");
     return v == null ? true : v === "1";
   });
+  const [overdueOnly, setOverdueOnly] = useState(() => {
+    const v = localStorage.getItem("todos_overdue_only");
+    return v === "1";
+  });
   const [categoryTab, setCategoryTab] = useState<string | null>(() => localStorage.getItem("todos_category_tab") || null);
   const [tagFilter, setTagFilter] = useState<{ id: string; name: string } | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<{ id: string; name: string } | null>(null);
@@ -131,6 +135,7 @@ export function TodosPage() {
   useEffect(() => { localStorage.setItem("todos_sort", sortBy); }, [sortBy]);
   useEffect(() => { localStorage.setItem("todos_priority", priorityFilter); }, [priorityFilter]);
   useEffect(() => { localStorage.setItem("todos_hide_not_started", hideNotStarted ? "1" : "0"); }, [hideNotStarted]);
+  useEffect(() => { localStorage.setItem("todos_overdue_only", overdueOnly ? "1" : "0"); }, [overdueOnly]);
   useEffect(() => {
     if (categoryTab) localStorage.setItem("todos_category_tab", categoryTab);
     else localStorage.removeItem("todos_category_tab");
@@ -258,7 +263,8 @@ export function TodosPage() {
     const startMs = parseStartMs(scheduledRaw);
     const startPass = !hideNotStarted || !scheduledRaw || (startMs !== null && startMs <= Date.now());
     const needsAttentionPass = !needsAttentionOnly || isOverdue;
-    return statusPass && modePass && priorityPass && categoryTabPass && tagPass && categoryPass && projectPass && startPass && needsAttentionPass;
+    const overduePass = !overdueOnly || isOverdue;
+    return statusPass && modePass && priorityPass && categoryTabPass && tagPass && categoryPass && projectPass && startPass && needsAttentionPass && overduePass;
   });
   const activeTaskId = activeTimer?.task_id;
 
@@ -364,6 +370,24 @@ export function TodosPage() {
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", padding: "8px 12px", background: "#1e3629", borderBottom: "2px solid #162a1c" }}>
         <button onClick={() => setMode("today")} style={{ padding: "4px 10px", border: `1px solid ${mode === "today" ? "rgba(232,168,32,0.5)" : "rgba(232,168,32,0.15)"}`, background: mode === "today" ? "rgba(232,168,32,0.1)" : "transparent", color: mode === "today" ? "#e8a820" : "rgba(245,240,224,0.3)", fontFamily: "'Oswald',Arial,sans-serif", fontSize: 10, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer", borderRadius: 2 }}>{new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}</button>
         <button onClick={() => setMode("upcoming")} style={{ padding: "4px 10px", border: `1px solid ${mode === "upcoming" ? "rgba(232,168,32,0.5)" : "rgba(232,168,32,0.15)"}`, background: mode === "upcoming" ? "rgba(232,168,32,0.1)" : "transparent", color: mode === "upcoming" ? "#e8a820" : "rgba(245,240,224,0.3)", fontFamily: "'Oswald',Arial,sans-serif", fontSize: 10, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer", borderRadius: 2 }}>Upcoming & Undated</button>
+        <button
+          onClick={() => setOverdueOnly(v => !v)}
+          style={{
+            padding: "4px 10px",
+            border: `1px solid ${overdueOnly ? "rgba(217,64,64,0.6)" : "rgba(232,168,32,0.15)"}`,
+            background: overdueOnly ? "rgba(217,64,64,0.12)" : "transparent",
+            color: overdueOnly ? "#d94040" : "rgba(245,240,224,0.3)",
+            fontFamily: "'Oswald',Arial,sans-serif",
+            fontSize: 10,
+            fontWeight: 600,
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+            cursor: "pointer",
+            borderRadius: 2,
+          }}
+        >
+          Overdue
+        </button>
         <select
           value={priorityFilter}
           onChange={e => setPriorityFilter(e.target.value as "all" | Priority)}
@@ -407,18 +431,19 @@ export function TodosPage() {
           <option value="focus_score">Sort: Focus Score</option>
         </select>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…" style={{ marginLeft: "auto", padding: "4px 10px", fontSize: 11, width: 130 }} />
-        {(tagFilter || categoryFilter || projectFilter || categoryTab || needsAttentionOnly) && (
+        {(tagFilter || categoryFilter || projectFilter || categoryTab || needsAttentionOnly || overdueOnly) && (
           <button
-            onClick={() => { setTagFilter(null); setCategoryFilter(null); setProjectFilter(null); setCategoryTab(null); setNeedsAttentionOnly(false); }}
+            onClick={() => { setTagFilter(null); setCategoryFilter(null); setProjectFilter(null); setCategoryTab(null); setNeedsAttentionOnly(false); setOverdueOnly(false); }}
             style={{ padding: "4px 10px", border: "1px solid rgba(217,64,64,0.45)", background: "transparent", color: "#d94040", fontFamily: "'Oswald',Arial,sans-serif", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer", borderRadius: 2 }}
           >
             Clear Context
           </button>
         )}
       </div>
-      {(tagFilter || categoryFilter || projectFilter || needsAttentionOnly) && (
+      {(tagFilter || categoryFilter || projectFilter || needsAttentionOnly || overdueOnly) && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", padding: "6px 12px", background: "#1a2e22", borderBottom: "1px solid rgba(0,0,0,0.35)" }}>
           {needsAttentionOnly && <span style={{ fontSize: 10, color: "#d94040", letterSpacing: "0.08em", textTransform: "uppercase" }}>Needs Attention</span>}
+          {overdueOnly && <span style={{ fontSize: 10, color: "#d94040", letterSpacing: "0.08em", textTransform: "uppercase" }}>Overdue Only</span>}
           {tagFilter && <span style={{ fontSize: 10, color: "#e8a820", letterSpacing: "0.08em", textTransform: "uppercase" }}>Tag: {tagFilter.name}</span>}
           {categoryFilter && <span style={{ fontSize: 10, color: "#e8a820", letterSpacing: "0.08em", textTransform: "uppercase" }}>Category: {categoryFilter.name}</span>}
           {projectFilter && <span style={{ fontSize: 10, color: "#e8a820", letterSpacing: "0.08em", textTransform: "uppercase" }}>Project: {projectFilter.name}</span>}
