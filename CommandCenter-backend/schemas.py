@@ -50,6 +50,7 @@ class TaskUpdate(BaseModel):
     scheduled_start_at: Optional[datetime] = None
     time_estimate_minutes: Optional[int] = None
     project_id: Optional[str] = None
+    parent_id: Optional[str] = None
     category_id: Optional[str] = None
     tag_ids: Optional[List[str]] = None
 
