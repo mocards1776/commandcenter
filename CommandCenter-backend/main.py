@@ -101,6 +101,7 @@ def _gamification_row_for_date(session: Session, user_id: str, day: date) -> dic
         if (t.importance or 0) >= 5 or (t.priority or "").lower() == "critical"
     )
     focus_from_tasks = sum((t.focus_score or 0) for t in completed_rows)
+    focus_from_tasks += _parent_task_bonus_points(session, user_id, completed_rows)
     completed_projects_day = session.execute(
         select(func.count(Project.id)).where(
             Project.user_id == user_id,
@@ -186,6 +187,19 @@ def tags_to_str(tag_ids) -> str:
 
 def calc_focus_score(importance: int, difficulty: int) -> int:
     return importance * difficulty
+
+def _parent_task_bonus_points(session: Session, user_id: str, tasks: list[Task]) -> int:
+    """+5 bonus for each completed task that has at least one child."""
+    completed_ids = [t.id for t in tasks if t and t.id]
+    if not completed_ids:
+        return 0
+    parent_ids = session.execute(
+        select(Task.parent_id).where(
+            Task.user_id == user_id,
+            Task.parent_id.in_(completed_ids),
+        ).distinct()
+    ).scalars().all()
+    return len({pid for pid in parent_ids if pid}) * 5
 
 def _sync_task_schedule_block(session: Session, task: Task):
     existing = session.execute(
@@ -610,6 +624,7 @@ async def get_dashboard(
     completed_tasks_today = len(completed_today_tasks)
     total_tasks_today = len(today_tasks) + completed_tasks_today
     focus_score_today = sum((t.focus_score or 0) for t in completed_today_tasks)
+    focus_score_today += _parent_task_bonus_points(session, user.id, completed_today_tasks)
 
     # Time tracked today (seconds)
     time_entries_today = session.execute(

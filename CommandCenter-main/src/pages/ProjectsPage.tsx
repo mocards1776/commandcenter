@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { projectsApi, tasksApi, tagsApi, categoriesApi } from "@/lib/api";
-import { Loader2, ArrowLeft, Plus, ChevronRight, CheckCircle2, Circle, Pencil, X, Save } from "lucide-react";
+import { Loader2, ArrowLeft, Plus, ChevronRight, CheckCircle2, Circle, Pencil, X, Save, Star } from "lucide-react";
 import { TaskModal } from "@/components/todos/TaskModal";
 import { TaskContextMenu } from "@/components/todos/TaskContextMenu";
 import { CompletionDialog } from "@/components/todos/CompletionDialog";
@@ -545,6 +545,10 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
     if (!task.parent_id) continue;
     childCounts.set(task.parent_id, (childCounts.get(task.parent_id) ?? 0) + 1);
   }
+  const parentBonusById = new Map<string, number>();
+  childCounts.forEach((count, taskId) => {
+    if (count > 0) parentBonusById.set(taskId, 5);
+  });
   const childIndexByTaskId = new Map<string, number>();
   const runningChildIndex = new Map<string, number>();
   for (const task of orderedVisibleTasks) {
@@ -822,7 +826,16 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
                         ? <CheckCircle2 size={16} color="#e8a820" style={{ flexShrink: 0 }} />
                         : <Circle size={16} color="rgba(255,255,255,0.2)" style={{ flexShrink: 0 }} />}
                   </button>
-                  <span style={{ fontWeight: 600, fontSize: 14, color: t.status === "done" ? "rgba(255,255,255,0.35)" : "#fff", textDecoration: t.status === "done" ? "line-through" : "none" }}>
+                  {hasChildren && (
+                    <Star
+                      size={13}
+                      color="#e8a820"
+                      fill="#e8a820"
+                      style={{ flexShrink: 0 }}
+                      title="Parent task bonus: +5 Focus Score"
+                    />
+                  )}
+                  <span style={{ fontWeight: hasChildren ? 800 : 600, fontSize: 14, color: t.status === "done" ? "rgba(255,255,255,0.35)" : "#fff", textDecoration: t.status === "done" ? "line-through" : "none" }}>
                     {t.title}
                   </span>
                   <button
@@ -870,7 +883,7 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
                   {derivedPriority(t)}
                 </div>
                 <div style={{ textAlign: "center", fontWeight: 700, color: "#e8a820", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Oswald', Arial, sans-serif", letterSpacing: "0.06em" }}>
-                  {t.focus_score ?? 0}
+                  {(t.focus_score ?? 0) + (parentBonusById.get(t.id) ?? 0)}
                 </div>
                 <div style={{ textAlign: "center", fontWeight: 700, color: "rgba(245,240,224,0.75)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Oswald', Arial, sans-serif", letterSpacing: "0.06em" }}>
                   {t.time_estimate_minutes ? `${t.time_estimate_minutes}m` : "—"}
