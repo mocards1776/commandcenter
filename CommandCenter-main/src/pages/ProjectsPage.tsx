@@ -530,7 +530,8 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
       return `${lead}${tokenValue} `;
     }));
   };
-  const sortedTasks = [...allTasks].sort((a, b) => {
+  const flattenedAllTasks = allTasks.flatMap((t) => [t, ...(t.subtasks ?? [])]) as Task[];
+  const sortedTasks = [...flattenedAllTasks].sort((a, b) => {
     const aDone = a.status === "done" || a.status === "cancelled";
     const bDone = b.status === "done" || b.status === "cancelled";
     if (aDone !== bDone) return aDone ? 1 : -1;
@@ -538,7 +539,20 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
   });
   const visibleTasks = hideCompleted ? sortedTasks.filter(t => t.status !== "done" && t.status !== "cancelled") : sortedTasks;
   const orderedVisibleTasks = orderProjectTasksForDisplay(visibleTasks);
-  const parentCandidates = allTasks.filter(t => !t.parent_id);
+  const parentCandidates = flattenedAllTasks.filter(t => !t.parent_id && t.status !== "done" && t.status !== "cancelled");
+  const childCounts = new Map<string, number>();
+  for (const task of orderedVisibleTasks) {
+    if (!task.parent_id) continue;
+    childCounts.set(task.parent_id, (childCounts.get(task.parent_id) ?? 0) + 1);
+  }
+  const childIndexByTaskId = new Map<string, number>();
+  const runningChildIndex = new Map<string, number>();
+  for (const task of orderedVisibleTasks) {
+    if (!task.parent_id) continue;
+    const idx = (runningChildIndex.get(task.parent_id) ?? 0) + 1;
+    runningChildIndex.set(task.parent_id, idx);
+    childIndexByTaskId.set(task.id, idx);
+  }
   const tagMap: Record<string, string> = Object.fromEntries((allTags as any[]).map((t: any) => [t.id, t.name]));
   const completedCount = allTasks.reduce((acc, t) =>
     acc + (t.status === "done" ? 1 : 0) + (t.subtasks || []).filter(s => s.status === "done").length
@@ -626,6 +640,9 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
             </button>
           </div>
         </div>
+        <div style={{ fontSize: 10, letterSpacing: "0.07em", textTransform: "uppercase", color: "rgba(245,240,224,0.35)", marginBottom: 10, fontFamily: "'Oswald', Arial, sans-serif" }}>
+          Drag a task row onto another row to make it a child task
+        </div>
 
         {showAddTask && (
           <div className="sb-row" style={{ background: "#1e3629", padding: 12, marginBottom: 15, border: "1px solid #e8a820" }}>
@@ -707,7 +724,14 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
         {orderedVisibleTasks.length === 0 ? (
           <div style={{ padding: 40, textAlign: "center", color: "rgba(255,255,255,0.3)" }}>No tasks assigned to this campaign.</div>
         ) : (
-          orderedVisibleTasks.map((t: Task) => (
+          orderedVisibleTasks.map((t: Task) => {
+            const hasChildren = (childCounts.get(t.id) ?? 0) > 0;
+            const isChild = !!t.parent_id;
+            const childIndex = isChild ? (childIndexByTaskId.get(t.id) ?? 0) : 0;
+            const siblingCount = isChild && t.parent_id ? (childCounts.get(t.parent_id) ?? 0) : 0;
+            const isLastChild = isChild && siblingCount > 0 && childIndex === siblingCount;
+            const groupBorder = "1px solid rgba(245,240,224,0.45)";
+            return (
             <TaskContextMenu
               key={t.id}
               task={t}
@@ -754,7 +778,7 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
                   setDragOverId(null);
                   const from = e.dataTransfer.getData("application/task-id");
                   if (!from || from === t.id) return;
-                  if (wouldCreateParentCycle(allTasks, from, t.id)) {
+                  if (wouldCreateParentCycle(flattenedAllTasks, from, t.id)) {
                     toast.error("Cannot nest a task under its own subtask");
                     return;
                   }
@@ -764,11 +788,15 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
                   display: "grid", gridTemplateColumns: "1fr 92px 86px 86px 100px 100px 120px",
                   background: t.status === "done" ? "rgba(30,54,41,0.5)" : "#1e3629",
                   padding: "0",
-                  marginBottom: 8,
-                  borderLeft: derivedPriority(t) === "critical" ? "4px solid #d94040" : derivedPriority(t) === "high" ? "4px solid #e8a820" : "none",
+                  marginBottom: isLastChild ? 14 : 8,
+                  borderLeft: hasChildren || isChild ? groupBorder : (derivedPriority(t) === "critical" ? "4px solid #d94040" : derivedPriority(t) === "high" ? "4px solid #e8a820" : "none"),
+                  borderRight: hasChildren || isChild ? groupBorder : undefined,
+                  borderTop: hasChildren ? groupBorder : undefined,
+                  borderBottom: isLastChild ? groupBorder : undefined,
                   outline: dragOverId === t.id ? "2px dashed rgba(232,168,32,0.65)" : "none",
                   outlineOffset: 0,
                   cursor: "pointer",
+                  marginTop: hasChildren ? 14 : 0,
                   transition: "background 0.12s",
                 }}
                 onMouseEnter={e => (e.currentTarget.style.background = "#244232")}
@@ -776,7 +804,7 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
                 onClick={() => setSelectedTask({ ...t, tag_ids: t.tag_ids ?? [], subtasks: t.subtasks ?? [] })}
                 title="Drag onto another row to make it a subtask of that row"
               >
-                <div style={{ padding: "12px 16px", paddingLeft: 12 + taskIndentDepth(t, allTasks) * 22, display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ padding: "12px 16px", paddingLeft: 12 + taskIndentDepth(t, flattenedAllTasks) * 22, display: "flex", alignItems: "center", gap: 10 }}>
                   <button
                     type="button"
                     draggable={false}
@@ -862,7 +890,8 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
                 </div>
               </div>
             </TaskContextMenu>
-          ))
+          );
+          })
         )}
       </div>
 
