@@ -15,6 +15,7 @@ import { useNavigate } from "react-router-dom";
 import {
   DEFAULT_LAT,
   DEFAULT_LON,
+  WEATHER_LOCATION_LABEL,
   WEATHER_TIMEZONE,
   fetchOpenMeteoForecast,
   latLonToTileXY,
@@ -38,7 +39,7 @@ function iconForCode(code: number) {
 
 function WeatherGlyph({ code, className }: { code: number; className?: string }) {
   const Icon = iconForCode(code);
-  return <Icon className={className ?? "size-10 text-sky-300"} strokeWidth={1.5} aria-hidden />;
+  return <Icon className={className ?? "size-10 text-red-400"} strokeWidth={1.5} aria-hidden />;
 }
 
 function sliceHourlyNext(data: OpenMeteoResponse, count: number) {
@@ -69,7 +70,7 @@ function PrecipRadar({ lat, lon }: { lat: number; lon: number }) {
       <div className="flex h-[140px] w-[300px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-600/80 bg-slate-950/60 px-4 text-center">
         <p className="font-sans text-xs leading-relaxed text-slate-500">
           Set{" "}
-          <code className="rounded bg-slate-800 px-1 py-0.5 text-[10px] text-sky-300">
+          <code className="rounded bg-slate-800 px-1 py-0.5 text-[10px] text-red-400">
             VITE_VISUAL_CROSSING_API_KEY
           </code>{" "}
           to load precipitation radar tiles (Visual Crossing Maps API).
@@ -123,12 +124,12 @@ export function WeatherPage() {
   return (
     <div className="min-h-screen bg-[#0b1220] pb-16 pt-0 font-sans text-slate-100">
       {/* Header — navy dashboard style (not scoreboard green) */}
-      <header className="sticky top-0 z-20 border-b border-slate-700/80 bg-[#0f172a]/95 backdrop-blur-md">
+      <header className="sticky top-0 z-20 border-b border-red-900/30 bg-[#0f172a]/95 backdrop-blur-md">
         <div className="mx-auto flex max-w-5xl items-center gap-4 px-4 py-4">
           <button
             type="button"
             onClick={() => navigate(-1)}
-            className="flex items-center gap-2 rounded-lg border border-slate-600/60 bg-slate-800/50 px-3 py-2 text-xs font-semibold uppercase tracking-widest text-slate-300 transition hover:border-sky-500/40 hover:bg-slate-800 hover:text-white"
+            className="flex items-center gap-2 rounded-lg border border-slate-600/60 bg-slate-800/50 px-3 py-2 text-xs font-semibold uppercase tracking-widest text-slate-300 transition hover:border-red-500/50 hover:bg-slate-800 hover:text-white"
           >
             <ArrowLeft className="size-4" aria-hidden />
             Back
@@ -137,7 +138,9 @@ export function WeatherPage() {
             <h1 className="truncate text-lg font-bold tracking-tight text-white md:text-xl">
               Weather
             </h1>
-            <p className="truncate text-xs font-medium uppercase tracking-wider text-slate-500">
+            <p className="truncate text-xs font-medium tracking-wide text-slate-500">
+              <span className="font-semibold uppercase tracking-wider text-red-400/90">{WEATHER_LOCATION_LABEL}</span>
+              <span className="text-slate-600"> · </span>
               {WEATHER_TIMEZONE.replace("_", " ")} · {lat.toFixed(2)}°, {lon.toFixed(2)}°
             </p>
           </div>
@@ -147,7 +150,7 @@ export function WeatherPage() {
       <main className="mx-auto max-w-5xl space-y-6 px-4 py-8">
         {isLoading && (
           <div className="flex justify-center py-24">
-            <Loader2 className="size-10 animate-spin text-sky-400" aria-label="Loading" />
+            <Loader2 className="size-10 animate-spin text-red-500" aria-label="Loading" />
           </div>
         )}
 
@@ -160,10 +163,10 @@ export function WeatherPage() {
         {!isLoading && !isError && current && data && (
           <>
             {/* Current */}
-            <section className="rounded-2xl border border-slate-700/80 bg-gradient-to-br from-slate-900 to-[#0f172a] p-6 shadow-xl shadow-black/30 md:p-8">
+            <section className="rounded-2xl border border-slate-700/80 bg-gradient-to-br from-slate-900 to-[#0f172a] p-6 shadow-[0_0_40px_-12px_rgba(217,64,64,0.18)] md:p-8">
               <div className="flex flex-col gap-8 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-center gap-6">
-                  <WeatherGlyph code={current.weather_code} className="size-16 shrink-0 text-sky-300 md:size-20" />
+                  <WeatherGlyph code={current.weather_code} className="size-16 shrink-0 text-red-400 md:size-20" />
                   <div>
                     <p className="text-sm font-semibold uppercase tracking-widest text-slate-500">
                       Now
@@ -176,7 +179,7 @@ export function WeatherPage() {
                         Feels {Math.round(current.apparent_temperature)}°
                       </span>
                     </div>
-                    <p className="mt-2 text-base font-medium text-sky-200/90">
+                    <p className="mt-2 text-base font-medium text-red-200/90">
                       {weatherCodeLabel(current.weather_code)}
                     </p>
                   </div>
@@ -219,7 +222,7 @@ export function WeatherPage() {
                       <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                         {label}
                       </span>
-                      <WeatherGlyph code={row.code} className="my-2 size-9 text-sky-300" />
+                      <WeatherGlyph code={row.code} className="my-2 size-9 text-red-400" />
                       <span className="text-lg font-bold tabular-nums text-white">
                         {Math.round(row.temp)}°
                       </span>
@@ -262,7 +265,7 @@ export function WeatherPage() {
                           <p className="font-semibold text-white">{dow}</p>
                           <p className="text-xs text-slate-500">{md}</p>
                         </div>
-                        <WeatherGlyph code={code} className="size-9 shrink-0 text-sky-300" />
+                        <WeatherGlyph code={code} className="size-9 shrink-0 text-red-400" />
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm text-slate-300">{weatherCodeLabel(code)}</p>
                         </div>

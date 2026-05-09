@@ -1,8 +1,12 @@
 /** Open-Meteo + helpers for Command Center weather UI */
 
-export const DEFAULT_LAT = Number(import.meta.env.VITE_WEATHER_LAT ?? 41.8781);
-export const DEFAULT_LON = Number(import.meta.env.VITE_WEATHER_LON ?? -87.6298);
+/** Default: Marshfield, MO (Central Time) */
+export const DEFAULT_LAT = Number(import.meta.env.VITE_WEATHER_LAT ?? 37.3389);
+export const DEFAULT_LON = Number(import.meta.env.VITE_WEATHER_LON ?? -92.9071);
 export const WEATHER_TIMEZONE = import.meta.env.VITE_WEATHER_TZ ?? "America/Chicago";
+/** Shown on Weather page header */
+export const WEATHER_LOCATION_LABEL =
+  import.meta.env.VITE_WEATHER_LABEL ?? "Marshfield, MO";
 
 export interface OpenMeteoCurrent {
   temperature_2m: number;

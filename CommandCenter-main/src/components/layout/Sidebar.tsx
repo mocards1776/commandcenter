@@ -50,12 +50,13 @@ export function Sidebar() {
   const currentId = location.pathname.replace(/^\//, "").split("/")[0] || "dashboard";
   const weatherTheme = currentId === "weather";
   const railBg = weatherTheme ? "#0f172a" : "#1a2f22";
-  const railBorder = weatherTheme ? "4px solid #38bdf8" : "4px solid #e8a820";
+  /* Weather: navy rail + red accent (matches dashboard critical / live markers) */
+  const railBorder = weatherTheme ? "4px solid #d94040" : "4px solid #e8a820";
   const headerBg = weatherTheme ? "#0b1220" : "#162a1c";
-  const headerBorder = weatherTheme ? "4px solid #38bdf8" : "4px solid #e8a820";
-  const activeBorder = weatherTheme ? "rgba(56,189,248,0.45)" : "rgba(232,168,32,0.35)";
-  const activeBg = weatherTheme ? "rgba(56,189,248,0.12)" : "rgba(232,168,32,0.1)";
-  const activeColor = weatherTheme ? "#38bdf8" : "#e8a820";
+  const headerBorder = weatherTheme ? "4px solid #d94040" : "4px solid #e8a820";
+  const activeBorder = weatherTheme ? "rgba(217,64,64,0.5)" : "rgba(232,168,32,0.35)";
+  const activeBg = weatherTheme ? "rgba(217,64,64,0.14)" : "rgba(232,168,32,0.1)";
+  const activeColor = weatherTheme ? "#f87171" : "#e8a820";
   const mutedColor = weatherTheme ? "rgba(226,232,240,0.35)" : "rgba(245,240,224,0.3)";
 
   function handleFlagClick() {
@@ -69,12 +70,12 @@ export function Sidebar() {
         {!sidebarCollapsed && (
           <>
             <BrandMark collapsed={false} onFlagClick={handleFlagClick} />
-            <button onClick={toggleSidebar} style={{background:"none",border:"none",cursor:"pointer",color:weatherTheme?"rgba(56,189,248,0.45)":"rgba(232,168,32,0.4)",padding:4,flexShrink:0}} onMouseEnter={e=>(e.currentTarget.style.color=weatherTheme?"#38bdf8":"#e8a820")} onMouseLeave={e=>(e.currentTarget.style.color=weatherTheme?"rgba(56,189,248,0.45)":"rgba(232,168,32,0.4)")}><ChevronLeft size={16}/></button>
+            <button onClick={toggleSidebar} style={{background:"none",border:"none",cursor:"pointer",color:weatherTheme?"rgba(248,113,113,0.55)":"rgba(232,168,32,0.4)",padding:4,flexShrink:0}} onMouseEnter={e=>(e.currentTarget.style.color=weatherTheme?"#fca5a5":"#e8a820")} onMouseLeave={e=>(e.currentTarget.style.color=weatherTheme?"rgba(248,113,113,0.55)":"rgba(232,168,32,0.4)")}><ChevronLeft size={16}/></button>
           </>
         )}
         {sidebarCollapsed && <BrandMark collapsed={true} onFlagClick={handleFlagClick} />}
       </div>
-        {sidebarCollapsed&&<button onClick={toggleSidebar} style={{margin:"8px auto",width:30,height:22,display:"flex",alignItems:"center",justifyContent:"center",background:"none",border:weatherTheme?"1px solid rgba(56,189,248,0.25)":"1px solid rgba(232,168,32,0.2)",borderRadius:2,cursor:"pointer",color:weatherTheme?"rgba(56,189,248,0.4)":"rgba(232,168,32,0.35)"}} onMouseEnter={e=>{e.currentTarget.style.color=weatherTheme?"#38bdf8":"#e8a820";e.currentTarget.style.borderColor=weatherTheme?"rgba(56,189,248,0.55)":"rgba(232,168,32,0.5)";}} onMouseLeave={e=>{e.currentTarget.style.color=weatherTheme?"rgba(56,189,248,0.4)":"rgba(232,168,32,0.35)";e.currentTarget.style.borderColor=weatherTheme?"rgba(56,189,248,0.25)":"rgba(232,168,32,0.2)"}}><ChevronRight size={13}/></button>}
+        {sidebarCollapsed&&<button onClick={toggleSidebar} style={{margin:"8px auto",width:30,height:22,display:"flex",alignItems:"center",justifyContent:"center",background:"none",border:weatherTheme?"1px solid rgba(217,64,64,0.35)":"1px solid rgba(232,168,32,0.2)",borderRadius:2,cursor:"pointer",color:weatherTheme?"rgba(248,113,113,0.5)":"rgba(232,168,32,0.35)"}} onMouseEnter={e=>{e.currentTarget.style.color=weatherTheme?"#fca5a5":"#e8a820";e.currentTarget.style.borderColor=weatherTheme?"rgba(217,64,64,0.65)":"rgba(232,168,32,0.5)";}} onMouseLeave={e=>{e.currentTarget.style.color=weatherTheme?"rgba(248,113,113,0.5)":"rgba(232,168,32,0.35)";e.currentTarget.style.borderColor=weatherTheme?"rgba(217,64,64,0.35)":"rgba(232,168,32,0.2)"}}><ChevronRight size={13}/></button>}
       <nav style={{flex:1,overflowY:"auto",padding:"6px"}}>
         {NAV.map(({id,label,icon:Icon})=>{
           const active = currentId === id;
@@ -85,7 +86,7 @@ export function Sidebar() {
           </button>;
         })}
       </nav>
-      {!sidebarCollapsed&&<div style={{padding:"8px 10px",borderTop:headerBorder,background:headerBg,flexShrink:0,transition:"background 0.25s ease, border-color 0.25s ease"}}><div style={{fontFamily:"'IM Fell English',Georgia,serif",fontStyle:"italic",fontSize:9,color:weatherTheme?"rgba(56,189,248,0.35)":"rgba(232,168,32,0.28)",textAlign:"center"}}>★ Liberty · Discipline · Execution ★</div></div>}
+      {!sidebarCollapsed&&<div style={{padding:"8px 10px",borderTop:headerBorder,background:headerBg,flexShrink:0,transition:"background 0.25s ease, border-color 0.25s ease"}}><div style={{fontFamily:"'IM Fell English',Georgia,serif",fontStyle:"italic",fontSize:9,color:weatherTheme?"rgba(217,64,64,0.45)":"rgba(232,168,32,0.28)",textAlign:"center"}}>★ Liberty · Discipline · Execution ★</div></div>}
     </aside>
   );
 }
