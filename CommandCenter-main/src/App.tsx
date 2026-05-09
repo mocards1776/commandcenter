@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "react-hot-toast";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
@@ -22,11 +22,23 @@ import { CategoriesPage } from "@/pages/CategoriesPage";
 import { TagsPage }       from "@/pages/TagsPage";
 import { DailySummaryPage } from "@/pages/DailySummaryPage";
 import { LoginPage }      from "@/pages/LoginPage";
+import { WeatherPage }    from "@/pages/WeatherPage";
 import { tokenStore }     from "@/lib/api";
 import { DueReminderNotifications } from "@/components/notifications/DueReminderNotifications";
 
 function makeQC() {
   return new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, retry: 1 } } });
+}
+
+/** Weather uses its own navy shell; other pages keep the scoreboard green frame */
+function PageFrame({ children }: { children: ReactNode }) {
+  const { pathname } = useLocation();
+  if (pathname.startsWith("/weather")) return <>{children}</>;
+  return (
+    <div className="sb-shell" style={{ minHeight: "calc(100vh - 0px)" }}>
+      {children}
+    </div>
+  );
 }
 
 function AppShell() {
@@ -35,6 +47,7 @@ function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const sw = sidebarCollapsed ? 48 : 200;
+  const isWeatherRoute = location.pathname.startsWith("/weather");
 
   useEffect(() => {
     const isTypingTarget = (el: EventTarget | null) => {
@@ -64,11 +77,11 @@ function AppShell() {
   }, [location.pathname, navigate, setAddTaskOpen]);
 
   return (
-    <div style={{ minHeight:"100vh", background:"#162a1c" }}>
+    <div style={{ minHeight:"100vh", background: isWeatherRoute ? "#0b1220" : "#162a1c" }}>
       <FocusMode/><CelebrationOverlay/><TimerBanner/><Sidebar/>
       <DueReminderNotifications />
       <main style={{ marginLeft:sw, paddingTop:activeTimer?44:0, minHeight:"100vh", transition:"margin-left 0.25s ease" }}>
-        <div className="sb-shell" style={{ minHeight:"calc(100vh - 0px)" }} key={location.pathname}>
+        <PageFrame>
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<DashboardPage />} />
@@ -86,9 +99,10 @@ function AppShell() {
             <Route path="/daily-summary" element={<DailySummaryPage />} />
             <Route path="/stats"     element={<StatsPage />} />
             <Route path="/sports"    element={<SportsPage />} />
+            <Route path="/weather"   element={<WeatherPage />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
-        </div>
+        </PageFrame>
       </main>
       <Toaster position="bottom-right" toastOptions={{
         style:{ background:"#1e3629", color:"#f5f0e0", border:"1px solid rgba(232,168,32,0.4)", borderRadius:2, fontSize:12, fontWeight:600, fontFamily:"'Oswald',Arial,sans-serif", letterSpacing:"0.06em" },

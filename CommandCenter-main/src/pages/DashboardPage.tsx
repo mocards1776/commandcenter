@@ -5,6 +5,7 @@ import { dashboardApi, gamificationApi, habitsApi } from "@/lib/api";
 import { GameScoreboard } from "@/components/dashboard/GameScoreboard";
 import { NextUpPanel } from "@/components/dashboard/NextUpPanel";
 import { BaseballPanel } from "@/components/dashboard/BaseballPanel";
+import { WeatherCard } from "@/components/WeatherCard";
 import { useTimerStore } from "@/store";
 import { Loader2 } from "lucide-react";
 import { todayStr } from "@/lib/utils";
@@ -198,6 +199,7 @@ export function DashboardPage() {
     <div>
       {/* TOP BAR */}
       <div className="top-bar" style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", padding: "8px 24px", position: "relative", gap: 14 }}>
+        <WeatherCard />
         <span style={{ color: "#e8a820", fontSize: 9, letterSpacing: 5, opacity: 0.6 }}>&#9733; &#9733; &#9733;</span>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8, lineHeight: 1 }}>
           <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 14, fontWeight: 900, letterSpacing: "0.15em", color: "rgba(255,255,255,0.75)", textTransform: "uppercase" }}>JOSH'S</span>
