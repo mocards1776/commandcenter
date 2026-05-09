@@ -29,7 +29,8 @@ export function WeatherCard() {
     <button
       type="button"
       onClick={() => navigate("/weather")}
-      className="group absolute left-6 top-1/2 z-10 max-w-[min(200px,28vw)] -translate-y-1/2 text-left transition-opacity hover:opacity-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/55 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1e3629]"
+      className="group absolute top-1/2 z-10 max-w-[min(200px,28vw)] -translate-y-1/2 text-left transition-opacity hover:opacity-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/55 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1e3629]"
+      style={{ left: 24 }}
       aria-label="Open weather details"
     >
       <div className="rounded-xl border border-white/10 bg-[#0f172a]/95 px-3 py-2 shadow-lg shadow-black/30 backdrop-blur-sm transition-colors group-hover:border-red-500/35">
