@@ -1781,6 +1781,92 @@ async def webhook_info():
         resp = await client.get(url)
     return resp.json()
 
+# ── MLB — Cardinals playoff odds (Baseball-Reference scrape) ─────────────────
+
+BR_CARDINALS_PLAYOFF_URL = os.getenv(
+    "BR_PLAYOFF_ODDS_URL",
+    "https://www.baseball-reference.com/leagues/majors/2026-playoff-odds.shtml",
+)
+
+
+def _parse_br_cardinals_playoff_row(html: str) -> Optional[dict]:
+    """Parse first HTML table row for St. Louis Cardinals from BR playoff odds page."""
+    row_m = re.search(
+        r"<tr[^>]*>.*?St\. Louis Cardinals.*?</tr>",
+        html,
+        re.I | re.DOTALL,
+    )
+    if not row_m:
+        row_m = re.search(
+            r'<tr[^>]*>.*?/teams/STL/\d{4}-playoff-odds\.shtml.*?</tr>',
+            html,
+            re.I | re.DOTALL,
+        )
+    if not row_m:
+        return None
+    row_html = row_m.group(0)
+    tds = re.findall(r"<td[^>]*>(.*?)</td>", row_html, flags=re.DOTALL | re.I)
+    cells: list[str] = []
+    for td in tds:
+        text = re.sub(r"<[^>]+>", " ", td)
+        text = re.sub(r"\s+", " ", text).strip()
+        cells.append(text)
+
+    def pct(idx: int) -> str:
+        if idx >= len(cells):
+            return "—"
+        return cells[idx] if cells[idx] else "—"
+
+    proj_avg = "—"
+    try:
+        if len(cells) >= 12:
+            aw = float(cells[10])
+            al = float(cells[11])
+            proj_avg = f"{round(aw)}-{round(al)}"
+    except (ValueError, IndexError):
+        pass
+
+    # Standard BR playoff odds row: Post, WC, Div, Bye, LDS, LCS, Pennant, Win WS
+    return {
+        "proj_avg": proj_avg,
+        "playoff_pct": pct(14),
+        "wc_pct": pct(15),
+        "div_pct": pct(16),
+        "bye_pct": pct(17),
+        "lds_pct": pct(18),
+        "lcs_pct": pct(19),
+        "pennant_pct": pct(20),
+        "ws_pct": pct(21),
+        "source": "baseball-reference.com",
+    }
+
+
+@app.get("/api/mlb/cardinals-playoff-odds")
+@app.get("/api/mlb/cardinals-playoff-odds/", include_in_schema=False)
+async def get_cardinals_playoff_odds_br(user: User = Depends(get_current_user)):
+    """Scrape Cardinals playoff odds from Baseball-Reference (server-side; avoids browser CORS)."""
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (compatible; CommandCenter/1.0; "
+            "+https://github.com/mocards1776/CommandCenter)"
+        ),
+        "Accept": "text/html,application/xhtml+xml",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=35.0, follow_redirects=True) as client:
+            resp = await client.get(BR_CARDINALS_PLAYOFF_URL, headers=headers)
+        resp.raise_for_status()
+        parsed = _parse_br_cardinals_playoff_row(resp.text)
+        if not parsed:
+            raise HTTPException(
+                status_code=502,
+                detail="Could not parse Cardinals row from Baseball-Reference.",
+            )
+        return parsed
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Playoff odds fetch failed: {e!s}") from e
+
+
 # ── Favorite Sports Teams ─────────────────────────────────────────────────────
 
 @app.get("/favorite-sports-teams", response_model=List[FavoriteSportsTeamResponse])

@@ -229,6 +229,20 @@ export const categoriesApi = {
 };
 
 // ─── Sports ───────────────────────────────────────────────────
+/** Cardinals playoff odds scraped server-side from Baseball-Reference */
+export interface CardinalsPlayoffOddsBR {
+  proj_avg: string;
+  playoff_pct: string;
+  wc_pct: string;
+  div_pct: string;
+  bye_pct?: string;
+  lds_pct?: string;
+  lcs_pct?: string;
+  pennant_pct?: string;
+  ws_pct: string;
+  source?: string;
+}
+
 export const sportsApi = {
   favorites: () =>
     api.get<FavoriteSportsTeam[]>("/favorite-sports-teams/").then(r => r.data),
@@ -239,6 +253,8 @@ export const sportsApi = {
     api.get(`/sports/mlb/${teamSlug}/`).then(r => r.data),
   mlbProjections: (teamSlug: string) =>
     api.get(`/sports/mlb/${teamSlug}/projections/`).then(r => r.data),
+  cardinalsPlayoffOddsBR: () =>
+    api.get<CardinalsPlayoffOddsBR>("/api/mlb/cardinals-playoff-odds/").then(r => r.data),
 };
 
 export default api;

@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { sportsApi } from "@/lib/api";
 
 const BG        = "#243d28";
 const ROW_BG    = "#1e3422";
@@ -502,8 +504,8 @@ function GameBlock({ game, label }: { game: GameData; label: string }) {
   );
 }
 
-const SEED_STATS: RibbonStat[] = [
-  { label: "Proj Wins",    value: "—", valueColor: GOLD,      glowColor: "rgba(201,168,50,0.4)" },
+const EMPTY_RIBBON: RibbonStat[] = [
+  { label: "Proj Avg",     value: "—", valueColor: GOLD,      glowColor: "rgba(201,168,50,0.4)" },
   { label: "Playoffs",     value: "—", valueColor: "#c41e3a", glowColor: "rgba(196,30,58,0.4)" },
   { label: "NL Central",   value: "—", valueColor: "#f5f0e0", glowColor: "rgba(245,240,224,0.3)" },
   { label: "Wild Card",    value: "—", valueColor: "#4ade80", glowColor: "rgba(74,222,128,0.3)" },
@@ -517,6 +519,24 @@ export function BaseballPanel() {
   const [currentGame,  setCurrentGame]  = useState<GameData | null>(null);
   const [nextGame,     setNextGame]     = useState<GameData | null>(null);
   const [standingsErr, setStandingsErr] = useState(false);
+
+  const { data: brOdds, isLoading: oddsLoading } = useQuery({
+    queryKey: ["cardinals-playoff-odds-br"],
+    queryFn: sportsApi.cardinalsPlayoffOddsBR,
+    staleTime: 45 * 60_000,
+    retry: 1,
+  });
+
+  const ribbonStats: RibbonStat[] = useMemo(() => {
+    if (!brOdds) return EMPTY_RIBBON;
+    return [
+      { label: "Proj Avg",     value: brOdds.proj_avg || "—", valueColor: GOLD,      glowColor: "rgba(201,168,50,0.4)" },
+      { label: "Playoffs",     value: brOdds.playoff_pct || "—", valueColor: "#c41e3a", glowColor: "rgba(196,30,58,0.4)" },
+      { label: "NL Central",   value: brOdds.div_pct || "—", valueColor: "#f5f0e0", glowColor: "rgba(245,240,224,0.3)" },
+      { label: "Wild Card",    value: brOdds.wc_pct || "—", valueColor: "#4ade80", glowColor: "rgba(74,222,128,0.3)" },
+      { label: "World Series", value: brOdds.ws_pct || "—", valueColor: "#60a5fa", glowColor: "rgba(96,165,250,0.3)" },
+    ];
+  }, [brOdds]);
 
   useEffect(() => {
     const load = async () => {
@@ -605,7 +625,7 @@ export function BaseballPanel() {
 
       </div>
 
-      <LedRibbonBoard stats={SEED_STATS} loading={false} />
+      <LedRibbonBoard stats={ribbonStats} loading={oddsLoading} />
     </div>
   );
 }

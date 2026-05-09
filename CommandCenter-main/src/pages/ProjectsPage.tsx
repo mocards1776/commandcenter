@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { projectsApi, tasksApi, tagsApi, categoriesApi } from "@/lib/api";
 import { Loader2, ArrowLeft, Plus, ChevronRight, CheckCircle2, Circle, Pencil, X, Save, Star } from "lucide-react";
@@ -417,10 +417,14 @@ function ProjectRow({
 // ─── Project Detail ──────────────────────────────────────────────────────────
 
 function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
+  const addTaskInputRef = useRef<HTMLInputElement>(null);
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
-  const [newTaskType, setNewTaskType] = useState<"parent" | "child">("parent");
-  const [newTaskParentId, setNewTaskParentId] = useState<string>("");
+  const [showHierarchyModal, setShowHierarchyModal] = useState(false);
+  const [pendingHierarchyTitle, setPendingHierarchyTitle] = useState("");
+  const [modalParentPick, setModalParentPick] = useState("");
+  /** When using context menu "Add child task", pre-select this parent in the modal */
+  const [childShortcutParentId, setChildShortcutParentId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [completionTask, setCompletionTask] = useState<Task | null>(null);
@@ -467,18 +471,26 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
       qc.invalidateQueries({ queryKey: ["project", id] });
       qc.invalidateQueries({ queryKey: ["projects"] });
       setNewTaskTitle("");
-      setNewTaskParentId("");
+      setShowHierarchyModal(false);
+      setPendingHierarchyTitle("");
+      setModalParentPick("");
+      setChildShortcutParentId(null);
       setShowAddTask(false);
       toast.success("Task added to campaign");
     },
   });
 
   useEffect(() => {
+    if (!showAddTask) return;
+    const id = window.setTimeout(() => addTaskInputRef.current?.focus(), 0);
+    return () => clearTimeout(id);
+  }, [showAddTask]);
+
+  useEffect(() => {
     if (!addTaskOpen) return;
     if (addTaskProjectId !== id) return;
     setShowAddTask(true);
-    setNewTaskType("parent");
-    setNewTaskParentId("");
+    setChildShortcutParentId(null);
     clearAddTaskContext();
   }, [addTaskOpen, addTaskProjectId, clearAddTaskContext, id]);
 
@@ -640,9 +652,9 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <button
               type="button"
-              onClick={() => { setNewTaskParentId(""); setShowAddTask(true); }}
+              onClick={() => { setChildShortcutParentId(null); setShowAddTask(true); }}
               style={{ background: "transparent", border: "1px solid rgba(245,240,224,0.35)", color: "rgba(245,240,224,0.85)", padding: "4px 10px", borderRadius: 4, fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'Oswald', Arial, sans-serif" }}
-              title="Add a top-level parent task, then drag other tasks onto it to nest"
+              title="Add a task — after Enter, choose parent vs child"
             >
               Add Parent Task
             </button>
@@ -662,67 +674,25 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
         {showAddTask && (
           <div className="sb-row" style={{ background: "#1e3629", padding: 12, marginBottom: 15, border: "1px solid #e8a820" }}>
             <input
+              ref={addTaskInputRef}
               autoFocus
               style={{ background: "transparent", border: "none", width: "100%", color: "#fff", outline: "none", fontSize: 14 }}
-              placeholder="NEW TASK TITLE…"
+              placeholder="NEW TASK TITLE… (Enter to choose parent vs child)"
               value={newTaskTitle}
               onChange={e => setNewTaskTitle(e.target.value)}
               onKeyDown={e => {
-                if (
-                  e.key === "Enter" &&
-                  newTaskTitle.trim() &&
-                  (newTaskType === "parent" || !!newTaskParentId)
-                ) {
-                  addTaskMut.mutate({
-                    title: newTaskTitle.trim(),
-                    parentId: newTaskType === "child" ? (newTaskParentId || undefined) : undefined,
-                  });
+                if (e.key === "Enter" && newTaskTitle.trim()) {
+                  e.preventDefault();
+                  setPendingHierarchyTitle(newTaskTitle.trim());
+                  setModalParentPick(childShortcutParentId ?? "");
+                  setShowHierarchyModal(true);
                 }
                 if (e.key === "Escape") setShowAddTask(false);
               }}
             />
-            <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 12 }}>
-              <label style={{ fontSize: 10, color: "rgba(245,240,224,0.7)", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'Oswald', Arial, sans-serif", display: "flex", alignItems: "center", gap: 5 }}>
-                <input
-                  type="radio"
-                  checked={newTaskType === "parent"}
-                  onChange={() => {
-                    setNewTaskType("parent");
-                    setNewTaskParentId("");
-                  }}
-                />
-                Parent Task
-              </label>
-              <label style={{ fontSize: 10, color: "rgba(245,240,224,0.7)", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'Oswald', Arial, sans-serif", display: "flex", alignItems: "center", gap: 5 }}>
-                <input
-                  type="radio"
-                  checked={newTaskType === "child"}
-                  onChange={() => setNewTaskType("child")}
-                />
-                Child Task
-              </label>
+            <div style={{ marginTop: 8, fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(245,240,224,0.35)", fontFamily: "'Oswald', Arial, sans-serif" }}>
+              Press Enter to place this task — parent task or child of another row
             </div>
-            <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
-              <label style={{ fontSize: 10, color: "rgba(245,240,224,0.55)", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'Oswald', Arial, sans-serif" }}>
-                Parent
-              </label>
-              <select
-                value={newTaskParentId}
-                onChange={e => setNewTaskParentId(e.target.value)}
-                disabled={newTaskType !== "child"}
-                style={{ background: "rgba(0,0,0,0.2)", color: "#f5f0e0", border: "1px solid rgba(245,240,224,0.2)", padding: "4px 8px", fontSize: 11 }}
-              >
-                <option value="">Top-level (parent/divider)</option>
-                {parentCandidates.map((pt) => (
-                  <option key={pt.id} value={pt.id}>{pt.title}</option>
-                ))}
-              </select>
-            </div>
-            {newTaskType === "child" && !newTaskParentId && (
-              <div style={{ marginTop: 6, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(217,64,64,0.8)", fontFamily: "'Oswald', Arial, sans-serif" }}>
-                Select a parent task for child task creation
-              </div>
-            )}
             {addPrefix && addSuggestions.length > 0 && (
               <div style={{ marginTop: 8, border: "1px solid rgba(232,168,32,0.22)", background: "#162a1c", borderRadius: 3, overflow: "hidden" }}>
                 {addSuggestions.map((s) => (
@@ -802,9 +772,9 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
               }}
               onEdit={() => setSelectedTask({ ...t, tag_ids: t.tag_ids ?? [], subtasks: t.subtasks ?? [] })}
               onAddChildTask={() => {
+                setChildShortcutParentId(t.id);
                 setShowAddTask(true);
-                setNewTaskType("child");
-                setNewTaskParentId(t.id);
+                window.setTimeout(() => addTaskInputRef.current?.focus(), 80);
               }}
               onDelete={() => {
                 if (!window.confirm(`Delete "${t.title}"?`)) return;
@@ -887,8 +857,15 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
                       title="Parent task bonus: +5 Focus Score"
                     />
                   )}
-                  <span style={{ fontWeight: hasChildren ? 800 : 600, fontSize: 14, color: t.status === "done" ? "rgba(255,255,255,0.35)" : "#fff", textDecoration: t.status === "done" ? "line-through" : "none" }}>
-                    {t.title}
+                  <span style={{
+                    fontWeight: hasChildren ? 900 : 600,
+                    fontSize: hasChildren ? 17 : 14,
+                    textTransform: hasChildren ? "uppercase" as const : "none",
+                    letterSpacing: hasChildren ? "0.06em" : "normal",
+                    color: t.status === "done" ? "rgba(255,255,255,0.35)" : "#fff",
+                    textDecoration: t.status === "done" ? "line-through" : "none",
+                  }}>
+                    {hasChildren ? t.title.toUpperCase() : t.title}
                   </span>
                   <button
                     type="button"
@@ -959,6 +936,134 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
           })
         )}
       </div>
+
+      {showHierarchyModal && (
+        <div
+          style={{
+            position: "fixed", inset: 0, background: "rgba(0,0,0,0.78)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            zIndex: 1100,
+          }}
+          onClick={e => {
+            if (e.target === e.currentTarget) {
+              setShowHierarchyModal(false);
+              window.setTimeout(() => addTaskInputRef.current?.focus(), 0);
+            }
+          }}
+        >
+          <div
+            style={{
+              background: "#1e3629",
+              border: "1px solid rgba(232,168,32,0.5)",
+              borderRadius: 8,
+              padding: "22px 24px",
+              width: 460,
+              maxWidth: "94vw",
+              boxShadow: "0 24px 80px rgba(0,0,0,0.65)",
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ fontSize: 10, letterSpacing: "0.18em", color: "#e8a820", fontFamily: "'Oswald',Arial,sans-serif", marginBottom: 10 }}>
+              PLACE TASK
+            </div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", marginBottom: 18, fontFamily: "'Oswald',Arial,sans-serif", letterSpacing: "0.05em", lineHeight: 1.35 }}>
+              {pendingHierarchyTitle}
+            </div>
+            <button
+              type="button"
+              disabled={addTaskMut.isPending}
+              onClick={() => addTaskMut.mutate({ title: pendingHierarchyTitle, parentId: undefined })}
+              style={{
+                width: "100%",
+                padding: "12px 14px",
+                borderRadius: 4,
+                border: "1px solid rgba(232,168,32,0.45)",
+                background: "rgba(232,168,32,0.12)",
+                color: "#e8a820",
+                fontFamily: "'Oswald',Arial,sans-serif",
+                fontSize: 12,
+                fontWeight: 800,
+                letterSpacing: "0.12em",
+                cursor: addTaskMut.isPending ? "wait" : "pointer",
+              }}
+            >
+              PARENT TASK (TOP-LEVEL)
+            </button>
+            <div style={{ margin: "16px 0", height: 1, background: "rgba(255,255,255,0.08)" }} />
+            <div style={{ fontSize: 9, letterSpacing: "0.12em", color: "rgba(245,240,224,0.45)", marginBottom: 8, fontFamily: "'Oswald',Arial,sans-serif" }}>
+              CHILD OF (SELECT PARENT)
+            </div>
+            <select
+              value={modalParentPick}
+              onChange={e => setModalParentPick(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                marginBottom: 12,
+                background: "rgba(0,0,0,0.35)",
+                color: "#f5f0e0",
+                border: "1px solid rgba(245,240,224,0.2)",
+                borderRadius: 4,
+                fontSize: 13,
+                fontFamily: "'Oswald',Arial,sans-serif",
+              }}
+            >
+              <option value="">Choose parent task…</option>
+              {parentCandidates.map((pt) => (
+                <option key={pt.id} value={pt.id}>{pt.title}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={addTaskMut.isPending || !modalParentPick}
+              onClick={() => {
+                if (!modalParentPick) {
+                  toast.error("Select a parent task");
+                  return;
+                }
+                addTaskMut.mutate({ title: pendingHierarchyTitle, parentId: modalParentPick });
+              }}
+              style={{
+                width: "100%",
+                padding: "12px 14px",
+                borderRadius: 4,
+                border: "1px solid rgba(245,240,224,0.25)",
+                background: "rgba(255,255,255,0.06)",
+                color: "#f5f0e0",
+                fontFamily: "'Oswald',Arial,sans-serif",
+                fontSize: 12,
+                fontWeight: 700,
+                letterSpacing: "0.1em",
+                cursor: addTaskMut.isPending || !modalParentPick ? "not-allowed" : "pointer",
+                opacity: !modalParentPick ? 0.45 : 1,
+              }}
+            >
+              ADD AS CHILD TASK
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowHierarchyModal(false);
+                window.setTimeout(() => addTaskInputRef.current?.focus(), 0);
+              }}
+              style={{
+                marginTop: 12,
+                width: "100%",
+                padding: "8px",
+                background: "transparent",
+                border: "none",
+                color: "rgba(245,240,224,0.35)",
+                fontSize: 11,
+                letterSpacing: "0.1em",
+                cursor: "pointer",
+                fontFamily: "'Oswald',Arial,sans-serif",
+              }}
+            >
+              CANCEL
+            </button>
+          </div>
+        </div>
+      )}
 
       {selectedTask && (
         <TaskModal
