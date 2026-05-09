@@ -1785,59 +1785,108 @@ async def webhook_info():
 
 BR_CARDINALS_PLAYOFF_URL = os.getenv(
     "BR_PLAYOFF_ODDS_URL",
-    "https://www.baseball-reference.com/leagues/majors/2026-playoff-odds.shtml",
+    "https://www.baseball-reference.com/teams/STL/2026-playoff-odds.shtml",
 )
 
 
-def _parse_br_cardinals_playoff_row(html: str) -> Optional[dict]:
-    """Parse first HTML table row for St. Louis Cardinals from BR playoff odds page."""
+def _strip_br_cell_html(fragment: str) -> str:
+    text = re.sub(r"<[^>]+>", " ", fragment)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def _slice_html_balanced_table(html: str, table_id: str) -> Optional[str]:
+    """Return full outer HTML of <table id='...'>...</table> using balanced tag counting."""
+    needle = f'id="{table_id}"'
+    idx = html.find(needle)
+    if idx == -1:
+        needle = f"id='{table_id}'"
+        idx = html.find(needle)
+    if idx == -1:
+        return None
+    start = html.rfind("<table", 0, idx)
+    if start == -1:
+        return None
+    sub = html[start:]
+    depth = 0
+    i = 0
+    n = len(sub)
+    while i < n:
+        if re.match(r"<table\b", sub[i:], re.I):
+            depth += 1
+            gt = sub.find(">", i)
+            i = gt + 1 if gt != -1 else n
+            continue
+        close_m = re.match(r"</table\s*>", sub[i:], re.I)
+        if close_m:
+            depth -= 1
+            if depth == 0:
+                end = start + i + len(close_m.group(0))
+                return html[start:end]
+            i += len(close_m.group(0))
+            continue
+        i += 1
+    return None
+
+
+def _parse_cardinals_team_playoff_odds(html: str) -> Optional[dict]:
+    """Parse Cardinals-only playoff odds from BR team page (#playoff_prob table).
+
+    Uses the first data row (most recent simulation) from the team's historical table.
+    """
+    table_html = _slice_html_balanced_table(html, "playoff_prob")
+    if not table_html:
+        return None
+
+    lower = table_html.lower()
+    tb_idx = lower.find("<tbody")
+    if tb_idx == -1:
+        return None
+    # Skip unclosed <tbody> edge case: take rows after <tbody ...>
+    after_tb = table_html[tb_idx:]
     row_m = re.search(
-        r"<tr[^>]*>.*?St\. Louis Cardinals.*?</tr>",
-        html,
-        re.I | re.DOTALL,
+        r"<tr[^>]*>([\s\S]*?)</tr>",
+        after_tb,
+        re.I,
     )
     if not row_m:
-        row_m = re.search(
-            r'<tr[^>]*>.*?/teams/STL/\d{4}-playoff-odds\.shtml.*?</tr>',
-            html,
-            re.I | re.DOTALL,
-        )
-    if not row_m:
         return None
-    row_html = row_m.group(0)
-    tds = re.findall(r"<td[^>]*>(.*?)</td>", row_html, flags=re.DOTALL | re.I)
-    cells: list[str] = []
-    for td in tds:
-        text = re.sub(r"<[^>]+>", " ", td)
-        text = re.sub(r"\s+", " ", text).strip()
-        cells.append(text)
+    row_html = row_m.group(1)
+    if "date_sim" not in row_html:
+        return None
 
-    def pct(idx: int) -> str:
-        if idx >= len(cells):
-            return "—"
-        return cells[idx] if cells[idx] else "—"
+    cells: dict[str, str] = {}
+    for tag in ("th", "td"):
+        for stat, inner in re.findall(
+            rf"<{tag}[^>]*data-stat=\"([^\"]+)\"[^>]*>([\s\S]*?)</{tag}>",
+            row_html,
+            re.I,
+        ):
+            cells[stat] = _strip_br_cell_html(inner)
 
-    proj_avg = "—"
     try:
-        if len(cells) >= 12:
-            aw = float(cells[10])
-            al = float(cells[11])
-            proj_avg = f"{round(aw)}-{round(al)}"
-    except (ValueError, IndexError):
-        pass
+        aw = float(cells.get("ppr_avg_w", ""))
+        al = float(cells.get("ppr_avg_l", ""))
+        proj_avg = f"{round(aw)}-{round(al)}"
+    except (ValueError, TypeError):
+        proj_avg = "—"
 
-    # Standard BR playoff odds row: Post, WC, Div, Bye, LDS, LCS, Pennant, Win WS
+    def pick(stat: str) -> str:
+        v = cells.get(stat, "").strip()
+        return v if v else "—"
+
     return {
         "proj_avg": proj_avg,
-        "playoff_pct": pct(14),
-        "wc_pct": pct(15),
-        "div_pct": pct(16),
-        "bye_pct": pct(17),
-        "lds_pct": pct(18),
-        "lcs_pct": pct(19),
-        "pennant_pct": pct(20),
-        "ws_pct": pct(21),
-        "source": "baseball-reference.com",
+        "playoff_pct": pick("ppr_postseason"),
+        "wc_pct": pick("ppr_wildcard"),
+        "div_pct": pick("ppr_division"),
+        "bye_pct": pick("ppr_bye"),
+        "lds_pct": pick("ppr_LDS"),
+        "lcs_pct": pick("ppr_LCS"),
+        "pennant_pct": pick("ppr_WS"),
+        "ws_pct": pick("ppr_champs"),
+        "sim_date": pick("date_sim"),
+        "source": "baseball-reference.com/teams/STL",
     }
 
 
@@ -1856,7 +1905,7 @@ async def get_cardinals_playoff_odds_br(user: User = Depends(get_current_user)):
         async with httpx.AsyncClient(timeout=35.0, follow_redirects=True) as client:
             resp = await client.get(BR_CARDINALS_PLAYOFF_URL, headers=headers)
         resp.raise_for_status()
-        parsed = _parse_br_cardinals_playoff_row(resp.text)
+        parsed = _parse_cardinals_team_playoff_odds(resp.text)
         if not parsed:
             raise HTTPException(
                 status_code=502,
