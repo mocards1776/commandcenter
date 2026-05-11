@@ -247,7 +247,7 @@ export function TaskModal({ open, onClose, task, projectId, parentId, defaultSta
   const [title,setTitle]             = useState(task?.title ?? initialTitle ?? "");
   const [description,setDescription] = useState(task?.description??"");
   const [notes,setNotes]             = useState(task?.notes??"");
-  const [status,setStatus]           = useState<TaskStatus>(task?.status??defaultStatus??"today");
+  const [status,setStatus]           = useState<TaskStatus>(task?.status??defaultStatus??"upcoming");
   const [importance,setImportanceRaw]= useState(task?.importance??3);
   const [difficulty,setDifficulty]   = useState(task?.difficulty??3);
   const [dueDate,setDueDate]         = useState(task?.due_date ?? initialDueDate ?? todayISO());
@@ -306,7 +306,7 @@ export function TaskModal({ open, onClose, task, projectId, parentId, defaultSta
     setTitle(task?.title ?? initialTitle ?? "");
     setDescription(task?.description??"");
     setNotes(task?.notes??"");
-    setStatus(task?.status??defaultStatus??"today");
+    setStatus(task?.status??defaultStatus??"upcoming");
     setImportanceRaw(task?.importance??3);
     setDifficulty(task?.difficulty??3);
     setDueDate(task?.due_date ?? initialDueDate ?? todayISO());

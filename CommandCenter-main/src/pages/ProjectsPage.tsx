@@ -7,10 +7,11 @@ import { TaskContextMenu } from "@/components/todos/TaskContextMenu";
 import { CompletionDialog } from "@/components/todos/CompletionDialog";
 import { useActiveTimer } from "@/hooks/useTimer";
 import { useTimerStore, useUIStore } from "@/store";
-import type { ProjectSummary, Task, Project } from "@/types";
+import type { ProjectSummary, Task, Project, TaskStatus } from "@/types";
 import { toast } from "react-hot-toast";
 import { useParams } from "react-router-dom";
 import { todayStr } from "@/lib/utils";
+import { parseTask } from "@/lib/nlp";
 
 /** Flatten tasks in parent → children tree order for display. */
 function orderProjectTasksForDisplay(tasks: Task[]): Task[] {
@@ -455,18 +456,28 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
   });
 
   const addTaskMut = useMutation({
-    mutationFn: ({ title, parentId }: { title: string; parentId?: string }) => tasksApi.create({
-      title,
-      project_id: id,
-      parent_id: parentId,
-      status: "today",
-      priority: "medium",
-      importance: 3,
-      difficulty: 3,
-      due_date: `${todayStr()}T00:00:00Z`,
-      tag_ids: [],
-      show_in_daily: true,
-    }),
+    mutationFn: ({ title, parentId }: { title: string; parentId?: string }) => {
+      const p = parseTask(title);
+      const cleanTitle = p.cleanTitle || title.trim();
+      let due_date: string | undefined;
+      if (p.dueDate && p.dueTime) due_date = `${p.dueDate}T${p.dueTime}:00`;
+      else if (p.dueDate) due_date = `${p.dueDate}T00:00:00`;
+      else if (p.dueTime) due_date = `${todayStr()}T${p.dueTime}:00`;
+      const dateKey = due_date?.split("T")[0];
+      const status: TaskStatus = dateKey === todayStr() ? "today" : "upcoming";
+      return tasksApi.create({
+        title: cleanTitle,
+        project_id: id,
+        parent_id: parentId,
+        status,
+        priority: "medium",
+        importance: 3,
+        difficulty: 3,
+        due_date,
+        tag_ids: [],
+        show_in_daily: true,
+      });
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["project", id] });
       qc.invalidateQueries({ queryKey: ["projects"] });
@@ -683,8 +694,12 @@ function ProjectDetail({ id, onBack }: { id: string; onBack: () => void }) {
               onKeyDown={e => {
                 if (e.key === "Enter" && newTaskTitle.trim()) {
                   e.preventDefault();
+                  if (childShortcutParentId) {
+                    addTaskMut.mutate({ title: newTaskTitle.trim(), parentId: childShortcutParentId });
+                    return;
+                  }
                   setPendingHierarchyTitle(newTaskTitle.trim());
-                  setModalParentPick(childShortcutParentId ?? "");
+                  setModalParentPick("");
                   setShowHierarchyModal(true);
                 }
                 if (e.key === "Escape") setShowAddTask(false);

@@ -22,6 +22,8 @@ export interface OpenMeteoResponse {
     temperature_2m: number[];
     apparent_temperature: number[];
     weather_code: number[];
+    /** 0–100 % chance of precipitation */
+    precipitation_probability: number[];
   };
   daily: {
     time: string[];
@@ -44,7 +46,7 @@ export async function fetchOpenMeteoForecast(
       "weather_code",
       "relative_humidity_2m",
     ].join(","),
-    hourly: ["temperature_2m", "apparent_temperature", "weather_code"].join(","),
+    hourly: ["temperature_2m", "apparent_temperature", "weather_code", "precipitation_probability"].join(","),
     daily: ["weather_code", "temperature_2m_max", "temperature_2m_min"].join(","),
     temperature_unit: "fahrenheit",
     wind_speed_unit: "mph",

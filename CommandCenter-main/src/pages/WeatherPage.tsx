@@ -46,7 +46,8 @@ function WeatherGlyph({ code, sizePx }: { code: number; sizePx: number }) {
 }
 
 function sliceHourlyNext(data: OpenMeteoResponse, count: number) {
-  const { time, temperature_2m, apparent_temperature, weather_code } = data.hourly;
+  const { time, temperature_2m, apparent_temperature, weather_code, precipitation_probability } = data.hourly;
+  const pop = precipitation_probability ?? [];
   const now = Date.now();
   let start = time.findIndex((t) => Date.parse(t) >= now - 45 * 60_000);
   if (start < 0) start = 0;
@@ -58,6 +59,7 @@ function sliceHourlyNext(data: OpenMeteoResponse, count: number) {
       temp: temperature_2m[i],
       feels: apparent_temperature[i],
       code: weather_code[i],
+      precipPct: typeof pop[i] === "number" ? pop[i] : null,
     });
   }
   return out;
@@ -154,7 +156,7 @@ export function WeatherPage() {
   });
 
   const current = data?.current;
-  const hourlyRows = data ? sliceHourlyNext(data, 8) : [];
+  const hourlyRows = data ? sliceHourlyNext(data, 24) : [];
   const dailyDays = data?.daily?.time?.slice(0, 5) ?? [];
 
   /* Same layout idea as DashboardPage: plain div + width:100% + display:grid / flex via inline styles (no Tailwind for structure). */
@@ -477,9 +479,9 @@ export function WeatherPage() {
                         flexDirection: "column",
                         alignItems: "center",
                         textAlign: "center",
-                        minWidth: 108,
+                        minWidth: 118,
                         flexShrink: 0,
-                        padding: "18px 16px",
+                        padding: "18px 14px",
                         borderRadius: 16,
                         border: "1px solid rgba(255,255,255,0.1)",
                         background: "linear-gradient(180deg, rgba(255,255,255,0.07), transparent)",
@@ -492,7 +494,10 @@ export function WeatherPage() {
                         <WeatherGlyph code={row.code} sizePx={40} />
                       </div>
                       <span style={{ fontSize: 26, fontWeight: 900, color: "#fff" }}>{Math.round(row.temp)}°</span>
-                      <span style={{ marginTop: 6, fontSize: 11, color: "rgba(100,116,139,0.95)" }}>{Math.round(row.feels)}° feel</span>
+                      <span style={{ marginTop: 6, fontSize: 11, fontWeight: 600, color: "rgba(147,197,253,0.9)" }}>
+                        {row.precipPct != null ? `${Math.round(row.precipPct)}% precip` : "—"}
+                      </span>
+                      <span style={{ marginTop: 4, fontSize: 11, color: "rgba(100,116,139,0.95)" }}>{Math.round(row.feels)}° feel</span>
                     </div>
                   );
                 })}

@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { tasksApi, tagsApi } from "@/lib/api";
 import { TaskModal } from "./TaskModal";
-import { parseTask } from "@/lib/nlp";
+import { parseTask, type NLPResult } from "@/lib/nlp";
 import { todayStr } from "@/lib/utils";
 import type { TaskStatus } from "@/types";
 import toast from "react-hot-toast";
@@ -15,21 +15,36 @@ interface Props {
   placeholder?: string;
 }
 
+function buildDueFromNlp(p: NLPResult): string | undefined {
+  if (p.dueDate && p.dueTime) return `${p.dueDate}T${p.dueTime}:00`;
+  if (p.dueDate) return `${p.dueDate}T00:00:00`;
+  if (p.dueTime) return `${todayStr()}T${p.dueTime}:00`;
+  return undefined;
+}
+
+function statusForDueIso(dueIso: string | undefined): TaskStatus {
+  if (!dueIso) return "upcoming";
+  const day = dueIso.split("T")[0];
+  return day === todayStr() ? "today" : "upcoming";
+}
+
 export function QuickAdd({
   projectId,
   parentId,
-  defaultStatus = "today",
+  defaultStatus = "upcoming",
   placeholder,
 }: Props) {
-  const [value, setValue]     = useState("");
+  const [value, setValue] = useState("");
   const [focused, setFocused] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [duePickerOpen, setDuePickerOpen] = useState(false);
+  const [pickerDate, setPickerDate] = useState(todayStr);
   const inputRef = useRef<HTMLInputElement>(null);
   const qc = useQueryClient();
 
   const parsed = parseTask(value);
-  const hasDate = !!(parsed.dueDate || parsed.dueTime);
-  const showPreview = focused && value.trim().length > 0 && hasDate;
+  const hasNlpSchedule = !!(parsed.dueDate || parsed.dueTime);
+  const showPreview = focused && value.trim().length > 0 && hasNlpSchedule;
 
   const inv = () => {
     qc.invalidateQueries({ queryKey: ["tasks"] });
@@ -38,28 +53,24 @@ export function QuickAdd({
   };
 
   const createMut = useMutation({
-    mutationFn: () => {
+    mutationFn: (dueOverride?: string) => {
       const title = value.trim();
       if (!title) throw new Error("Title required");
+      const p = parseTask(title);
+      const cleanTitle = p.cleanTitle || title;
+      const due_date = dueOverride ?? buildDueFromNlp(p);
+      if (!due_date) throw new Error("Due date required");
 
-      // Build due_date ISO string (default today in Central so tasks show under Today filter)
-      let due_date: string | undefined;
-      if (parsed.dueDate && parsed.dueTime) {
-        due_date = `${parsed.dueDate}T${parsed.dueTime}:00`;
-      } else if (parsed.dueDate) {
-        due_date = parsed.dueDate;
-      } else {
-        due_date = `${todayStr()}T00:00:00Z`;
-      }
+      const status = statusForDueIso(due_date);
 
       return tasksApi.create({
-        title,
-        status: defaultStatus,
+        title: cleanTitle,
+        status,
         priority: "medium",
         importance: 3,
         difficulty: 3,
         due_date,
-        time_estimate_minutes: parsed.estimateMinutes ?? undefined,
+        time_estimate_minutes: p.estimateMinutes ?? undefined,
         project_id: projectId,
         parent_id: parentId,
         tag_ids: [],
@@ -68,27 +79,48 @@ export function QuickAdd({
     },
     onSuccess: (task) => {
       inv();
-      const label = parsed.humanLabel ? ` · ${parsed.humanLabel}` : "";
+      const p = parseTask(value);
+      const label = p.humanLabel ? ` · ${p.humanLabel}` : "";
       toast.success(`"${task.title}" added${label}`);
       setValue("");
+      setDuePickerOpen(false);
       inputRef.current?.focus();
     },
     onError: (e: any) =>
       toast.error(`Failed: ${e?.response?.data?.detail ?? e?.message ?? "unknown"}`),
   });
 
+  const tryFastCreate = () => {
+    const raw = value.trim();
+    if (!raw) return;
+    const p = parseTask(raw);
+    if (buildDueFromNlp(p)) {
+      createMut.mutate(undefined);
+      return;
+    }
+    setPickerDate(todayStr());
+    setDuePickerOpen(true);
+  };
+
+  const confirmPickerDate = () => {
+    if (!pickerDate) {
+      toast.error("Choose a due date");
+      return;
+    }
+    createMut.mutate(`${pickerDate}T00:00:00`);
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
       if (e.shiftKey) {
-        // Shift+Enter → open full modal pre-filled
         setModalOpen(true);
       } else if (value.trim()) {
-        // Enter → fast-create
-        createMut.mutate();
+        tryFastCreate();
       }
     }
     if (e.key === "Escape") {
+      if (duePickerOpen) setDuePickerOpen(false);
       setValue("");
       inputRef.current?.blur();
     }
@@ -176,7 +208,6 @@ export function QuickAdd({
           }}
         />
 
-        {/* Parsed date preview chip */}
         {showPreview && (
           <div
             style={{
@@ -207,7 +238,6 @@ export function QuickAdd({
           </div>
         )}
 
-        {/* Open full modal button — shows when focused and has text */}
         {focused && value.trim() && (
           <button
             onMouseDown={openModal}
@@ -232,7 +262,6 @@ export function QuickAdd({
         )}
       </div>
 
-      {/* Hint row when focused */}
       {focused && value.trim() && (
         <div
           style={{
@@ -243,7 +272,7 @@ export function QuickAdd({
             fontFamily: "'Oswald', Arial, sans-serif",
           }}
         >
-          ENTER to save fast · SHIFT+ENTER for full form · ESC to clear
+          ENTER to save · picks due date if none in text · SHIFT+ENTER full form · ESC clear
         </div>
       )}
 
@@ -282,6 +311,101 @@ export function QuickAdd({
               {s.label}
             </button>
           ))}
+        </div>
+      )}
+
+      {duePickerOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.75)",
+            zIndex: 1200,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setDuePickerOpen(false);
+          }}
+        >
+          <div
+            style={{
+              width: 400,
+              maxWidth: "100%",
+              background: "#1e3629",
+              border: "1px solid rgba(232,168,32,0.45)",
+              borderRadius: 6,
+              padding: "20px 22px",
+              boxShadow: "0 24px 64px rgba(0,0,0,0.55)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontSize: 10, letterSpacing: "0.2em", color: "#e8a820", fontFamily: "'Oswald',Arial,sans-serif", marginBottom: 8 }}>
+              DUE DATE
+            </div>
+            <p style={{ fontSize: 13, color: "rgba(245,240,224,0.75)", marginBottom: 14, lineHeight: 1.45 }}>
+              No day or time was detected in your text. Pick a due date for this task.
+            </p>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(245,240,224,0.5)", marginBottom: 6, letterSpacing: "0.08em" }}>DATE</div>
+            <input
+              type="date"
+              value={pickerDate}
+              onChange={(e) => setPickerDate(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                marginBottom: 16,
+                background: "rgba(0,0,0,0.35)",
+                color: "#f5f0e0",
+                border: "1px solid rgba(245,240,224,0.2)",
+                borderRadius: 4,
+                fontSize: 14,
+                fontFamily: "'Oswald', Arial, sans-serif",
+              }}
+            />
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setDuePickerOpen(false)}
+                style={{
+                  flex: 1,
+                  padding: "10px",
+                  background: "transparent",
+                  border: "1px solid rgba(245,240,224,0.2)",
+                  color: "rgba(245,240,224,0.55)",
+                  borderRadius: 4,
+                  cursor: "pointer",
+                  fontFamily: "'Oswald', Arial, sans-serif",
+                  fontSize: 11,
+                  letterSpacing: "0.12em",
+                }}
+              >
+                CANCEL
+              </button>
+              <button
+                type="button"
+                disabled={createMut.isPending}
+                onClick={confirmPickerDate}
+                style={{
+                  flex: 1,
+                  padding: "10px",
+                  background: "rgba(232,168,32,0.18)",
+                  border: "1px solid rgba(232,168,32,0.5)",
+                  color: "#e8a820",
+                  borderRadius: 4,
+                  cursor: createMut.isPending ? "wait" : "pointer",
+                  fontFamily: "'Oswald', Arial, sans-serif",
+                  fontSize: 11,
+                  fontWeight: 800,
+                  letterSpacing: "0.12em",
+                }}
+              >
+                ADD TASK
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

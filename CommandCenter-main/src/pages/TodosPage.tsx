@@ -6,7 +6,7 @@ import { TaskCard } from "@/components/todos/TaskCard";
 import { QuickAdd } from "@/components/todos/QuickAdd";
 import { TaskModal } from "@/components/todos/TaskModal";
 import { Loader2 } from "lucide-react";
-import type { Priority, TaskStatus } from "@/types";
+import type { Priority } from "@/types";
 import { useTimerStore, useUIStore, usePinnedTaskStore } from "@/store";
 import { battingAvgStr, toDateStr, todayStr } from "@/lib/utils";
 
@@ -450,14 +450,14 @@ export function TodosPage() {
         </div>
       )}
 
-      <QuickAdd defaultStatus={mode === "done" ? "today" : "today" as TaskStatus} />
+      <QuickAdd defaultStatus={mode === "done" ? "today" : "upcoming"} />
       <TaskModal
         open={modalOpen}
         onClose={() => {
           setModalOpen(false);
           setShortcutProjectId(undefined);
         }}
-        defaultStatus="today"
+        defaultStatus="upcoming"
         projectId={shortcutProjectId}
       />
 
