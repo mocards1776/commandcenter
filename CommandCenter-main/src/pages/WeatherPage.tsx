@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Loader2,
@@ -39,9 +40,9 @@ function iconForCode(code: number) {
   return Cloud;
 }
 
-function WeatherGlyph({ code, className }: { code: number; className?: string }) {
+function WeatherGlyph({ code, sizePx }: { code: number; sizePx: number }) {
   const Icon = iconForCode(code);
-  return <Icon className={className ?? "size-10 text-red-400"} strokeWidth={1.5} aria-hidden />;
+  return <Icon width={sizePx} height={sizePx} strokeWidth={1.5} color="#f87171" aria-hidden />;
 }
 
 function sliceHourlyNext(data: OpenMeteoResponse, count: number) {
@@ -69,38 +70,71 @@ function PrecipRadar({ lat, lon }: { lat: number; lon: number }) {
 
   if (!apiKey) {
     return (
-      <div className="flex min-h-[180px] w-full flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-white/15 bg-black/30 px-6 py-10 text-center backdrop-blur-sm">
-        <p className="max-w-md font-sans text-sm leading-relaxed text-slate-400">
-          Add{" "}
-          <code className="rounded-md bg-white/10 px-2 py-1 font-mono text-xs text-red-300">
-            VITE_VISUAL_CROSSING_API_KEY
-          </code>{" "}
-          for live precipitation radar tiles.
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 12,
+          minHeight: 180,
+          width: "100%",
+          boxSizing: "border-box",
+          padding: "40px 24px",
+          borderRadius: 16,
+          border: "1px dashed rgba(255,255,255,0.18)",
+          background: "rgba(0,0,0,0.35)",
+          textAlign: "center",
+        }}
+      >
+        <p style={{ maxWidth: 480, fontSize: 14, lineHeight: 1.6, color: "rgba(148,163,184,0.95)" }}>
+          Add <code style={{ padding: "4px 8px", borderRadius: 6, background: "rgba(255,255,255,0.08)", fontFamily: "monospace", fontSize: 12, color: "#fca5a5" }}>VITE_VISUAL_CROSSING_API_KEY</code> for live precipitation radar tiles.
         </p>
       </div>
     );
   }
 
   const tilesX = [x - 1, x, x + 1];
+  const h = "min(260px, 32vw)";
   return (
     <div
-      className="relative h-[min(220px,28vw)] w-full max-h-[280px] overflow-hidden rounded-2xl border border-white/10 bg-slate-950/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+      style={{
+        position: "relative",
+        width: "100%",
+        height: h,
+        maxHeight: 300,
+        overflow: "hidden",
+        borderRadius: 16,
+        border: "1px solid rgba(255,255,255,0.1)",
+        background: "rgba(2,6,23,0.92)",
+        boxSizing: "border-box",
+      }}
       role="img"
       aria-label="Precipitation radar map"
     >
-      <div className="flex h-full w-full">
+      <div style={{ display: "flex", height: "100%", width: "100%" }}>
         {tilesX.map((tx) => (
           <img
             key={`${z}-${tx}-${y}`}
             src={visualCrossingPrecipTileUrl(z, tx, y, apiKey)}
             alt=""
-            className="h-full min-w-0 flex-1 object-cover"
+            style={{ height: "100%", minWidth: 0, flex: 1, objectFit: "cover" }}
             loading="lazy"
           />
         ))}
       </div>
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent px-4 py-3">
-        <span className="font-sans text-[10px] font-bold uppercase tracking-[0.25em] text-white/50">
+      <div
+        style={{
+          pointerEvents: "none",
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          padding: "12px 16px",
+          background: "linear-gradient(to top, rgba(0,0,0,0.88), rgba(0,0,0,0.35), transparent)",
+        }}
+      >
+        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.25em", textTransform: "uppercase", color: "rgba(255,255,255,0.45)" }}>
           Radar · precip composite
         </span>
       </div>
@@ -123,124 +157,311 @@ export function WeatherPage() {
   const hourlyRows = data ? sliceHourlyNext(data, 8) : [];
   const dailyDays = data?.daily?.time?.slice(0, 5) ?? [];
 
-  return (
-    <div className="relative min-h-screen w-full min-w-0 max-w-none overflow-x-hidden bg-[#050814] pb-20 pt-0 font-sans text-slate-100">
-      {/* Atmospheric layers */}
-      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_120%_80%_at_50%_-20%,rgba(217,64,64,0.18),transparent_55%),radial-gradient(ellipse_80%_60%_at_100%_50%,rgba(59,130,246,0.08),transparent_50%),radial-gradient(ellipse_60%_40%_at_0%_80%,rgba(217,64,64,0.06),transparent_45%)]" />
-      <div className="pointer-events-none fixed inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.4)_0%,transparent_35%,transparent_65%,rgba(5,8,20,0.9)_100%)]" />
+  /* Same layout idea as DashboardPage: plain div + width:100% + display:grid / flex via inline styles (no Tailwind for structure). */
+  const shell: CSSProperties = {
+    width: "100%",
+    minWidth: 0,
+    maxWidth: "100%",
+    minHeight: "100vh",
+    boxSizing: "border-box",
+    position: "relative",
+    overflowX: "hidden",
+    background: "#050814",
+    color: "#e2e8f0",
+    paddingBottom: 56,
+    fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
+  };
 
-      {/* Header — full width */}
-      <header className="sticky top-0 z-30 w-full min-w-0 max-w-none border-b border-white/10 bg-[#0a0f1c]/80 backdrop-blur-xl">
-        <div className="flex w-full min-w-0 max-w-none items-center gap-4 px-4 py-4 sm:px-8 lg:px-12 xl:px-16">
+  const contentPad: CSSProperties = {
+    width: "100%",
+    minWidth: 0,
+    boxSizing: "border-box",
+    padding: "24px clamp(16px, 2.5vw, 40px)",
+    display: "flex",
+    flexDirection: "column",
+    gap: 32,
+  };
+
+  const panel: CSSProperties = {
+    borderRadius: 24,
+    border: "1px solid rgba(255,255,255,0.1)",
+    background: "linear-gradient(145deg, rgba(15,23,42,0.95) 0%, rgba(15,23,42,0.75) 45%, rgba(2,6,23,0.92) 100%)",
+    boxShadow: "0 24px 48px rgba(0,0,0,0.45)",
+    boxSizing: "border-box",
+    padding: "clamp(20px, 3vw, 40px)",
+    width: "100%",
+    minWidth: 0,
+    position: "relative",
+    overflow: "hidden",
+  };
+
+  const subCard: CSSProperties = {
+    borderRadius: 16,
+    border: "1px solid rgba(255,255,255,0.1)",
+    background: "rgba(0,0,0,0.28)",
+    padding: "14px 18px",
+    boxSizing: "border-box",
+  };
+
+  return (
+    <div style={shell}>
+      <div
+        style={{
+          pointerEvents: "none",
+          position: "fixed",
+          inset: 0,
+          background:
+            "radial-gradient(ellipse 120% 80% at 50% -20%, rgba(217,64,64,0.16), transparent 55%), radial-gradient(ellipse 80% 60% at 100% 50%, rgba(59,130,246,0.06), transparent 50%), radial-gradient(ellipse 60% 40% at 0% 80%, rgba(217,64,64,0.05), transparent 45%)",
+        }}
+      />
+      <div
+        style={{
+          pointerEvents: "none",
+          position: "fixed",
+          inset: 0,
+          background: "linear-gradient(180deg, rgba(15,23,42,0.35) 0%, transparent 35%, transparent 65%, rgba(5,8,20,0.92) 100%)",
+        }}
+      />
+
+      <header
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 30,
+          width: "100%",
+          minWidth: 0,
+          boxSizing: "border-box",
+          borderBottom: "1px solid rgba(255,255,255,0.1)",
+          background: "rgba(10,15,28,0.82)",
+          backdropFilter: "blur(14px)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            width: "100%",
+            minWidth: 0,
+            alignItems: "center",
+            gap: 16,
+            padding: "16px clamp(16px, 2.5vw, 40px)",
+            boxSizing: "border-box",
+          }}
+        >
           <button
             type="button"
             onClick={() => navigate(-1)}
-            className="flex shrink-0 items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-xs font-bold uppercase tracking-[0.2em] text-slate-300 transition hover:border-red-400/40 hover:bg-white/10 hover:text-white"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              flexShrink: 0,
+              padding: "10px 16px",
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.15)",
+              background: "rgba(255,255,255,0.06)",
+              color: "#cbd5e1",
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: "0.2em",
+              textTransform: "uppercase",
+              cursor: "pointer",
+            }}
           >
-            <ArrowLeft className="size-4" aria-hidden />
+            <ArrowLeft size={16} aria-hidden />
             Back
           </button>
-          <div className="min-w-0 flex-1">
-            <h1 className="bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-2xl font-black tracking-tight text-transparent sm:text-3xl md:text-4xl">
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <h1
+              style={{
+                fontSize: "clamp(1.5rem, 3.5vw, 2.5rem)",
+                fontWeight: 900,
+                letterSpacing: "-0.02em",
+                color: "#fff",
+                lineHeight: 1.1,
+              }}
+            >
               Weather
             </h1>
-            <p className="mt-1 truncate text-xs font-medium tracking-wide text-slate-500 sm:text-sm">
-              <span className="font-bold uppercase tracking-wider text-red-400/95">{WEATHER_LOCATION_LABEL}</span>
-              <span className="text-slate-600"> · </span>
+            <p style={{ marginTop: 6, fontSize: 13, color: "rgba(148,163,184,0.95)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <span style={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: "#f87171" }}>{WEATHER_LOCATION_LABEL}</span>
+              <span style={{ color: "rgba(100,116,139,0.9)" }}> · </span>
               {WEATHER_TIMEZONE.replace("_", " ")} · {lat.toFixed(2)}°, {lon.toFixed(2)}°
             </p>
           </div>
         </div>
       </header>
 
-      <div className="relative z-10 w-full min-w-0 max-w-none space-y-8 px-4 py-8 sm:space-y-10 sm:px-8 lg:space-y-12 lg:px-12 xl:px-16">
+      <div style={{ position: "relative", zIndex: 10, ...contentPad }}>
         {isLoading && (
-          <div className="flex min-h-[40vh] w-full items-center justify-center">
-            <Loader2 className="size-12 animate-spin text-red-500 drop-shadow-[0_0_24px_rgba(239,68,68,0.5)]" aria-label="Loading" />
+          <div style={{ display: "flex", minHeight: "40vh", width: "100%", alignItems: "center", justifyContent: "center" }}>
+            <Loader2 size={44} color="#ef4444" style={{ animation: "spin 1s linear infinite" }} aria-label="Loading" />
           </div>
         )}
 
         {isError && (
-          <div className="w-full rounded-2xl border border-rose-500/30 bg-rose-950/50 px-8 py-12 text-center text-rose-100 shadow-xl">
+          <div
+            style={{
+              width: "100%",
+              borderRadius: 16,
+              border: "1px solid rgba(251,113,133,0.35)",
+              background: "rgba(69,10,10,0.45)",
+              padding: "40px 28px",
+              textAlign: "center",
+              color: "#fecdd3",
+              boxSizing: "border-box",
+            }}
+          >
             {(error as Error)?.message ?? "Could not load weather."}
           </div>
         )}
 
         {!isLoading && !isError && current && data && (
           <>
-            {/* Hero — edge-to-edge feel */}
-            <section className="grid w-full min-w-0 max-w-none grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-8 xl:gap-10">
-              <div className="relative min-w-0 overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-slate-900/90 via-[#0f172a] to-[#020617] p-8 shadow-2xl shadow-black/50 lg:col-span-8 lg:p-10 xl:p-12">
-                <div className="absolute -right-20 -top-20 size-72 rounded-full bg-red-600/20 blur-3xl" />
-                <div className="absolute -bottom-16 -left-16 size-56 rounded-full bg-blue-500/10 blur-3xl" />
-                <div className="relative flex flex-col gap-8 md:flex-row md:items-center md:justify-between">
-                  <div className="flex items-start gap-6 md:gap-10">
-                    <div className="flex size-24 shrink-0 items-center justify-center rounded-3xl border border-white/10 bg-white/5 shadow-inner shadow-black/40 md:size-32">
-                      <WeatherGlyph code={current.weather_code} className="size-14 text-red-400 md:size-[4.5rem]" />
+            <section
+              style={{
+                display: "grid",
+                width: "100%",
+                minWidth: 0,
+                gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))",
+                gap: 28,
+                alignItems: "stretch",
+              }}
+            >
+              <div style={panel}>
+                <div style={{ position: "absolute", right: -80, top: -80, width: 288, height: 288, borderRadius: "50%", background: "rgba(220,38,38,0.18)", filter: "blur(48px)" }} />
+                <div style={{ position: "absolute", left: -64, bottom: -48, width: 224, height: 224, borderRadius: "50%", background: "rgba(59,130,246,0.08)", filter: "blur(40px)" }} />
+                <div
+                  style={{
+                    position: "relative",
+                    zIndex: 1,
+                    display: "flex",
+                    flexDirection: "row",
+                    flexWrap: "wrap",
+                    gap: 32,
+                    alignItems: "flex-start",
+                    justifyContent: "space-between",
+                    width: "100%",
+                    minWidth: 0,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 24, minWidth: 0, flex: "1 1 280px" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        width: 112,
+                        height: 112,
+                        flexShrink: 0,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        borderRadius: 24,
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        background: "rgba(255,255,255,0.05)",
+                        boxShadow: "inset 0 2px 8px rgba(0,0,0,0.35)",
+                      }}
+                    >
+                      <WeatherGlyph code={current.weather_code} sizePx={56} />
                     </div>
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.35em] text-slate-500">Right now</p>
-                      <div className="mt-3 flex flex-wrap items-end gap-4">
-                        <span className="text-7xl font-black tabular-nums leading-none tracking-tighter text-white drop-shadow-lg md:text-8xl xl:text-9xl">
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.28em", textTransform: "uppercase", color: "rgba(148,163,184,0.85)" }}>Right now</p>
+                      <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 16 }}>
+                        <span style={{ fontSize: "clamp(3.5rem, 10vw, 6rem)", fontWeight: 900, lineHeight: 1, letterSpacing: "-0.04em", color: "#fff" }}>
                           {Math.round(current.temperature_2m)}°
                         </span>
-                        <div className="mb-2 flex flex-col gap-1">
-                          <span className="text-lg font-semibold text-red-200/90 md:text-xl">
-                            {weatherCodeLabel(current.weather_code)}
-                          </span>
-                          <span className="text-sm text-slate-400">
-                            Feels like{" "}
-                            <span className="font-bold text-slate-200">{Math.round(current.apparent_temperature)}°</span>
+                        <div style={{ marginBottom: 6, display: "flex", flexDirection: "column", gap: 4 }}>
+                          <span style={{ fontSize: 18, fontWeight: 600, color: "rgba(254,202,202,0.95)" }}>{weatherCodeLabel(current.weather_code)}</span>
+                          <span style={{ fontSize: 14, color: "rgba(148,163,184,0.95)" }}>
+                            Feels like <strong style={{ color: "#e2e8f0" }}>{Math.round(current.apparent_temperature)}°</strong>
                           </span>
                         </div>
                       </div>
                     </div>
                   </div>
-                  <div className="grid shrink-0 grid-cols-2 gap-3 sm:grid-cols-1 md:max-w-xs">
-                    <div className="rounded-2xl border border-white/10 bg-black/25 px-5 py-4 backdrop-blur-md">
-                      <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Today</p>
-                      <p className="mt-2 text-2xl font-bold tabular-nums text-white">
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+                      gap: 12,
+                      flex: "0 1 320px",
+                      width: "100%",
+                      maxWidth: 360,
+                      minWidth: 0,
+                    }}
+                  >
+                    <div style={subCard}>
+                      <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(148,163,184,0.85)" }}>Today</p>
+                      <p style={{ marginTop: 8, fontSize: 24, fontWeight: 700, color: "#fff" }}>
                         H {Math.round(data.daily.temperature_2m_max[0])}° · L {Math.round(data.daily.temperature_2m_min[0])}°
                       </p>
                     </div>
                     {typeof current.relative_humidity_2m === "number" && (
-                      <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/25 px-4 py-3 backdrop-blur-md">
-                        <Droplets className="size-5 shrink-0 text-sky-400/80" />
+                      <div style={{ ...subCard, display: "flex", alignItems: "center", gap: 12 }}>
+                        <Droplets size={22} color="rgba(56,189,248,0.85)" style={{ flexShrink: 0 }} />
                         <div>
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Humidity</p>
-                          <p className="text-lg font-bold tabular-nums">{Math.round(current.relative_humidity_2m)}%</p>
+                          <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(148,163,184,0.85)" }}>Humidity</p>
+                          <p style={{ fontSize: 18, fontWeight: 700 }}>{Math.round(current.relative_humidity_2m)}%</p>
                         </div>
                       </div>
                     )}
-                    <div className="col-span-2 flex items-center gap-3 rounded-2xl border border-white/10 bg-black/25 px-4 py-3 backdrop-blur-md sm:col-span-1">
-                      <Wind className="size-5 shrink-0 text-slate-400" />
+                    <div style={{ ...subCard, gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: 12 }}>
+                      <Wind size={22} color="rgba(148,163,184,0.85)" style={{ flexShrink: 0 }} />
                       <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Local outlook</p>
-                        <p className="text-sm text-slate-300">Open-Meteo forecast · updated frequently</p>
+                        <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(148,163,184,0.85)" }}>Local outlook</p>
+                        <p style={{ fontSize: 13, color: "rgba(203,213,225,0.95)" }}>Open-Meteo forecast · updated frequently</p>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Side accent column */}
-              <div className="flex min-w-0 flex-col gap-4 lg:col-span-4">
-                <div className="flex-1 rounded-3xl border border-red-500/20 bg-gradient-to-b from-red-950/40 to-transparent p-6 backdrop-blur-sm">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-red-400/80">Snapshot</p>
-                  <p className="mt-4 font-sans text-sm leading-relaxed text-slate-400">
-                    Hourly strip scrolls horizontally; 5-day outlook and radar use the full content width beside the sidebar.
-                  </p>
-                </div>
+              <div
+                style={{
+                  borderRadius: 24,
+                  border: "1px solid rgba(239,68,68,0.28)",
+                  background: "linear-gradient(180deg, rgba(69,10,10,0.35), transparent)",
+                  padding: 24,
+                  boxSizing: "border-box",
+                  width: "100%",
+                  minWidth: 0,
+                }}
+              >
+                <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.22em", textTransform: "uppercase", color: "rgba(248,113,113,0.9)" }}>Snapshot</p>
+                <p style={{ marginTop: 16, fontSize: 14, lineHeight: 1.65, color: "rgba(148,163,184,0.95)" }}>
+                  Layout matches the dashboard shell: full width of the main column beside the sidebar. Hourly tiles scroll horizontally; outlook and radar share the row below on wide screens.
+                </p>
               </div>
             </section>
 
-            {/* Hourly — full width strip */}
-            <section className="w-full min-w-0 max-w-none rounded-3xl border border-white/10 bg-slate-900/40 p-6 shadow-xl backdrop-blur-sm sm:p-8">
-              <div className="mb-5 flex items-end justify-between gap-4">
-                <h2 className="font-sans text-xs font-black uppercase tracking-[0.3em] text-slate-500">Next hours</h2>
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-600">Scroll →</span>
+            <section
+              style={{
+                width: "100%",
+                minWidth: 0,
+                boxSizing: "border-box",
+                borderRadius: 24,
+                border: "1px solid rgba(255,255,255,0.1)",
+                background: "rgba(15,23,42,0.45)",
+                padding: "24px clamp(16px, 2vw, 32px)",
+                boxShadow: "0 16px 40px rgba(0,0,0,0.35)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, marginBottom: 20 }}>
+                <h2 style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.28em", textTransform: "uppercase", color: "rgba(100,116,139,0.95)" }}>Next hours</h2>
+                <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(71,85,105,0.95)" }}>Scroll →</span>
               </div>
-              <div className="-mx-2 flex w-full min-w-0 flex-row flex-nowrap gap-4 overflow-x-auto pb-3 pt-1 [scrollbar-width:thin]">
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "row",
+                  flexWrap: "nowrap",
+                  gap: 16,
+                  width: "100%",
+                  minWidth: 0,
+                  overflowX: "auto",
+                  paddingTop: 4,
+                  paddingBottom: 8,
+                  scrollbarWidth: "thin",
+                }}
+              >
                 {hourlyRows.map((row) => {
                   const t = new Date(row.time);
                   const label = t.toLocaleTimeString("en-US", {
@@ -251,25 +472,59 @@ export function WeatherPage() {
                   return (
                     <div
                       key={row.time}
-                      className="flex min-w-[108px] shrink-0 flex-col items-center rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.07] to-transparent px-4 py-5 text-center shadow-lg shadow-black/20"
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        textAlign: "center",
+                        minWidth: 108,
+                        flexShrink: 0,
+                        padding: "18px 16px",
+                        borderRadius: 16,
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        background: "linear-gradient(180deg, rgba(255,255,255,0.07), transparent)",
+                        boxShadow: "0 12px 28px rgba(0,0,0,0.25)",
+                        boxSizing: "border-box",
+                      }}
                     >
-                      <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{label}</span>
-                      <WeatherGlyph code={row.code} className="my-3 size-10 text-red-400" />
-                      <span className="text-2xl font-black tabular-nums text-white">{Math.round(row.temp)}°</span>
-                      <span className="mt-1 text-[11px] text-slate-500">{Math.round(row.feels)}° feel</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "rgba(100,116,139,0.95)" }}>{label}</span>
+                      <div style={{ margin: "12px 0" }}>
+                        <WeatherGlyph code={row.code} sizePx={40} />
+                      </div>
+                      <span style={{ fontSize: 26, fontWeight: 900, color: "#fff" }}>{Math.round(row.temp)}°</span>
+                      <span style={{ marginTop: 6, fontSize: 11, color: "rgba(100,116,139,0.95)" }}>{Math.round(row.feels)}° feel</span>
                     </div>
                   );
                 })}
               </div>
             </section>
 
-            {/* Daily + Radar — wide grid */}
-            <div className="grid w-full min-w-0 max-w-none grid-cols-1 gap-8 lg:grid-cols-12 lg:gap-10">
-              <section className="rounded-3xl border border-white/10 bg-slate-900/50 p-6 shadow-xl backdrop-blur-md sm:p-8 lg:col-span-7">
-                <h2 className="mb-6 font-sans text-xs font-black uppercase tracking-[0.3em] text-slate-500">
+            <div
+              style={{
+                display: "grid",
+                width: "100%",
+                minWidth: 0,
+                gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))",
+                gap: 28,
+                alignItems: "start",
+              }}
+            >
+              <section
+                style={{
+                  borderRadius: 24,
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  background: "rgba(15,23,42,0.55)",
+                  padding: "24px clamp(16px, 2vw, 32px)",
+                  boxSizing: "border-box",
+                  width: "100%",
+                  minWidth: 0,
+                  boxShadow: "0 16px 40px rgba(0,0,0,0.3)",
+                }}
+              >
+                <h2 style={{ marginBottom: 22, fontSize: 11, fontWeight: 800, letterSpacing: "0.28em", textTransform: "uppercase", color: "rgba(100,116,139,0.95)" }}>
                   5-day outlook
                 </h2>
-                <ul className="divide-y divide-white/5">
+                <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
                   {dailyDays.map((day, i) => {
                     const code = data.daily.weather_code[i];
                     const hi = data.daily.temperature_2m_max[i];
@@ -285,19 +540,31 @@ export function WeatherPage() {
                       timeZone: WEATHER_TIMEZONE,
                     });
                     return (
-                      <li key={day} className="flex items-center gap-5 py-5 first:pt-0 last:pb-0">
-                        <div className="w-28 shrink-0 md:w-32">
-                          <p className="text-lg font-bold text-white">{dow}</p>
-                          <p className="text-xs font-medium uppercase tracking-wider text-slate-500">{md}</p>
+                      <li
+                        key={day}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 20,
+                          padding: "18px 0",
+                          borderTop: i === 0 ? "none" : "1px solid rgba(255,255,255,0.06)",
+                          width: "100%",
+                          minWidth: 0,
+                          boxSizing: "border-box",
+                        }}
+                      >
+                        <div style={{ width: 112, flexShrink: 0 }}>
+                          <p style={{ fontSize: 18, fontWeight: 700, color: "#fff" }}>{dow}</p>
+                          <p style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(100,116,139,0.9)" }}>{md}</p>
                         </div>
-                        <WeatherGlyph code={code} className="size-11 shrink-0 text-red-400" />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-base font-medium text-slate-300">{weatherCodeLabel(code)}</p>
+                        <WeatherGlyph code={code} sizePx={44} />
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <p style={{ fontSize: 15, fontWeight: 500, color: "rgba(203,213,225,0.95)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{weatherCodeLabel(code)}</p>
                         </div>
-                        <div className="shrink-0 text-right text-xl font-black tabular-nums">
-                          <span className="text-white">{Math.round(hi)}°</span>
-                          <span className="mx-2 text-slate-600">/</span>
-                          <span className="text-slate-400">{Math.round(lo)}°</span>
+                        <div style={{ flexShrink: 0, textAlign: "right", fontSize: 22, fontWeight: 900 }}>
+                          <span style={{ color: "#fff" }}>{Math.round(hi)}°</span>
+                          <span style={{ margin: "0 8px", color: "rgba(71,85,105,0.95)" }}>/</span>
+                          <span style={{ color: "rgba(148,163,184,0.95)" }}>{Math.round(lo)}°</span>
                         </div>
                       </li>
                     );
@@ -305,12 +572,23 @@ export function WeatherPage() {
                 </ul>
               </section>
 
-              <section className="rounded-3xl border border-white/10 bg-slate-900/50 p-6 shadow-xl backdrop-blur-md sm:p-8 lg:col-span-5">
-                <h2 className="mb-5 font-sans text-xs font-black uppercase tracking-[0.3em] text-slate-500">
+              <section
+                style={{
+                  borderRadius: 24,
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  background: "rgba(15,23,42,0.55)",
+                  padding: "24px clamp(16px, 2vw, 32px)",
+                  boxSizing: "border-box",
+                  width: "100%",
+                  minWidth: 0,
+                  boxShadow: "0 16px 40px rgba(0,0,0,0.3)",
+                }}
+              >
+                <h2 style={{ marginBottom: 18, fontSize: 11, fontWeight: 800, letterSpacing: "0.28em", textTransform: "uppercase", color: "rgba(100,116,139,0.95)" }}>
                   Precipitation radar
                 </h2>
                 <PrecipRadar lat={lat} lon={lon} />
-                <p className="mt-4 text-xs leading-relaxed text-slate-500">
+                <p style={{ marginTop: 16, fontSize: 12, lineHeight: 1.55, color: "rgba(100,116,139,0.95)" }}>
                   Visual Crossing precip composite · centered on your coordinates.
                 </p>
               </section>

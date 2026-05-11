@@ -30,10 +30,23 @@ function makeQC() {
   return new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, retry: 1 } } });
 }
 
-/** Weather uses its own navy shell; other pages keep the scoreboard green frame */
+/** Weather: same full-width shell as dashboard (minus green scoreboard frame). */
 function PageFrame({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
-  if (pathname.startsWith("/weather")) return <>{children}</>;
+  if (pathname.startsWith("/weather")) {
+    return (
+      <div
+        style={{
+          width: "100%",
+          minWidth: 0,
+          minHeight: "100vh",
+          boxSizing: "border-box",
+        }}
+      >
+        {children}
+      </div>
+    );
+  }
   return (
     <div className="sb-shell" style={{ minHeight: "calc(100vh - 0px)" }}>
       {children}
