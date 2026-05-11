@@ -80,7 +80,19 @@ function AppShell() {
     <div style={{ minHeight:"100vh", background: isWeatherRoute ? "#0b1220" : "#162a1c" }}>
       <FocusMode/><CelebrationOverlay/><TimerBanner/><Sidebar/>
       <DueReminderNotifications />
-      <main style={{ marginLeft:sw, paddingTop:activeTimer?44:0, minHeight:"100vh", transition:"margin-left 0.25s ease" }}>
+      <main
+        style={{
+          /* Padding (not margin) so the content box is exactly viewport − sidebar; avoids a too-narrow main on some layouts */
+          paddingLeft: sw,
+          paddingTop: activeTimer ? 44 : 0,
+          minHeight: "100vh",
+          width: "100%",
+          maxWidth: "100vw",
+          boxSizing: "border-box",
+          minWidth: 0,
+          transition: "padding-left 0.25s ease",
+        }}
+      >
         <PageFrame>
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />

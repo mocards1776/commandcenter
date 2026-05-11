@@ -124,14 +124,14 @@ export function WeatherPage() {
   const dailyDays = data?.daily?.time?.slice(0, 5) ?? [];
 
   return (
-    <div className="relative min-h-screen w-full overflow-x-hidden bg-[#050814] pb-20 pt-0 font-sans text-slate-100">
+    <div className="relative min-h-screen w-full min-w-0 max-w-none overflow-x-hidden bg-[#050814] pb-20 pt-0 font-sans text-slate-100">
       {/* Atmospheric layers */}
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_120%_80%_at_50%_-20%,rgba(217,64,64,0.18),transparent_55%),radial-gradient(ellipse_80%_60%_at_100%_50%,rgba(59,130,246,0.08),transparent_50%),radial-gradient(ellipse_60%_40%_at_0%_80%,rgba(217,64,64,0.06),transparent_45%)]" />
       <div className="pointer-events-none fixed inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.4)_0%,transparent_35%,transparent_65%,rgba(5,8,20,0.9)_100%)]" />
 
       {/* Header — full width */}
-      <header className="sticky top-0 z-30 w-full border-b border-white/10 bg-[#0a0f1c]/80 backdrop-blur-xl">
-        <div className="flex w-full items-center gap-4 px-4 py-4 sm:px-8 lg:px-12 xl:px-16">
+      <header className="sticky top-0 z-30 w-full min-w-0 max-w-none border-b border-white/10 bg-[#0a0f1c]/80 backdrop-blur-xl">
+        <div className="flex w-full min-w-0 max-w-none items-center gap-4 px-4 py-4 sm:px-8 lg:px-12 xl:px-16">
           <button
             type="button"
             onClick={() => navigate(-1)}
@@ -153,7 +153,7 @@ export function WeatherPage() {
         </div>
       </header>
 
-      <main className="relative z-10 w-full space-y-8 px-4 py-8 sm:space-y-10 sm:px-8 lg:space-y-12 lg:px-12 xl:px-16">
+      <div className="relative z-10 w-full min-w-0 max-w-none space-y-8 px-4 py-8 sm:space-y-10 sm:px-8 lg:space-y-12 lg:px-12 xl:px-16">
         {isLoading && (
           <div className="flex min-h-[40vh] w-full items-center justify-center">
             <Loader2 className="size-12 animate-spin text-red-500 drop-shadow-[0_0_24px_rgba(239,68,68,0.5)]" aria-label="Loading" />
@@ -169,8 +169,8 @@ export function WeatherPage() {
         {!isLoading && !isError && current && data && (
           <>
             {/* Hero — edge-to-edge feel */}
-            <section className="grid w-full gap-6 lg:grid-cols-12 lg:gap-8 xl:gap-10">
-              <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-slate-900/90 via-[#0f172a] to-[#020617] p-8 shadow-2xl shadow-black/50 lg:col-span-8 lg:p-10 xl:p-12">
+            <section className="grid w-full min-w-0 max-w-none grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-8 xl:gap-10">
+              <div className="relative min-w-0 overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-slate-900/90 via-[#0f172a] to-[#020617] p-8 shadow-2xl shadow-black/50 lg:col-span-8 lg:p-10 xl:p-12">
                 <div className="absolute -right-20 -top-20 size-72 rounded-full bg-red-600/20 blur-3xl" />
                 <div className="absolute -bottom-16 -left-16 size-56 rounded-full bg-blue-500/10 blur-3xl" />
                 <div className="relative flex flex-col gap-8 md:flex-row md:items-center md:justify-between">
@@ -224,23 +224,23 @@ export function WeatherPage() {
               </div>
 
               {/* Side accent column */}
-              <div className="flex flex-col gap-4 lg:col-span-4">
+              <div className="flex min-w-0 flex-col gap-4 lg:col-span-4">
                 <div className="flex-1 rounded-3xl border border-red-500/20 bg-gradient-to-b from-red-950/40 to-transparent p-6 backdrop-blur-sm">
                   <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-red-400/80">Snapshot</p>
                   <p className="mt-4 font-sans text-sm leading-relaxed text-slate-400">
-                    Full-width dashboard-style weather for your location. Scroll for hourly motion and multi-day trend.
+                    Hourly strip scrolls horizontally; 5-day outlook and radar use the full content width beside the sidebar.
                   </p>
                 </div>
               </div>
             </section>
 
             {/* Hourly — full width strip */}
-            <section className="w-full rounded-3xl border border-white/10 bg-slate-900/40 p-6 shadow-xl backdrop-blur-sm sm:p-8">
+            <section className="w-full min-w-0 max-w-none rounded-3xl border border-white/10 bg-slate-900/40 p-6 shadow-xl backdrop-blur-sm sm:p-8">
               <div className="mb-5 flex items-end justify-between gap-4">
                 <h2 className="font-sans text-xs font-black uppercase tracking-[0.3em] text-slate-500">Next hours</h2>
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-600">Scroll →</span>
               </div>
-              <div className="-mx-2 flex gap-4 overflow-x-auto pb-3 pt-1 [scrollbar-width:thin]">
+              <div className="-mx-2 flex w-full min-w-0 flex-row flex-nowrap gap-4 overflow-x-auto pb-3 pt-1 [scrollbar-width:thin]">
                 {hourlyRows.map((row) => {
                   const t = new Date(row.time);
                   const label = t.toLocaleTimeString("en-US", {
@@ -264,7 +264,7 @@ export function WeatherPage() {
             </section>
 
             {/* Daily + Radar — wide grid */}
-            <div className="grid w-full gap-8 lg:grid-cols-12 lg:gap-10">
+            <div className="grid w-full min-w-0 max-w-none grid-cols-1 gap-8 lg:grid-cols-12 lg:gap-10">
               <section className="rounded-3xl border border-white/10 bg-slate-900/50 p-6 shadow-xl backdrop-blur-md sm:p-8 lg:col-span-7">
                 <h2 className="mb-6 font-sans text-xs font-black uppercase tracking-[0.3em] text-slate-500">
                   5-day outlook
@@ -317,7 +317,7 @@ export function WeatherPage() {
             </div>
           </>
         )}
-      </main>
+      </div>
     </div>
   );
 }
