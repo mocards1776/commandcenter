@@ -198,8 +198,16 @@ export function WeatherPage() {
   });
 
   const current = data?.current;
-  const snapshot = useMemo(() => (data ? buildWeatherSnapshot(data, WEATHER_TIMEZONE) : null), [data]);
+  const snapshot = useMemo(() => {
+    if (!data) return null;
+    try {
+      return buildWeatherSnapshot(data, WEATHER_TIMEZONE);
+    } catch {
+      return null;
+    }
+  }, [data]);
   const dailyDays = data?.daily?.time?.slice(0, 10) ?? [];
+  const hourlyRows = useMemo(() => (data ? sliceHourlyNext(data, 24) : []), [data]);
 
   /* Same layout idea as DashboardPage: plain div + width:100% + display:grid / flex via inline styles (no Tailwind for structure). */
   const shell: CSSProperties = {
