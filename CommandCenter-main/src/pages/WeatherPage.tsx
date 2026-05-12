@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Loader2,
@@ -24,6 +25,9 @@ import {
   latLonToTileXY,
   visualCrossingPrecipTileUrl,
   weatherCodeLabel,
+  fetchRainViewerLatestRadarPath,
+  rainViewerRadarTileUrl,
+  buildWeatherSnapshot,
   type OpenMeteoResponse,
 } from "@/lib/weather";
 
@@ -66,80 +70,118 @@ function sliceHourlyNext(data: OpenMeteoResponse, count: number) {
 }
 
 function PrecipRadar({ lat, lon }: { lat: number; lon: number }) {
-  const apiKey = import.meta.env.VITE_VISUAL_CROSSING_API_KEY ?? "";
+  const apiKey = (import.meta.env.VITE_VISUAL_CROSSING_API_KEY ?? "").trim();
   const z = 6;
   const { x, y } = latLonToTileXY(lat, lon, z);
+  const tilesX = [x - 1, x, x + 1];
 
-  if (!apiKey) {
+  const rainQuery = useQuery({
+    queryKey: ["rainviewer-radar-path"],
+    queryFn: fetchRainViewerLatestRadarPath,
+    staleTime: 4 * 60_000,
+    refetchInterval: 10 * 60_000,
+    retry: 2,
+    enabled: !apiKey,
+  });
+
+  const h = "min(260px, 32vw)";
+  const frame: CSSProperties = {
+    position: "relative",
+    width: "100%",
+    height: h,
+    maxHeight: 300,
+    overflow: "hidden",
+    borderRadius: 16,
+    border: "1px solid rgba(255,255,255,0.1)",
+    background: "rgba(2,6,23,0.92)",
+    boxSizing: "border-box",
+  };
+
+  const footer = (caption: string) => (
+    <div
+      style={{
+        pointerEvents: "none",
+        position: "absolute",
+        left: 0,
+        right: 0,
+        bottom: 0,
+        padding: "12px 16px",
+        background: "linear-gradient(to top, rgba(0,0,0,0.88), rgba(0,0,0,0.35), transparent)",
+      }}
+    >
+      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.22em", textTransform: "uppercase", color: "rgba(255,255,255,0.45)" }}>
+        {caption}
+      </span>
+    </div>
+  );
+
+  if (apiKey) {
+    return (
+      <div style={frame} role="img" aria-label="Precipitation radar map">
+        <div style={{ display: "flex", height: "100%", width: "100%" }}>
+          {tilesX.map((tx) => (
+            <img
+              key={`vc-${z}-${tx}-${y}`}
+              src={visualCrossingPrecipTileUrl(z, tx, y, apiKey)}
+              alt=""
+              style={{ height: "100%", minWidth: 0, flex: 1, objectFit: "cover" }}
+              loading="lazy"
+            />
+          ))}
+        </div>
+        {footer("Radar · Visual Crossing")}
+      </div>
+    );
+  }
+
+  if (rainQuery.isPending) {
+    return (
+      <div style={{ ...frame, display: "flex", alignItems: "center", justifyContent: "center" }} role="status">
+        <Loader2 size={32} color="#f87171" style={{ animation: "spin 1s linear infinite" }} aria-label="Loading radar" />
+        {footer("Radar · loading")}
+      </div>
+    );
+  }
+
+  if (rainQuery.isError || !rainQuery.data) {
     return (
       <div
         style={{
+          ...frame,
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          gap: 12,
-          minHeight: 180,
-          width: "100%",
-          boxSizing: "border-box",
-          padding: "40px 24px",
-          borderRadius: 16,
-          border: "1px dashed rgba(255,255,255,0.18)",
-          background: "rgba(0,0,0,0.35)",
+          gap: 10,
+          padding: 24,
           textAlign: "center",
         }}
       >
-        <p style={{ maxWidth: 480, fontSize: 14, lineHeight: 1.6, color: "rgba(148,163,184,0.95)" }}>
-          Add <code style={{ padding: "4px 8px", borderRadius: 6, background: "rgba(255,255,255,0.08)", fontFamily: "monospace", fontSize: 12, color: "#fca5a5" }}>VITE_VISUAL_CROSSING_API_KEY</code> for live precipitation radar tiles.
+        <p style={{ fontSize: 13, color: "rgba(248,113,113,0.9)", maxWidth: 420 }}>
+          {(rainQuery.error as Error)?.message ?? "Could not load RainViewer radar."}
+        </p>
+        <p style={{ fontSize: 12, color: "rgba(148,163,184,0.9)" }}>
+          Set <code style={{ padding: "2px 6px", borderRadius: 4, background: "rgba(255,255,255,0.08)" }}>VITE_VISUAL_CROSSING_API_KEY</code> to use Visual Crossing tiles instead.
         </p>
       </div>
     );
   }
 
-  const tilesX = [x - 1, x, x + 1];
-  const h = "min(260px, 32vw)";
+  const { host, path } = rainQuery.data;
   return (
-    <div
-      style={{
-        position: "relative",
-        width: "100%",
-        height: h,
-        maxHeight: 300,
-        overflow: "hidden",
-        borderRadius: 16,
-        border: "1px solid rgba(255,255,255,0.1)",
-        background: "rgba(2,6,23,0.92)",
-        boxSizing: "border-box",
-      }}
-      role="img"
-      aria-label="Precipitation radar map"
-    >
+    <div style={frame} role="img" aria-label="Precipitation radar map">
       <div style={{ display: "flex", height: "100%", width: "100%" }}>
         {tilesX.map((tx) => (
           <img
-            key={`${z}-${tx}-${y}`}
-            src={visualCrossingPrecipTileUrl(z, tx, y, apiKey)}
+            key={`${path}-${z}-${tx}-${y}`}
+            src={rainViewerRadarTileUrl(host, path, z, tx, y)}
             alt=""
             style={{ height: "100%", minWidth: 0, flex: 1, objectFit: "cover" }}
             loading="lazy"
           />
         ))}
       </div>
-      <div
-        style={{
-          pointerEvents: "none",
-          position: "absolute",
-          left: 0,
-          right: 0,
-          bottom: 0,
-          padding: "12px 16px",
-          background: "linear-gradient(to top, rgba(0,0,0,0.88), rgba(0,0,0,0.35), transparent)",
-        }}
-      >
-        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.25em", textTransform: "uppercase", color: "rgba(255,255,255,0.45)" }}>
-          Radar · precip composite
-        </span>
-      </div>
+      {footer("Radar · RainViewer (no API key)")}
     </div>
   );
 }
@@ -156,8 +198,8 @@ export function WeatherPage() {
   });
 
   const current = data?.current;
-  const hourlyRows = data ? sliceHourlyNext(data, 24) : [];
-  const dailyDays = data?.daily?.time?.slice(0, 5) ?? [];
+  const snapshot = useMemo(() => (data ? buildWeatherSnapshot(data, WEATHER_TIMEZONE) : null), [data]);
+  const dailyDays = data?.daily?.time?.slice(0, 10) ?? [];
 
   /* Same layout idea as DashboardPage: plain div + width:100% + display:grid / flex via inline styles (no Tailwind for structure). */
   const shell: CSSProperties = {
@@ -428,9 +470,20 @@ export function WeatherPage() {
                 }}
               >
                 <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.22em", textTransform: "uppercase", color: "rgba(248,113,113,0.9)" }}>Snapshot</p>
-                <p style={{ marginTop: 16, fontSize: 14, lineHeight: 1.65, color: "rgba(148,163,184,0.95)" }}>
-                  Layout matches the dashboard shell: full width of the main column beside the sidebar. Hourly tiles scroll horizontally; outlook and radar share the row below on wide screens.
-                </p>
+                {snapshot && (
+                  <>
+                    <p style={{ marginTop: 14, fontSize: 17, fontWeight: 800, lineHeight: 1.35, color: "#f8fafc", letterSpacing: "-0.02em" }}>
+                      {snapshot.headline}
+                    </p>
+                    <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+                      {snapshot.lines.map((line, i) => (
+                        <p key={i} style={{ fontSize: 13, lineHeight: 1.6, color: "rgba(148,163,184,0.98)", margin: 0 }}>
+                          {line}
+                        </p>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             </section>
 
@@ -527,7 +580,7 @@ export function WeatherPage() {
                 }}
               >
                 <h2 style={{ marginBottom: 22, fontSize: 11, fontWeight: 800, letterSpacing: "0.28em", textTransform: "uppercase", color: "rgba(100,116,139,0.95)" }}>
-                  5-day outlook
+                  10-day outlook
                 </h2>
                 <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
                   {dailyDays.map((day, i) => {
@@ -594,7 +647,8 @@ export function WeatherPage() {
                 </h2>
                 <PrecipRadar lat={lat} lon={lon} />
                 <p style={{ marginTop: 16, fontSize: 12, lineHeight: 1.55, color: "rgba(100,116,139,0.95)" }}>
-                  Visual Crossing precip composite · centered on your coordinates.
+                  Live composite tiles centered on your coordinates. RainViewer is used when no Visual Crossing key is set; add{" "}
+                  <code style={{ padding: "2px 6px", borderRadius: 4, background: "rgba(255,255,255,0.08)", fontSize: 11 }}>VITE_VISUAL_CROSSING_API_KEY</code> to switch providers.
                 </p>
               </section>
             </div>

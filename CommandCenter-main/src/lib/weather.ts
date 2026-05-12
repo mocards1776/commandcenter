@@ -30,6 +30,10 @@ export interface OpenMeteoResponse {
     weather_code: number[];
     temperature_2m_max: number[];
     temperature_2m_min: number[];
+    /** 0–100 % max probability of precipitation that day */
+    precipitation_probability_max?: number[];
+    /** mm total precipitation */
+    precipitation_sum?: number[];
   };
 }
 
@@ -47,11 +51,17 @@ export async function fetchOpenMeteoForecast(
       "relative_humidity_2m",
     ].join(","),
     hourly: ["temperature_2m", "apparent_temperature", "weather_code", "precipitation_probability"].join(","),
-    daily: ["weather_code", "temperature_2m_max", "temperature_2m_min"].join(","),
+    daily: [
+      "weather_code",
+      "temperature_2m_max",
+      "temperature_2m_min",
+      "precipitation_probability_max",
+      "precipitation_sum",
+    ].join(","),
     temperature_unit: "fahrenheit",
     wind_speed_unit: "mph",
     timezone: WEATHER_TIMEZONE,
-    forecast_days: "7",
+    forecast_days: "16",
   });
   const url = `https://api.open-meteo.com/v1/forecast?${params.toString()}`;
   const res = await fetch(url);
@@ -99,4 +109,120 @@ export function visualCrossingPrecipTileUrl(
     strict: "false",
   });
   return `${base}/${z}/${x}/${y}.webp?${q.toString()}`;
+}
+
+/** RainViewer public API — no key; path is hash-based (see weather-maps.json). */
+export async function fetchRainViewerLatestRadarPath(): Promise<{ host: string; path: string }> {
+  const res = await fetch("https://api.rainviewer.com/public/weather-maps.json");
+  if (!res.ok) throw new Error(`RainViewer maps ${res.status}`);
+  const j = (await res.json()) as {
+    host?: string;
+    radar?: { past?: { path: string }[]; nowcast?: { path: string }[] };
+  };
+  const host = (j.host ?? "https://tilecache.rainviewer.com").replace(/\/$/, "");
+  const nowcast = j.radar?.nowcast ?? [];
+  const past = j.radar?.past ?? [];
+  const pick = nowcast[nowcast.length - 1] ?? past[past.length - 1];
+  if (!pick?.path) throw new Error("No radar frames from RainViewer");
+  return { host, path: pick.path };
+}
+
+/** 256px slippy tiles; color 2 = classic precip palette, 1_1 = smooth + snow */
+export function rainViewerRadarTileUrl(host: string, path: string, z: number, x: number, y: number): string {
+  return `${host}${path}/256/${z}/${x}/${y}/2/1_1.png`;
+}
+
+export interface WeatherSnapshotCopy {
+  headline: string;
+  lines: string[];
+}
+
+/** Short narrative for the Snapshot panel from Open-Meteo payload */
+export function buildWeatherSnapshot(
+  data: OpenMeteoResponse,
+  tz: string
+): WeatherSnapshotCopy {
+  const cur = data.current;
+  const hourly = data.hourly;
+  const daily = data.daily;
+  const now = Date.now();
+  const idx = hourly.time.findIndex((t) => Date.parse(t) >= now - 45 * 60_000);
+  const start = idx < 0 ? 0 : idx;
+  const pop = hourly.precipitation_probability ?? [];
+  let maxPop = 0;
+  let sumPop = 0;
+  let n = 0;
+  const end = Math.min(start + 24, hourly.time.length);
+  for (let i = start; i < end; i++) {
+    const p = pop[i];
+    if (typeof p === "number") {
+      maxPop = Math.max(maxPop, p);
+      sumPop += p;
+      n++;
+    }
+  }
+  const avgPop = n ? sumPop / n : 0;
+
+  const d1 = daily.time[1];
+  const d2 = daily.time[2];
+  const fmtShort = (iso: string) =>
+    new Date(iso + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: tz });
+
+  const pmax = daily.precipitation_probability_max;
+  const psum = daily.precipitation_sum;
+  const rainToday =
+    typeof pmax?.[0] === "number" && pmax[0] >= 45
+      ? `Wet day risk is elevated (${Math.round(pmax[0])}% max chance of rain).`
+      : typeof pmax?.[0] === "number" && pmax[0] >= 20
+        ? `A few showers possible (${Math.round(pmax[0])}% peak rain chance).`
+        : "Rain chances look low for today.";
+
+  const hi0 = daily.temperature_2m_max[0];
+  const lo0 = daily.temperature_2m_min[0];
+  const hi1 = daily.temperature_2m_max[1];
+  const lo1 = daily.temperature_2m_min[1];
+
+  let trend = "";
+  if (typeof hi1 === "number" && typeof hi0 === "number") {
+    const diff = hi1 - hi0;
+    if (diff >= 4) trend = "Tomorrow runs noticeably warmer than today.";
+    else if (diff <= -4) trend = "Tomorrow cools off compared to today.";
+    else trend = "Tomorrow’s high is similar to today’s.";
+  }
+
+  const headline = `${Math.round(cur.temperature_2m)}° and ${weatherCodeLabel(cur.weather_code).toLowerCase()} — feels like ${Math.round(cur.apparent_temperature)}°.`;
+
+  const lines: string[] = [
+    typeof cur.relative_humidity_2m === "number"
+      ? `Humidity ${Math.round(cur.relative_humidity_2m)}%. Today’s range: high ${Math.round(hi0)}°, low ${Math.round(lo0)}°. ${rainToday}`
+      : `Today’s range: high ${Math.round(hi0)}°, low ${Math.round(lo0)}°. ${rainToday}`,
+  ];
+
+  if (maxPop >= 35) {
+    lines.push(
+      avgPop >= 25
+        ? `Next 24 hours: frequent rain windows possible (hourly peaks up to ${Math.round(maxPop)}% chance).`
+        : `Next 24 hours: a few hours may bring rain (peak ${Math.round(maxPop)}% chance).`,
+    );
+  } else {
+    lines.push("Next 24 hours: mostly manageable precip chances hour to hour.");
+  }
+
+  if (d1 && typeof hi1 === "number" && typeof lo1 === "number") {
+    lines.push(`${fmtShort(d1)}: high ${Math.round(hi1)}° / low ${Math.round(lo1)}°. ${trend}`);
+  }
+
+  if (d2 && pmax && typeof pmax[2] === "number" && pmax[2] >= 40) {
+    lines.push(`${fmtShort(d2)}: watch for wet weather (${Math.round(pmax[2])}% max rain chance).`);
+  } else if (d2) {
+    const code = daily.weather_code[2];
+    lines.push(`${fmtShort(d2)}: trending ${weatherCodeLabel(code).toLowerCase()}.`);
+  }
+
+  if (psum && typeof psum[0] === "number" && psum[0] >= 0.5) {
+    const inches = psum[0] * 0.0393701;
+    lines.push(`Today’s modeled rainfall: about ${inches < 0.05 ? "a trace" : `${inches.toFixed(2)} in`} (model).`);
+  }
+
+  return { headline, lines };
 }
