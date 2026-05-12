@@ -103,11 +103,8 @@ export function QuickAdd({
   };
 
   const confirmPickerDate = () => {
-    if (!pickerDate) {
-      toast.error("Choose a due date");
-      return;
-    }
-    createMut.mutate(`${pickerDate}T00:00:00`);
+    const day = pickerDate || todayStr();
+    createMut.mutate(`${day}T00:00:00`);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -353,6 +350,13 @@ export function QuickAdd({
               type="date"
               value={pickerDate}
               onChange={(e) => setPickerDate(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (!createMut.isPending) confirmPickerDate();
+                }
+              }}
+              autoFocus
               style={{
                 width: "100%",
                 padding: "10px 12px",
